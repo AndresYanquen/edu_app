@@ -1,0 +1,39 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: #f4f5f7;
+  color: #0f172a;
+}
+
+body {
+  margin: 0;
+  background-color: #f4f5f7;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page {
+  padding: 1.5rem;
+  min-height: calc(100vh - 4rem);
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #94a3b8;
+}
+
+.mb-2 {
+  margin-bottom: 0.75rem;
+}
