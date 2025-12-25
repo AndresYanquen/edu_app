@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <Breadcrumb class="mb-2" :home="breadcrumbHome" :model="breadcrumbItems" />
     <Card v-if="loading">
       <template #content>
         <Skeleton height="2rem" class="mb-2" />
@@ -79,7 +80,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import api from '../api/axios';
@@ -173,6 +174,19 @@ watch(
     loadLesson();
   },
 );
+
+const breadcrumbHome = { label: 'Student', to: '/student' };
+const breadcrumbItems = computed(() => {
+  const items = [];
+  const courseId = route.params.courseId;
+  if (course.value) {
+    items.push({ label: course.value.title, to: `/student/course/${courseId}` });
+  }
+  if (lesson.value) {
+    items.push({ label: lesson.value.title });
+  }
+  return items;
+});
 </script>
 
 <style scoped>
@@ -220,5 +234,9 @@ watch(
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.mb-2 {
+  margin-bottom: 0.75rem;
 }
 </style>

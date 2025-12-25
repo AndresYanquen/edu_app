@@ -29,7 +29,19 @@
             </DataTable>
             <div v-if="!filteredGroups.length" class="empty-state">No groups match your search.</div>
           </template>
-          <div v-else class="empty-state">You have no assigned groups.</div>
+          <template v-else>
+            <Card class="empty-card">
+              <template #content>
+                <div class="empty-card-content">
+                  <i class="pi pi-users"></i>
+                  <div>
+                    <h4>No groups assigned</h4>
+                    <p>You do not have any groups yet.</p>
+                  </div>
+                </div>
+              </template>
+            </Card>
+          </template>
         </template>
       </template>
     </Card>
@@ -100,5 +112,17 @@ const filteredGroups = computed(() => {
 .control-label {
   font-size: 0.85rem;
   color: #6b7280;
+}
+
+.empty-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.empty-card-content i {
+  font-size: 2rem;
+  color: #94a3b8;
 }
 </style>

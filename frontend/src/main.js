@@ -16,6 +16,7 @@ import Skeleton from 'primevue/skeleton';
 import Toast from 'primevue/toast';
 import ProgressSpinner from 'primevue/progressspinner';
 import ToastService from 'primevue/toastservice';
+import Breadcrumb from 'primevue/breadcrumb';
 
 import 'primevue/resources/themes/lara-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
@@ -49,6 +50,7 @@ app.component('Tag', Tag);
 app.component('Skeleton', Skeleton);
 app.component('Toast', Toast);
 app.component('ProgressSpinner', ProgressSpinner);
+app.component('Breadcrumb', Breadcrumb);
 
 const bootstrap = async () => {
   const auth = useAuthStore();

@@ -27,7 +27,19 @@
             </Column>
           </DataTable>
         </div>
-        <div v-else class="empty-state">You are not enrolled in any courses.</div>
+        <div v-else>
+          <Card class="empty-card">
+            <template #content>
+              <div class="empty-card-content">
+                <i class="pi pi-book"></i>
+                <div>
+                  <h4>No courses yet</h4>
+                  <p>You are not enrolled in any courses.</p>
+                </div>
+              </div>
+            </template>
+          </Card>
+        </div>
       </template>
     </Card>
   </div>
@@ -73,4 +85,19 @@ onMounted(loadCourses);
 </script>
 
 <style scoped>
+.empty-card {
+  text-align: center;
+}
+
+.empty-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.empty-card-content i {
+  font-size: 2rem;
+  color: #94a3b8;
+}
 </style>

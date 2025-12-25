@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <Breadcrumb class="mb-2" :home="breadcrumbHome" :model="breadcrumbItems" />
     <Card v-if="loading">
       <template #content>
         <Skeleton height="2rem" class="mb-2" />
@@ -29,13 +30,19 @@
       </template>
       <template #content>
         <div class="continue-card">
-          <template v-if="progress?.nextLessonId">
+          <template v-if="!isCourseCompleted">
             <p>Continue with</p>
             <h4>{{ progress.nextLessonTitle }}</h4>
-            <Button label="Continue" icon="pi pi-arrow-right" @click="openLesson(progress.nextLessonId)" />
+            <Button
+              label="Continue"
+              icon="pi pi-arrow-right"
+              :disabled="!progress?.nextLessonId"
+              @click="openLesson(progress.nextLessonId)"
+            />
           </template>
           <template v-else>
             <p>Course completed</p>
+            <Tag value="Completed" severity="success" />
           </template>
         </div>
         <div class="modules">
@@ -52,9 +59,11 @@
                     label="Mark done"
                     icon="pi pi-check"
                     class="p-button-sm"
+                    :disabled="isLessonCompleted(lesson.id)"
                     :loading="updatingLesson === lesson.id"
                     @click="markDone(lesson.id)"
                   />
+                  <Tag v-if="isLessonCompleted(lesson.id)" value="Done" severity="success" />
                 </div>
               </li>
             </ul>
@@ -66,7 +75,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import api from '../api/axios';
@@ -80,6 +89,7 @@ const progress = ref(null);
 const loading = ref(true);
 const error = ref(false);
 const updatingLesson = ref(null);
+const completedLessons = ref(new Set());
 
 const fetchProgress = async (id) => {
   const { data } = await api.get(`/courses/${id}/progress`);
@@ -92,6 +102,7 @@ const fetchData = async (id) => {
   try {
     const courseRes = await api.get(`/courses/${id}`);
     course.value = courseRes.data;
+    completedLessons.value = new Set();
     await fetchProgress(id);
   } catch (err) {
     error.value = true;
@@ -107,6 +118,14 @@ const openLesson = (lessonId) => {
   router.push(`/student/course/${route.params.id}/lesson/${lessonId}`);
 };
 
+const markLessonCompleted = (lessonId) => {
+  const nextSet = new Set(completedLessons.value);
+  nextSet.add(lessonId);
+  completedLessons.value = nextSet;
+};
+
+const isLessonCompleted = (lessonId) => completedLessons.value.has(lessonId);
+
 const markDone = async (lessonId) => {
   updatingLesson.value = lessonId;
   try {
@@ -116,6 +135,7 @@ const markDone = async (lessonId) => {
     });
     toast.add({ severity: 'success', summary: 'Updated', detail: 'Lesson marked as done', life: 2000 });
     await fetchProgress(route.params.id);
+    markLessonCompleted(lessonId);
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update progress', life: 3000 });
   } finally {
@@ -131,6 +151,15 @@ watch(
   () => route.params.id,
   (newId) => newId && fetchData(newId),
 );
+
+const isCourseCompleted = computed(() => progress.value && !progress.value.nextLessonId);
+
+const breadcrumbHome = { label: 'Student', to: '/student' };
+const breadcrumbItems = computed(() => [
+  {
+    label: course.value?.title || 'Course',
+  },
+]);
 </script>
 
 <style scoped>
@@ -154,6 +183,13 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.continue-card {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .lessons {
@@ -182,5 +218,9 @@ watch(
   text-transform: capitalize;
   font-size: 0.85rem;
   color: #64748b;
+}
+
+.mb-2 {
+  margin-bottom: 0.75rem;
 }
 </style>
