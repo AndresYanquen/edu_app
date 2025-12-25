@@ -33,19 +33,56 @@
       <template #content>
         <div class="meta">
           <Tag :value="lesson?.contentType || 'lesson'" severity="info" />
+          <Tag
+            v-if="lesson?.estimatedMinutes"
+            :value="`${lesson.estimatedMinutes} min`"
+            severity="secondary"
+          />
           <span v-if="lesson?.durationSeconds">{{ formatDuration(lesson.durationSeconds) }}</span>
         </div>
 
         <Divider />
 
-        <div v-if="lesson?.contentText || lesson?.contentUrl || lesson?.embedHtml" class="content-block">
-          <p v-if="lesson?.contentText">{{ lesson.contentText }}</p>
-          <a v-if="lesson?.contentUrl" :href="lesson.contentUrl" target="_blank" rel="noopener">
-            {{ lesson.contentUrl }}
-          </a>
-          <div v-if="lesson?.embedHtml" v-html="lesson.embedHtml" class="embed" />
+        <div class="content-area">
+          <Card v-if="lesson?.contentText" class="lesson-card">
+            <template #title>Lesson text</template>
+            <template #content>
+              <p class="lesson-text">{{ lesson.contentText }}</p>
+              <a v-if="lesson?.contentUrl" :href="lesson.contentUrl" target="_blank" rel="noopener">
+                Reference link
+              </a>
+            </template>
+          </Card>
+
+          <Card v-else-if="lesson?.contentUrl" class="lesson-card">
+            <template #title>Reference</template>
+            <template #content>
+              <a :href="lesson.contentUrl" target="_blank" rel="noopener">{{ lesson.contentUrl }}</a>
+            </template>
+          </Card>
+
+          <Card v-if="lesson?.videoUrl" class="lesson-card">
+            <template #title>Video</template>
+            <template #content>
+              <div v-if="isYoutube(lesson.videoUrl)" class="video-embed">
+                <iframe
+                  :src="youtubeEmbed(lesson.videoUrl)"
+                  title="Lesson video"
+                  frameborder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowfullscreen
+                ></iframe>
+              </div>
+              <div v-else>
+                <Button label="Open video" icon="pi pi-external-link" @click="openVideo(lesson.videoUrl)" />
+              </div>
+            </template>
+          </Card>
+
+          <div v-if="!lesson?.contentText && !lesson?.videoUrl" class="empty-state">
+            Lesson content coming soon.
+          </div>
         </div>
-        <div v-else class="empty-state">Lesson content coming soon.</div>
 
         <div v-if="assets.length" class="assets">
           <h4>Assets</h4>
@@ -149,6 +186,19 @@ const goBack = () => {
   router.push(`/student/course/${route.params.courseId}`);
 };
 
+const isYoutube = (url) => /youtu(\.be|be\.com)/i.test(url || '');
+
+const youtubeEmbed = (url) => {
+  if (!url) return '';
+  const match = url.match(/(?:v=|\/)([\w-]{11})/);
+  const videoId = match ? match[1] : '';
+  return videoId ? `https://www.youtube.com/embed/${videoId}?rel=0` : url;
+};
+
+const openVideo = (url) => {
+  if (url) window.open(url, '_blank', 'noopener');
+};
+
 const updateStatus = async (status, percent, key) => {
   updating.value = key;
   try {
@@ -234,6 +284,25 @@ const breadcrumbItems = computed(() => {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.lesson-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.video-embed iframe {
+  width: 100%;
+  min-height: 315px;
+  border: none;
+  border-radius: 0.5rem;
 }
 
 .mb-2 {

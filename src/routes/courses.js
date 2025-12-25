@@ -97,9 +97,11 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
             l.position,
             l.content_type,
             l.content_text,
+            l.video_url,
             l.content_url,
             l.embed_html,
             l.duration_seconds,
+            l.estimated_minutes,
             l.is_free_preview
           FROM lessons l
           WHERE l.module_id = ANY($1::uuid[])
@@ -158,9 +160,11 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
           position: lesson.position,
           contentType: lesson.content_type,
           contentText: lesson.content_text,
+          videoUrl: lesson.video_url,
           contentUrl: lesson.content_url,
           embedHtml: lesson.embed_html,
           durationSeconds: lesson.duration_seconds,
+          estimatedMinutes: lesson.estimated_minutes,
           isFreePreview: lesson.is_free_preview,
           assets: assetsByLesson[lesson.id] || [],
         });
