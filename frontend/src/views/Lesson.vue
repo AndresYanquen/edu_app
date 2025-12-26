@@ -1,6 +1,7 @@
 <template>
   <div class="page">
     <Breadcrumb class="mb-2" :home="breadcrumbHome" :model="breadcrumbItems" />
+
     <Card v-if="loading">
       <template #content>
         <Skeleton height="2rem" class="mb-2" />
@@ -74,7 +75,11 @@
                 ></iframe>
               </div>
               <div v-else>
-                <Button label="Open video" icon="pi pi-external-link" @click="openVideo(lesson.videoUrl)" />
+                <Button
+                  label="Open video"
+                  icon="pi pi-external-link"
+                  @click="openVideo(lesson.videoUrl)"
+                />
               </div>
             </template>
           </Card>
@@ -114,6 +119,7 @@
       </template>
     </Card>
 
+    <!-- Quiz section -->
     <Card v-if="showQuizSection" class="quiz-card">
       <template #title>
         <div class="quiz-header">
@@ -121,29 +127,25 @@
           <Tag v-if="quizPassed" value="Passed" severity="success" />
         </div>
       </template>
+
       <template #content>
         <div v-if="quizLoading">
           <Skeleton height="3rem" class="mb-2" />
           <Skeleton height="3rem" class="mb-2" />
         </div>
+
         <div v-else-if="quizError">
           <p>Unable to load quiz.</p>
           <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadQuiz" />
         </div>
+
         <div v-else-if="quiz && quiz.questions?.length">
-          <div
-            v-for="(question, index) in quiz.questions"
-            :key="question.id"
-            class="quiz-question"
-          >
+          <div v-for="(question, index) in quiz.questions" :key="question.id" class="quiz-question">
             <h4>Question {{ index + 1 }}</h4>
             <p>{{ question.questionText }}</p>
+
             <div class="quiz-options">
-              <div
-                v-for="option in question.options"
-                :key="option.id"
-                class="quiz-option"
-              >
+              <div v-for="option in question.options" :key="option.id" class="quiz-option">
                 <RadioButton
                   :inputId="`option-${option.id}`"
                   :value="option.id"
@@ -155,6 +157,7 @@
               </div>
             </div>
           </div>
+
           <div class="quiz-actions">
             <Button
               label="Submit quiz"
@@ -165,13 +168,44 @@
             />
           </div>
         </div>
+
+        <div v-else class="empty-state">
+          No quiz available for this lesson.
+        </div>
+      </template>
+    </Card>
+
+    <!-- Quiz results -->
+    <Card v-if="loadingQuizScore" class="quiz-results-card">
+      <template #content>
+        <Skeleton height="3rem" class="mb-2" />
+        <Skeleton height="2rem" />
+      </template>
+    </Card>
+
+    <Card v-else-if="showQuizResults" class="quiz-results-card">
+      <template #title>Quiz results</template>
+      <template #content>
+        <div class="quiz-results-grid">
+          <div>
+            <small>Last attempt</small>
+            <strong>{{ quizScore?.lastScore }}%</strong>
+          </div>
+          <div>
+            <small>Best score</small>
+            <strong>{{ bestShown }}%</strong>
+          </div>
+          <div class="quiz-result-tag">
+            <Tag :value="bestShown >= 70 ? 'Passed' : 'Not passed'" :severity="bestShown >= 70 ? 'success' : 'warning'" />
+          </div>
+        </div>
       </template>
     </Card>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import api from '../api/axios';
@@ -184,158 +218,251 @@ const course = ref(null);
 const moduleInfo = ref(null);
 const lesson = ref(null);
 const assets = ref([]);
+
 const loading = ref(true);
 const error = ref(false);
 const errorMessage = ref('Failed to load lesson.');
 const updating = ref(null);
+
+// Quiz state
 const quiz = ref(null);
-const quizLoading = ref(true);
-const quizError = ref(false);
 const quizSelections = ref({});
+const quizLoading = ref(false);
 const quizSubmitting = ref(false);
+const quizError = ref(false);
+const quizExists = ref(false);
 const quizPassed = ref(false);
 
-const formatDuration = (seconds) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
-};
+// Quiz score card state
+const quizScore = ref(null);
+const loadingQuizScore = ref(false);
 
+const courseId = computed(() => route.params.courseId);
+const lessonId = computed(() => route.params.lessonId);
+
+const breadcrumbHome = computed(() => ({
+  icon: 'pi pi-home',
+  to: '/student',
+}));
+
+const breadcrumbItems = computed(() => {
+  const items = [{ label: 'Student', to: '/student' }];
+  if (courseId.value) items.push({ label: 'Course', to: `/student/course/${courseId.value}` });
+  if (lesson.value?.title) items.push({ label: lesson.value.title });
+  return items;
+});
+
+// FIX 1: safe locateLesson
 const locateLesson = (courseData, targetLessonId) => {
   for (const mod of courseData.modules || []) {
-    const found = mod.lessons.find((l) => l.id === targetLessonId);
-    if (found) {
-      return { module: mod, lesson: found };
-    }
+    const lessons = mod.lessons || [];
+    const found = lessons.find((l) => l.id === targetLessonId);
+    if (found) return { module: mod, lesson: found };
   }
   return null;
 };
 
-const loadLesson = async (silent = false) => {
-  const { courseId, lessonId } = route.params;
-  if (!courseId || !lessonId) return;
-  if (!silent) {
-    loading.value = true;
-  }
+const normalizeLesson = (rawLesson) => ({
+  id: rawLesson.id,
+  title: rawLesson.title,
+  contentType: rawLesson.contentType ?? rawLesson.content_type ?? null,
+  contentText: rawLesson.contentText ?? rawLesson.content_text ?? null,
+  contentUrl: rawLesson.contentUrl ?? rawLesson.content_url ?? null,
+  videoUrl: rawLesson.videoUrl ?? rawLesson.video_url ?? null,
+  estimatedMinutes: rawLesson.estimatedMinutes ?? rawLesson.estimated_minutes ?? null,
+  durationSeconds: rawLesson.durationSeconds ?? rawLesson.duration_seconds ?? null,
+  // support both names
+  assets: rawLesson.assets ?? rawLesson.lesson_assets ?? [],
+});
+
+const loadLesson = async () => {
+  loading.value = true;
   error.value = false;
+
   try {
-    const { data } = await api.get(`/courses/${courseId}`);
+    const { data } = await api.get(`/courses/${courseId.value}`);
     course.value = data;
-    const found = locateLesson(data, lessonId);
+
+    const found = locateLesson(data, lessonId.value);
     if (!found) {
       error.value = true;
-      errorMessage.value = 'Lesson not found in this course.';
-      toast.add({ severity: 'error', summary: 'Error', detail: 'Lesson not found', life: 3000 });
+      errorMessage.value = 'Lesson not found.';
+      lesson.value = null;
+      moduleInfo.value = null;
+      assets.value = [];
       return;
     }
+
     moduleInfo.value = found.module;
-    lesson.value = found.lesson;
-    assets.value = found.lesson.assets || [];
+    lesson.value = normalizeLesson(found.lesson);
+    assets.value = lesson.value.assets || [];
+
+    // Load quiz score (sets quizPassed as well)
+    await fetchQuizScore();
+    // Load quiz content (if exists)
+    await loadQuiz();
   } catch (err) {
     error.value = true;
-    const detail = err.response?.data?.error || 'Failed to load lesson';
-    errorMessage.value = detail;
-    toast.add({ severity: 'error', summary: 'Error', detail, life: 3000 });
+    errorMessage.value = 'Failed to load lesson.';
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson', life: 3000 });
   } finally {
-    if (!silent) {
-      loading.value = false;
-    }
+    loading.value = false;
   }
 };
 
+const goBack = () => {
+  router.push(`/student/course/${courseId.value}`);
+};
+
+const updateStatus = async (status, progressPercent, key) => {
+  updating.value = key;
+  try {
+    await api.post(`/lessons/${lessonId.value}/progress`, { status, progressPercent });
+    toast.add({ severity: 'success', summary: 'Updated', detail: 'Progress saved', life: 2000 });
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update progress', life: 3000 });
+  } finally {
+    updating.value = null;
+  }
+};
+
+// Helpers
+const formatDuration = (seconds) => {
+  const s = Number(seconds || 0);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}m ${r}s`;
+};
+
+const isYoutube = (url) => {
+  try {
+    const u = new URL(url);
+    return u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be');
+  } catch {
+    return false;
+  }
+};
+
+const youtubeEmbed = (url) => {
+  try {
+    const u = new URL(url);
+    let id = '';
+    if (u.hostname.includes('youtu.be')) {
+      id = u.pathname.replace('/', '');
+    } else {
+      id = u.searchParams.get('v') || '';
+    }
+    return id ? `https://www.youtube.com/embed/${id}` : url;
+  } catch {
+    return url;
+  }
+};
+
+const openVideo = (url) => {
+  window.open(url, '_blank', 'noopener');
+};
+
+// Quiz score fetch (FIX 2: derive quizPassed from best/last)
+const fetchQuizScore = async () => {
+  if (!lessonId.value) return;
+
+  loadingQuizScore.value = true;
+  try {
+    const { data } = await api.get(`/lessons/${lessonId.value}/quiz/score`);
+
+    if (data?.lastScore === null || data?.lastScore === undefined) {
+      quizScore.value = null;
+      quizPassed.value = false;
+      return;
+    }
+
+    quizScore.value = { lastScore: data.lastScore, bestScore: data.bestScore ?? null };
+    const best = (data.bestScore ?? data.lastScore);
+    quizPassed.value = best >= 70;
+  } catch {
+    // Silent: endpoint might not exist yet, or no attempts
+    quizScore.value = null;
+    quizPassed.value = false;
+  } finally {
+    loadingQuizScore.value = false;
+  }
+};
+
+const bestShown = computed(() => {
+  if (!quizScore.value) return 0;
+  return quizScore.value.bestScore ?? quizScore.value.lastScore ?? 0;
+});
+
+const showQuizResults = computed(() => Boolean(quizScore.value && quizScore.value.lastScore !== null));
+
+// Quiz load
 const loadQuiz = async () => {
-  const { lessonId } = route.params;
-  if (!lessonId) return;
+  if (!lessonId.value) return;
+
   quizLoading.value = true;
   quizError.value = false;
-  quizSelections.value = {};
-  quizPassed.value = false;
+  quizExists.value = false;
+
   try {
-    const { data } = await api.get(`/lessons/${lessonId}/quiz`);
-    quiz.value = data.questions?.length ? data : null;
+    const { data } = await api.get(`/lessons/${lessonId.value}/quiz`);
+    quiz.value = data;
+    quizExists.value = Boolean(data?.questions?.length);
+    // Do NOT reset quizPassed here (it comes from fetchQuizScore)
+    quizSelections.value = {};
   } catch (err) {
-    if (err.response?.status === 404) {
-      quiz.value = null;
-    } else {
-      quizError.value = true;
-      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load quiz', life: 3000 });
-    }
+    // If no quiz, just hide the section (do not show error)
+    quiz.value = null;
+    quizExists.value = false;
+
+    // If you want to show errors for real failures (non-404), you can do:
+    // if (err?.response?.status && err.response.status !== 404) quizError.value = true;
   } finally {
     quizLoading.value = false;
   }
 };
 
-const goBack = () => {
-  router.push(`/student/course/${route.params.courseId}`);
-};
-
-const isYoutube = (url) => /youtu(\.be|be\.com)/i.test(url || '');
-
-const youtubeEmbed = (url) => {
-  if (!url) return '';
-  const match = url.match(/(?:v=|\/)([\w-]{11})/);
-  const videoId = match ? match[1] : '';
-  return videoId ? `https://www.youtube.com/embed/${videoId}?rel=0` : url;
-};
-
-const openVideo = (url) => {
-  if (url) window.open(url, '_blank', 'noopener');
-};
-
-const updateStatus = async (status, percent, key) => {
-  updating.value = key;
-  try {
-    await api.post(`/lessons/${route.params.lessonId}/progress`, {
-      status,
-      progressPercent: percent,
-    });
-    toast.add({ severity: 'success', summary: 'Updated', detail: 'Progress saved', life: 2000 });
-    await loadLesson(true);
-  } catch (err) {
-    const detail = err.response?.data?.error || 'Failed to update progress';
-    toast.add({ severity: 'error', summary: 'Error', detail, life: 3000 });
-  } finally {
-    updating.value = null;
-  }
-};
+const showQuizSection = computed(() => quizLoading.value || quizError.value || quizExists.value);
 
 const updateSelection = (questionId, optionId) => {
   quizSelections.value = { ...quizSelections.value, [questionId]: optionId };
 };
 
 const canSubmitQuiz = computed(() => {
-  if (!quiz.value || !quiz.value.questions?.length) return false;
-  return quiz.value.questions.every((q) => quizSelections.value[q.id]);
+  const questions = quiz.value?.questions || [];
+  if (!questions.length) return false;
+  return questions.every((q) => Boolean(quizSelections.value[q.id]));
 });
 
 const submitQuiz = async () => {
-  if (!quiz.value) return;
+  if (!quiz.value?.questions?.length) return;
+
   quizSubmitting.value = true;
   try {
-    const payload = {
-      answers: quiz.value.questions.map((q) => ({
-        questionId: q.id,
-        optionId: quizSelections.value[q.id],
-      })),
-    };
-    const { data } = await api.post(`/lessons/${route.params.lessonId}/quiz/attempt`, payload);
-    quizPassed.value = data.passed;
+    const answers = quiz.value.questions.map((q) => ({
+      questionId: q.id,
+      optionId: quizSelections.value[q.id],
+    }));
+
+    const { data } = await api.post(`/lessons/${lessonId.value}/quiz/attempt`, { answers });
+
     toast.add({
       severity: data.passed ? 'success' : 'warn',
       summary: 'Quiz submitted',
-      detail: `Score ${data.scorePercent}%`,
-      life: 4000,
+      detail: `Score: ${data.scorePercent}%`,
+      life: 3000,
     });
+
+    // Refresh score card and pass state
+    await fetchQuizScore();
+
+    // If passed, lock UI
     if (data.passed) {
-      try {
-        await api.get(`/courses/${route.params.courseId}/progress`);
-      } catch (err) {
-        console.warn('Failed to refresh course progress', err);
-      }
+      quizPassed.value = true;
+      // Optional: also mark lesson done UI-side (backend already does it when passed)
+      // await updateStatus('done', 100, 'done');
     }
   } catch (err) {
-    const detail = err.response?.data?.error || 'Failed to submit quiz';
-    toast.add({ severity: 'error', summary: 'Error', detail, life: 3000 });
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to submit quiz', life: 3000 });
   } finally {
     quizSubmitting.value = false;
   }
@@ -343,67 +470,68 @@ const submitQuiz = async () => {
 
 onMounted(() => {
   loadLesson();
-  loadQuiz();
 });
 
 watch(
-  () => [route.params.courseId, route.params.lessonId],
-  () => {
-    loadLesson();
-    loadQuiz();
+  () => [courseId.value, lessonId.value],
+  ([newCourseId, newLessonId], [oldCourseId, oldLessonId]) => {
+    if (!newCourseId || !newLessonId) return;
+    if (newCourseId !== oldCourseId || newLessonId !== oldLessonId) loadLesson();
   },
-);
-
-const breadcrumbHome = { label: 'Student', to: '/student' };
-const breadcrumbItems = computed(() => {
-  const items = [];
-  const courseId = route.params.courseId;
-  if (course.value) {
-    items.push({ label: course.value.title, to: `/student/course/${courseId}` });
-  }
-  if (lesson.value) {
-    items.push({ label: lesson.value.title });
-  }
-  return items;
-});
-
-const showQuizSection = computed(
-  () => quizLoading.value || quizError.value || (quiz.value && quiz.value.questions?.length),
 );
 </script>
 
 <style scoped>
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .lesson-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
 }
 
 .breadcrumb-text {
-  color: #94a3b8;
-  text-transform: uppercase;
-  font-size: 0.75rem;
+  color: #6b7280;
 }
 
 .meta {
   display: flex;
-  gap: 1rem;
   align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.content-block {
-  margin: 1rem 0;
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.lesson-card {
+  margin-bottom: 0.5rem;
+}
+
+.lesson-text {
+  white-space: pre-wrap;
   line-height: 1.6;
 }
 
-.embed {
-  margin-top: 1rem;
+.video-embed iframe {
+  width: 100%;
+  height: 360px;
+  border: 0;
+  border-radius: 10px;
 }
 
 .assets ul {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
 .assets li {
@@ -420,11 +548,18 @@ const showQuizSection = computed(
 }
 
 .quiz-card {
-  margin-top: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.quiz-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .quiz-question {
-  margin-bottom: 1.5rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .quiz-options {
@@ -444,26 +579,29 @@ const showQuizSection = computed(
   margin-top: 1rem;
 }
 
-.content-area {
-  display: flex;
-  flex-direction: column;
+.quiz-results-card {
+  margin-top: 0.5rem;
+}
+
+.quiz-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
   gap: 1rem;
-  margin-bottom: 1rem;
+  align-items: center;
 }
 
-.lesson-text {
-  white-space: pre-wrap;
-  line-height: 1.6;
+.quiz-results-grid small {
+  display: block;
+  color: #6b7280;
 }
 
-.video-embed iframe {
-  width: 100%;
-  min-height: 315px;
-  border: none;
-  border-radius: 0.5rem;
+.quiz-result-tag {
+  display: flex;
+  justify-content: flex-end;
 }
 
-.mb-2 {
-  margin-bottom: 0.75rem;
+.empty-state {
+  color: #6b7280;
+  padding: 0.75rem 0;
 }
 </style>

@@ -71,6 +71,83 @@ const quizAttemptSchema = z.object({
     .min(1, 'At least one answer is required'),
 });
 
+const preprocessInt = (min = 1) =>
+  z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') {
+      return undefined;
+    }
+    if (typeof val === 'number') {
+      return val;
+    }
+    const parsed = Number(val);
+    return Number.isNaN(parsed) ? val : parsed;
+  }, z.number().int().min(min));
+
+const courseCreateSchema = z.object({
+  title: z
+    .string({ required_error: 'title is required' })
+    .trim()
+    .min(1, 'title is required'),
+  description: z.string().optional(),
+  level: z.string().optional(),
+  ownerUserId: z.string().uuid().optional(),
+});
+
+const courseUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1, 'title is required').optional(),
+    description: z.string().optional(),
+    level: z.string().optional(),
+    ownerUserId: z.string().uuid().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
+const instructorAssignSchema = z.object({
+  instructorIds: z.array(z.string().uuid()).optional(),
+});
+
+const moduleCreateSchema = z.object({
+  title: z
+    .string({ required_error: 'title is required' })
+    .trim()
+    .min(1, 'title is required'),
+  orderIndex: preprocessInt().optional(),
+});
+
+const moduleUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    orderIndex: preprocessInt().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
+const lessonCreateSchema = z.object({
+  title: z
+    .string({ required_error: 'title is required' })
+    .trim()
+    .min(1, 'title is required'),
+  contentText: z.string().optional(),
+  videoUrl: z.string().url().optional(),
+  estimatedMinutes: preprocessInt().optional(),
+  orderIndex: preprocessInt().optional(),
+});
+
+const lessonUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    contentText: z.string().optional(),
+    videoUrl: z.string().url().optional(),
+    estimatedMinutes: preprocessInt().optional(),
+    orderIndex: preprocessInt().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
 const formatZodError = (error) =>
   error.errors
     .map((issue) => {
@@ -83,6 +160,13 @@ module.exports = {
   loginSchema,
   lessonProgressSchema,
   uuidSchema,
+  courseCreateSchema,
+  courseUpdateSchema,
+  instructorAssignSchema,
+  moduleCreateSchema,
+  moduleUpdateSchema,
+  lessonCreateSchema,
+  lessonUpdateSchema,
   quizAttemptSchema,
   formatZodError,
 };

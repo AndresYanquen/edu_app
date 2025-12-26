@@ -23,7 +23,9 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
           c.status,
           c.owner_user_id,
           c.created_at,
-          c.published_at
+          c.published_at,
+          c.is_published,
+          c.updated_at
         FROM courses c
         WHERE c.id = $1
         LIMIT 1
@@ -33,6 +35,10 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
 
     const course = courseRes.rows[0];
     if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (role === 'student' && !course.is_published) {
       return res.status(404).json({ error: 'Course not found' });
     }
 
@@ -72,18 +78,22 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
 
     const modulesRes = await pool.query(
       `
-        SELECT id, title, position
+        SELECT id, title, position, order_index, is_published
         FROM modules
         WHERE course_id = $1
-        ORDER BY position ASC
+        ORDER BY order_index ASC
       `,
       [courseId],
     );
 
-    const modules = modulesRes.rows.map((module) => ({
+    let modules = modulesRes.rows.map((module) => ({
       ...module,
       lessons: [],
     }));
+
+    if (role === 'student') {
+      modules = modules.filter((module) => module.is_published);
+    }
 
     const moduleIds = modules.map((m) => m.id);
     let lessons = [];
@@ -102,14 +112,20 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
             l.embed_html,
             l.duration_seconds,
             l.estimated_minutes,
-            l.is_free_preview
+            l.is_free_preview,
+            l.is_published,
+            l.order_index
           FROM lessons l
           WHERE l.module_id = ANY($1::uuid[])
-          ORDER BY l.position ASC
+          ORDER BY l.order_index ASC
         `,
         [moduleIds],
       );
       lessons = lessonsRes.rows;
+
+      if (role === 'student') {
+        lessons = lessons.filter((lesson) => lesson.is_published);
+      }
     }
 
     const lessonIds = lessons.map((lesson) => lesson.id);
@@ -166,6 +182,8 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
           durationSeconds: lesson.duration_seconds,
           estimatedMinutes: lesson.estimated_minutes,
           isFreePreview: lesson.is_free_preview,
+          orderIndex: lesson.order_index,
+          isPublished: lesson.is_published,
           assets: assetsByLesson[lesson.id] || [],
         });
       }
@@ -173,7 +191,10 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
 
     return res.json({
       ...course,
-      modules,
+      modules: modules.map((module) => ({
+        ...module,
+        lessons: module.lessons,
+      })),
     });
   } catch (err) {
     console.error('Failed to fetch course detail', err);

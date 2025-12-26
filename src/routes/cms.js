@@ -1,0 +1,557 @@
+const express = require('express');
+const pool = require('../db');
+const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
+const {
+  courseCreateSchema,
+  courseUpdateSchema,
+  instructorAssignSchema,
+  moduleCreateSchema,
+  moduleUpdateSchema,
+  lessonCreateSchema,
+  lessonUpdateSchema,
+  formatZodError,
+} = require('../utils/validators');
+const { canEditCourse } = require('../utils/cmsPermissions');
+
+const router = express.Router();
+
+router.use(auth);
+router.use(requireRole(['admin', 'instructor']));
+
+const fetchCourseIdByModule = async (moduleId) => {
+  const { rows } = await pool.query('SELECT course_id FROM modules WHERE id = $1 LIMIT 1', [moduleId]);
+  return rows[0]?.course_id;
+};
+
+const fetchCourseIdByLesson = async (lessonId) => {
+  const { rows } = await pool.query(
+    `
+      SELECT m.course_id
+      FROM lessons l
+      JOIN modules m ON m.id = l.module_id
+      WHERE l.id = $1
+      LIMIT 1
+    `,
+    [lessonId],
+  );
+  return rows[0]?.course_id;
+};
+
+const ensureCourseEditable = async (courseId, user, res) => {
+  if (!courseId) {
+    res.status(404).json({ error: 'Course not found' });
+    return false;
+  }
+  const allowed = await canEditCourse(courseId, user);
+  if (!allowed) {
+    res.status(403).json({ error: 'You cannot edit this course' });
+    return false;
+  }
+  return true;
+};
+
+router.get('/courses', async (req, res) => {
+  try {
+    let rows;
+    if (req.user.role === 'admin') {
+      ({ rows } = await pool.query(
+        `
+          SELECT id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
+          FROM courses
+          ORDER BY created_at DESC
+        `,
+      ));
+    } else {
+      ({ rows } = await pool.query(
+        `
+          SELECT DISTINCT
+            c.id,
+            c.title,
+            c.description,
+            c.level,
+            c.owner_user_id,
+            c.is_published,
+            c.published_at,
+            c.created_at,
+            c.updated_at
+          FROM courses c
+          LEFT JOIN course_instructors ci ON ci.course_id = c.id
+          WHERE c.owner_user_id = $1 OR ci.user_id = $1
+          ORDER BY c.created_at DESC
+        `,
+        [req.user.id],
+      ));
+    }
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('Failed to list CMS courses', err);
+    return res.status(500).json({ error: 'Failed to list courses' });
+  }
+});
+
+router.post('/courses', async (req, res) => {
+  const parsed = courseCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const ownerUserId =
+      req.user.role === 'admin'
+        ? parsed.data.ownerUserId || null
+        : req.user.id;
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO courses (title, description, level, owner_user_id, is_published)
+        VALUES ($1, $2, $3, $4, false)
+        RETURNING id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
+      `,
+      [parsed.data.title, parsed.data.description || null, parsed.data.level || null, ownerUserId],
+    );
+
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('Failed to create course', err);
+    return res.status(500).json({ error: 'Failed to create course' });
+  }
+});
+
+router.patch('/courses/:id', async (req, res) => {
+  const courseId = req.params.id;
+  const parsed = courseUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const allowed = await canEditCourse(courseId, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    const updates = [];
+    const values = [];
+
+    if (parsed.data.title !== undefined) {
+      values.push(parsed.data.title);
+      updates.push(`title = $${values.length}`);
+    }
+    if (parsed.data.description !== undefined) {
+      values.push(parsed.data.description);
+      updates.push(`description = $${values.length}`);
+    }
+    if (parsed.data.level !== undefined) {
+      values.push(parsed.data.level);
+      updates.push(`level = $${values.length}`);
+    }
+
+    if (req.user.role === 'admin' && parsed.data.ownerUserId !== undefined) {
+      values.push(parsed.data.ownerUserId);
+      updates.push(`owner_user_id = $${values.length}`);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    const query = `
+      UPDATE courses
+      SET ${updates.join(', ')}, updated_at = now()
+      WHERE id = $${values.length + 1}
+      RETURNING id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
+    `;
+    values.push(courseId);
+
+    const { rows } = await pool.query(query, values);
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to update course', err);
+    return res.status(500).json({ error: 'Failed to update course' });
+  }
+});
+
+const toggleCoursePublish = async (req, res, isPublished) => {
+  const courseId = req.params.id;
+  try {
+    const allowed = await canEditCourse(courseId, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+    const { rows } = await pool.query(
+      `
+        UPDATE courses
+        SET
+          is_published = $2,
+          published_at = CASE WHEN $2 THEN now() ELSE NULL END,
+          updated_at = now()
+        WHERE id = $1
+        RETURNING id, title, is_published, published_at, updated_at
+      `,
+      [courseId, isPublished],
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to toggle course publish state', err);
+    return res.status(500).json({ error: 'Failed to update course publish state' });
+  }
+};
+
+router.post('/courses/:id/publish', (req, res) => toggleCoursePublish(req, res, true));
+router.post('/courses/:id/unpublish', (req, res) => toggleCoursePublish(req, res, false));
+
+router.post('/courses/:id/instructors', async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can assign instructors' });
+  }
+  const courseId = req.params.id;
+  const parsed = instructorAssignSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const instructorIds = parsed.data.instructorIds || [];
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const courseCheck = await client.query('SELECT 1 FROM courses WHERE id = $1 LIMIT 1', [courseId]);
+    if (!courseCheck.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (instructorIds.length) {
+      const { rows } = await client.query(
+        `
+          SELECT user_id
+          FROM academy_memberships
+          WHERE user_id = ANY($1::uuid[]) AND role = 'instructor'
+        `,
+        [instructorIds],
+      );
+      if (rows.length !== instructorIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'One or more users are not instructors' });
+      }
+    }
+
+    await client.query('DELETE FROM course_instructors WHERE course_id = $1', [courseId]);
+
+    if (instructorIds.length) {
+      for (const instructorId of instructorIds) {
+        await client.query('INSERT INTO course_instructors (course_id, user_id) VALUES ($1, $2)', [
+          courseId,
+          instructorId,
+        ]);
+      }
+    }
+
+    await client.query('COMMIT');
+    return res.json({ courseId, instructorIds });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to assign instructors', err);
+    return res.status(500).json({ error: 'Failed to assign instructors' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/courses/:courseId/modules', async (req, res) => {
+  const courseId = req.params.courseId;
+  try {
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, course_id, title, position, order_index, is_published, published_at, created_at, updated_at
+        FROM modules
+        WHERE course_id = $1
+        ORDER BY order_index ASC
+      `,
+      [courseId],
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('Failed to list modules', err);
+    return res.status(500).json({ error: 'Failed to list modules' });
+  }
+});
+
+router.post('/courses/:courseId/modules', async (req, res) => {
+  const courseId = req.params.courseId;
+  const parsed = moduleCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+
+    let orderIndex = parsed.data.orderIndex;
+    if (!orderIndex) {
+      const { rows } = await pool.query(
+        'SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM modules WHERE course_id = $1',
+        [courseId],
+      );
+      orderIndex = rows[0].next;
+    }
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO modules (course_id, title, position, order_index, is_published)
+        VALUES ($1, $2, $3, $4, false)
+        RETURNING id, course_id, title, position, order_index, is_published, published_at, created_at, updated_at
+      `,
+      [courseId, parsed.data.title, orderIndex, orderIndex],
+    );
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('Failed to create module', err);
+    return res.status(500).json({ error: 'Failed to create module' });
+  }
+});
+
+router.patch('/modules/:id', async (req, res) => {
+  const moduleId = req.params.id;
+  const parsed = moduleUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+  try {
+    const courseId = await fetchCourseIdByModule(moduleId);
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+
+    const updates = [];
+    const values = [];
+    if (parsed.data.title !== undefined) {
+      values.push(parsed.data.title);
+      updates.push(`title = $${values.length}`);
+    }
+    if (parsed.data.orderIndex !== undefined) {
+      values.push(parsed.data.orderIndex);
+      updates.push(`order_index = $${values.length}`);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    const query = `
+      UPDATE modules
+      SET ${updates.join(', ')}, updated_at = now()
+      WHERE id = $${values.length + 1}
+      RETURNING id, course_id, title, order_index, is_published, published_at, created_at, updated_at
+    `;
+    values.push(moduleId);
+
+    const { rows } = await pool.query(query, values);
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to update module', err);
+    return res.status(500).json({ error: 'Failed to update module' });
+  }
+});
+
+const toggleModulePublish = async (req, res, isPublished) => {
+  const moduleId = req.params.id;
+  try {
+    const courseId = await fetchCourseIdByModule(moduleId);
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+    const { rows } = await pool.query(
+      `
+        UPDATE modules
+        SET
+          is_published = $2,
+          published_at = CASE WHEN $2 THEN now() ELSE NULL END,
+          updated_at = now()
+        WHERE id = $1
+        RETURNING id, is_published, published_at, updated_at
+      `,
+      [moduleId, isPublished],
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to toggle module publish state', err);
+    return res.status(500).json({ error: 'Failed to update module publish state' });
+  }
+};
+
+router.post('/modules/:id/publish', (req, res) => toggleModulePublish(req, res, true));
+router.post('/modules/:id/unpublish', (req, res) => toggleModulePublish(req, res, false));
+
+router.get('/modules/:moduleId/lessons', async (req, res) => {
+  const moduleId = req.params.moduleId;
+  try {
+    const courseId = await fetchCourseIdByModule(moduleId);
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+        FROM lessons
+        WHERE module_id = $1
+        ORDER BY order_index ASC
+      `,
+      [moduleId],
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('Failed to list lessons', err);
+    return res.status(500).json({ error: 'Failed to list lessons' });
+  }
+});
+
+router.post('/modules/:moduleId/lessons', async (req, res) => {
+  const moduleId = req.params.moduleId;
+  const parsed = lessonCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+  try {
+    const courseId = await fetchCourseIdByModule(moduleId);
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+
+    let orderIndex = parsed.data.orderIndex;
+    if (!orderIndex) {
+      const { rows } = await pool.query(
+        'SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM lessons WHERE module_id = $1',
+        [moduleId],
+      );
+      orderIndex = rows[0].next;
+    }
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO lessons (module_id, title, content_text, video_url, estimated_minutes, position, order_index, is_published)
+        VALUES ($1, $2, $3, $4, $5, $6, $6, false)
+        RETURNING id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+      `,
+      [
+        moduleId,
+        parsed.data.title,
+        parsed.data.contentText || null,
+        parsed.data.videoUrl || null,
+        parsed.data.estimatedMinutes || null,
+        orderIndex,
+      ],
+    );
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('Failed to create lesson', err);
+    return res.status(500).json({ error: 'Failed to create lesson' });
+  }
+});
+
+router.patch('/lessons/:id', async (req, res) => {
+  const lessonId = req.params.id;
+  const parsed = lessonUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+  try {
+    const courseId = await fetchCourseIdByLesson(lessonId);
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+
+    const updates = [];
+    const values = [];
+    if (parsed.data.title !== undefined) {
+      values.push(parsed.data.title);
+      updates.push(`title = $${values.length}`);
+    }
+    if (parsed.data.contentText !== undefined) {
+      values.push(parsed.data.contentText);
+      updates.push(`content_text = $${values.length}`);
+    }
+    if (parsed.data.videoUrl !== undefined) {
+      values.push(parsed.data.videoUrl);
+      updates.push(`video_url = $${values.length}`);
+    }
+    if (parsed.data.estimatedMinutes !== undefined) {
+      values.push(parsed.data.estimatedMinutes);
+      updates.push(`estimated_minutes = $${values.length}`);
+    }
+    if (parsed.data.orderIndex !== undefined) {
+      values.push(parsed.data.orderIndex);
+      updates.push(`order_index = $${values.length}`);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    const query = `
+      UPDATE lessons
+      SET ${updates.join(', ')}, updated_at = now()
+      WHERE id = $${values.length + 1}
+      RETURNING id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+    `;
+    values.push(lessonId);
+
+    const { rows } = await pool.query(query, values);
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to update lesson', err);
+    return res.status(500).json({ error: 'Failed to update lesson' });
+  }
+});
+
+const toggleLessonPublish = async (req, res, isPublished) => {
+  const lessonId = req.params.id;
+  try {
+    const courseId = await fetchCourseIdByLesson(lessonId);
+    const allowed = await ensureCourseEditable(courseId, req.user, res);
+    if (!allowed) return;
+    const { rows } = await pool.query(
+      `
+        UPDATE lessons
+        SET
+          is_published = $2,
+          published_at = CASE WHEN $2 THEN now() ELSE NULL END,
+          updated_at = now()
+        WHERE id = $1
+        RETURNING id, is_published, published_at, updated_at
+      `,
+      [lessonId, isPublished],
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to toggle lesson publish state', err);
+    return res.status(500).json({ error: 'Failed to update lesson publish state' });
+  }
+};
+
+router.post('/lessons/:id/publish', (req, res) => toggleLessonPublish(req, res, true));
+router.post('/lessons/:id/unpublish', (req, res) => toggleLessonPublish(req, res, false));
+
+module.exports = router;

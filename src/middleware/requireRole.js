@@ -3,7 +3,8 @@ module.exports = function requireRole(allowedRoles = []) {
     if (!req.user || !req.user.role) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-
+    console.log('req.user.role', req.user.role)
+    console.log(allowedRoles)
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ error: 'You are not allowed to perform this action' });
     }

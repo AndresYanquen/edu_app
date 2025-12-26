@@ -58,10 +58,12 @@ router.get('/courses', requireRole(['student', 'instructor', 'admin']), async (r
             c.description,
             c.level,
             c.status,
-            c.owner_user_id
+            c.owner_user_id,
+            c.is_published,
+            c.published_at
           FROM enrollments e
           JOIN courses c ON c.id = e.course_id
-          WHERE e.user_id = $1
+          WHERE e.user_id = $1 AND c.is_published = true
           ORDER BY c.title
         `,
         [userId],

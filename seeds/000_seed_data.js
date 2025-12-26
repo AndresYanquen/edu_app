@@ -95,8 +95,10 @@ const courses = [
     level: 'B2',
     status: 'published',
     owner_user_id: instructors[0].id,
-    created_at: TIMESTAMP,
+    is_published: true,
     published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    created_at: TIMESTAMP,
   },
   {
     id: courseAnalyticsId,
@@ -105,16 +107,58 @@ const courses = [
     level: 'B1',
     status: 'published',
     owner_user_id: instructors[1].id,
-    created_at: TIMESTAMP,
+    is_published: true,
     published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    created_at: TIMESTAMP,
   },
 ];
 
 const modules = [
-  { id: moduleFsIntroId, course_id: courseFullStackId, title: 'Web Fundamentals', position: 1, created_at: TIMESTAMP },
-  { id: moduleFsBackendId, course_id: courseFullStackId, title: 'Back-end Foundations', position: 2, created_at: TIMESTAMP },
-  { id: moduleAnalyticsPrepId, course_id: courseAnalyticsId, title: 'Analytics Preparation', position: 1, created_at: TIMESTAMP },
-  { id: moduleAnalyticsStoryId, course_id: courseAnalyticsId, title: 'Visualization & Storytelling', position: 2, created_at: TIMESTAMP },
+  {
+    id: moduleFsIntroId,
+    course_id: courseFullStackId,
+    title: 'Web Fundamentals',
+    position: 1,
+    order_index: 1,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    created_at: TIMESTAMP,
+  },
+  {
+    id: moduleFsBackendId,
+    course_id: courseFullStackId,
+    title: 'Back-end Foundations',
+    position: 2,
+    order_index: 2,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    created_at: TIMESTAMP,
+  },
+  {
+    id: moduleAnalyticsPrepId,
+    course_id: courseAnalyticsId,
+    title: 'Analytics Preparation',
+    position: 1,
+    order_index: 1,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    created_at: TIMESTAMP,
+  },
+  {
+    id: moduleAnalyticsStoryId,
+    course_id: courseAnalyticsId,
+    title: 'Visualization & Storytelling',
+    position: 2,
+    order_index: 2,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    created_at: TIMESTAMP,
+  },
 ];
 
 const lessons = [
@@ -132,6 +176,10 @@ const lessons = [
     duration_seconds: 1800,
     estimated_minutes: 12,
     is_free_preview: true,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 1,
     created_at: TIMESTAMP,
   },
   {
@@ -148,6 +196,10 @@ const lessons = [
     duration_seconds: 2700,
     estimated_minutes: 15,
     is_free_preview: false,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 2,
     created_at: TIMESTAMP,
   },
   {
@@ -164,6 +216,10 @@ const lessons = [
     duration_seconds: 2400,
     estimated_minutes: 10,
     is_free_preview: false,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 1,
     created_at: TIMESTAMP,
   },
   {
@@ -180,6 +236,10 @@ const lessons = [
     duration_seconds: 2100,
     estimated_minutes: 9,
     is_free_preview: false,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 2,
     created_at: TIMESTAMP,
   },
   {
@@ -196,6 +256,10 @@ const lessons = [
     duration_seconds: 1500,
     estimated_minutes: 8,
     is_free_preview: true,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 1,
     created_at: TIMESTAMP,
   },
   {
@@ -212,6 +276,10 @@ const lessons = [
     duration_seconds: 2400,
     estimated_minutes: 14,
     is_free_preview: false,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 2,
     created_at: TIMESTAMP,
   },
   {
@@ -227,6 +295,10 @@ const lessons = [
     duration_seconds: 1800,
     estimated_minutes: 11,
     is_free_preview: false,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 1,
     created_at: TIMESTAMP,
   },
   {
@@ -242,6 +314,10 @@ const lessons = [
     duration_seconds: 2100,
     estimated_minutes: 10,
     is_free_preview: false,
+    is_published: true,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    order_index: 2,
     created_at: TIMESTAMP,
   },
 ];
@@ -407,6 +483,12 @@ const groups = [
   },
 ];
 
+const courseInstructors = [
+  { course_id: courseFullStackId, user_id: instructors[0].id },
+  { course_id: courseAnalyticsId, user_id: instructors[1].id },
+  { course_id: courseAnalyticsId, user_id: instructors[0].id },
+];
+
 const groupTeachers = [
   { group_id: groupFsWeeknightId, user_id: instructors[0].id, role: 'lead', assigned_at: TIMESTAMP },
   { group_id: groupFsWeekendId, user_id: instructors[0].id, role: 'assistant', assigned_at: TIMESTAMP },
@@ -494,6 +576,7 @@ exports.seed = async (knex) => {
     await trx.raw(`
       TRUNCATE TABLE
         announcements,
+        course_instructors,
         quiz_attempts,
         quiz_options,
         quiz_questions,
@@ -521,6 +604,7 @@ exports.seed = async (knex) => {
     await trx('quiz_options').insert(quizOptions);
     await trx('assets').insert(assets);
     await trx('lesson_assets').insert(lessonAssets);
+    await trx('course_instructors').insert(courseInstructors);
     await trx('groups').insert(groups);
     await trx('group_teachers').insert(groupTeachers);
     await trx('group_students').insert(groupStudents);

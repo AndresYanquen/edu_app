@@ -5,26 +5,43 @@ const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
-router.use(auth, requireRole(['instructor']));
+router.use(auth, requireRole(['instructor', 'admin']));
 
 router.get('/instructor/groups', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `
-        SELECT
-          g.id AS group_id,
-          g.name AS group_name,
-          g.schedule_text,
-          c.id AS course_id,
-          c.title AS course_title
-        FROM group_teachers gt
-        JOIN groups g ON g.id = gt.group_id
-        JOIN courses c ON c.id = g.course_id
-        WHERE gt.user_id = $1
-        ORDER BY c.title, g.name
-      `,
-      [req.user.id],
-    );
+    let rows;
+    if (req.user.role === 'admin') {
+      ({ rows } = await pool.query(
+        `
+          SELECT
+            g.id AS group_id,
+            g.name AS group_name,
+            g.schedule_text,
+            c.id AS course_id,
+            c.title AS course_title
+          FROM groups g
+          JOIN courses c ON c.id = g.course_id
+          ORDER BY c.title, g.name
+        `,
+      ));
+    } else {
+      ({ rows } = await pool.query(
+        `
+          SELECT
+            g.id AS group_id,
+            g.name AS group_name,
+            g.schedule_text,
+            c.id AS course_id,
+            c.title AS course_title
+          FROM group_teachers gt
+          JOIN groups g ON g.id = gt.group_id
+          JOIN courses c ON c.id = g.course_id
+          WHERE gt.user_id = $1
+          ORDER BY c.title, g.name
+        `,
+        [req.user.id],
+      ));
+    }
 
     return res.json(rows);
   } catch (err) {
@@ -37,18 +54,25 @@ router.get('/groups/:id/students', async (req, res) => {
   const groupId = req.params.id;
 
   try {
-    const assignment = await pool.query(
-      `
-        SELECT 1
-        FROM group_teachers
-        WHERE user_id = $1 AND group_id = $2
-        LIMIT 1
-      `,
-      [req.user.id, groupId],
-    );
+    const groupRes = await pool.query('SELECT id FROM groups WHERE id = $1 LIMIT 1', [groupId]);
+    if (!groupRes.rows.length) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
 
-    if (!assignment.rows.length) {
-      return res.status(403).json({ error: 'You are not assigned to this group' });
+    if (req.user.role !== 'admin') {
+      const assignment = await pool.query(
+        `
+          SELECT 1
+          FROM group_teachers
+          WHERE user_id = $1 AND group_id = $2
+          LIMIT 1
+        `,
+        [req.user.id, groupId],
+      );
+
+      if (!assignment.rows.length) {
+        return res.status(403).json({ error: 'You are not assigned to this group' });
+      }
     }
 
     const { rows } = await pool.query(
@@ -78,20 +102,28 @@ router.get('/groups/:id/progress', async (req, res) => {
   const groupId = req.params.id;
 
   try {
-    const groupRes = await pool.query(
-      `
-        SELECT g.id, g.course_id
-        FROM group_teachers gt
-        JOIN groups g ON g.id = gt.group_id
-        WHERE gt.user_id = $1 AND g.id = $2
-        LIMIT 1
-      `,
-      [req.user.id, groupId],
-    );
+    const groupRes = await pool.query('SELECT id, course_id FROM groups WHERE id = $1 LIMIT 1', [
+      groupId,
+    ]);
 
     const group = groupRes.rows[0];
     if (!group) {
-      return res.status(403).json({ error: 'You are not assigned to this group' });
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (req.user.role !== 'admin') {
+      const assignment = await pool.query(
+        `
+          SELECT 1
+          FROM group_teachers
+          WHERE user_id = $1 AND group_id = $2
+          LIMIT 1
+        `,
+        [req.user.id, groupId],
+      );
+      if (!assignment.rows.length) {
+        return res.status(403).json({ error: 'You are not assigned to this group' });
+      }
     }
 
     const lessonsRes = await pool.query(

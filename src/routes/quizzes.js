@@ -214,8 +214,9 @@ router.post('/lessons/:id/quiz/attempt', requireRole(['student']), async (req, r
  * Example:
  * curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/lessons/<lessonId>/quiz/score
  */
-router.get('/lessons/:id/quiz/score', requireRole(['student']), async (req, res) => {
+router.get('/lessons/:id/quiz/score', auth, requireRole(['student']), async (req, res) => {
   const lessonId = req.params.id;
+
   try {
     const lesson = await getLessonCourse(lessonId);
     if (!lesson) {
