@@ -73,6 +73,9 @@ const lessonAnalyticsMindsetId = uuid();
 const lessonAnalyticsSqlId = uuid();
 const lessonAnalyticsSheetsId = uuid();
 const lessonAnalyticsStorytellingId = uuid();
+const quizQuestionOneId = uuid();
+const quizQuestionTwoId = uuid();
+const quizQuestionThreeId = uuid();
 
 const assetChecklistId = uuid();
 const assetSqlCheatSheetId = uuid();
@@ -243,6 +246,106 @@ const lessons = [
   },
 ];
 
+const quizQuestions = [
+  {
+    id: quizQuestionOneId,
+    lesson_id: lessonAnalyticsMindsetId,
+    question_text: 'When presenting a KPI to stakeholders, what should you explain first?',
+    question_type: 'single_choice',
+    order_index: 1,
+    created_at: TIMESTAMP,
+  },
+  {
+    id: quizQuestionTwoId,
+    lesson_id: lessonAnalyticsMindsetId,
+    question_text: 'Which sentence best rewrites a vague request into an actionable analytics task?',
+    question_type: 'single_choice',
+    order_index: 2,
+    created_at: TIMESTAMP,
+  },
+  {
+    id: quizQuestionThreeId,
+    lesson_id: lessonAnalyticsMindsetId,
+    question_text: 'True or False: You should confirm the business problem before writing SQL queries.',
+    question_type: 'true_false',
+    order_index: 3,
+    created_at: TIMESTAMP,
+  },
+];
+
+const quizOptions = [
+  {
+    id: uuid(),
+    question_id: quizQuestionOneId,
+    option_text: 'The business objective the KPI supports.',
+    is_correct: true,
+    order_index: 1,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionOneId,
+    option_text: 'Every SQL join used to calculate it.',
+    is_correct: false,
+    order_index: 2,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionOneId,
+    option_text: 'Your favorite dashboard color palette.',
+    is_correct: false,
+    order_index: 3,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionOneId,
+    option_text: 'The number of slides in your presentation.',
+    is_correct: false,
+    order_index: 4,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionTwoId,
+    option_text: '"Find insights from the data ASAP."',
+    is_correct: false,
+    order_index: 1,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionTwoId,
+    option_text: '"Investigate why churn rose 4% last month in LATAM and propose two hypotheses."',
+    is_correct: true,
+    order_index: 2,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionTwoId,
+    option_text: '"Make a chart that looks modern."',
+    is_correct: false,
+    order_index: 3,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionTwoId,
+    option_text: '"Email leadership once you find something surprising."',
+    is_correct: false,
+    order_index: 4,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionThreeId,
+    option_text: 'True',
+    is_correct: false,
+    order_index: 1,
+  },
+  {
+    id: uuid(),
+    question_id: quizQuestionThreeId,
+    option_text: 'False',
+    is_correct: true,
+    order_index: 2,
+  },
+];
+
 const assets = [
   {
     id: assetChecklistId,
@@ -391,6 +494,9 @@ exports.seed = async (knex) => {
     await trx.raw(`
       TRUNCATE TABLE
         announcements,
+        quiz_attempts,
+        quiz_options,
+        quiz_questions,
         lesson_assets,
         assets,
         lesson_progress,
@@ -411,6 +517,8 @@ exports.seed = async (knex) => {
     await trx('courses').insert(courses);
     await trx('modules').insert(modules);
     await trx('lessons').insert(lessons);
+    await trx('quiz_questions').insert(quizQuestions);
+    await trx('quiz_options').insert(quizOptions);
     await trx('assets').insert(assets);
     await trx('lesson_assets').insert(lessonAssets);
     await trx('groups').insert(groups);

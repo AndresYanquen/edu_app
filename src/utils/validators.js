@@ -60,6 +60,17 @@ const uuidSchema = z
   .trim()
   .uuid({ message: 'studentId must be a valid UUID' });
 
+const quizAttemptSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().uuid({ message: 'questionId must be a valid UUID' }),
+        optionId: z.string().uuid({ message: 'optionId must be a valid UUID' }),
+      }),
+    )
+    .min(1, 'At least one answer is required'),
+});
+
 const formatZodError = (error) =>
   error.errors
     .map((issue) => {
@@ -72,5 +83,6 @@ module.exports = {
   loginSchema,
   lessonProgressSchema,
   uuidSchema,
+  quizAttemptSchema,
   formatZodError,
 };

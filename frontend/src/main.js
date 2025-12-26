@@ -17,6 +17,7 @@ import Toast from 'primevue/toast';
 import ProgressSpinner from 'primevue/progressspinner';
 import ToastService from 'primevue/toastservice';
 import Breadcrumb from 'primevue/breadcrumb';
+import RadioButton from 'primevue/radiobutton';
 
 import 'primevue/resources/themes/lara-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
@@ -51,6 +52,7 @@ app.component('Skeleton', Skeleton);
 app.component('Toast', Toast);
 app.component('ProgressSpinner', ProgressSpinner);
 app.component('Breadcrumb', Breadcrumb);
+app.component('RadioButton', RadioButton);
 
 const bootstrap = async () => {
   const auth = useAuthStore();

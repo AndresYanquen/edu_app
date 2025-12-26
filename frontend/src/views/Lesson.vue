@@ -113,11 +113,65 @@
         </div>
       </template>
     </Card>
+
+    <Card v-if="showQuizSection" class="quiz-card">
+      <template #title>
+        <div class="quiz-header">
+          <span>Lesson Quiz</span>
+          <Tag v-if="quizPassed" value="Passed" severity="success" />
+        </div>
+      </template>
+      <template #content>
+        <div v-if="quizLoading">
+          <Skeleton height="3rem" class="mb-2" />
+          <Skeleton height="3rem" class="mb-2" />
+        </div>
+        <div v-else-if="quizError">
+          <p>Unable to load quiz.</p>
+          <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadQuiz" />
+        </div>
+        <div v-else-if="quiz && quiz.questions?.length">
+          <div
+            v-for="(question, index) in quiz.questions"
+            :key="question.id"
+            class="quiz-question"
+          >
+            <h4>Question {{ index + 1 }}</h4>
+            <p>{{ question.questionText }}</p>
+            <div class="quiz-options">
+              <div
+                v-for="option in question.options"
+                :key="option.id"
+                class="quiz-option"
+              >
+                <RadioButton
+                  :inputId="`option-${option.id}`"
+                  :value="option.id"
+                  :modelValue="quizSelections[question.id] || null"
+                  @update:modelValue="(value) => updateSelection(question.id, value)"
+                  :disabled="quizPassed || quizSubmitting"
+                />
+                <label :for="`option-${option.id}`">{{ option.optionText }}</label>
+              </div>
+            </div>
+          </div>
+          <div class="quiz-actions">
+            <Button
+              label="Submit quiz"
+              icon="pi pi-send"
+              :loading="quizSubmitting"
+              :disabled="quizPassed || !canSubmitQuiz || quizSubmitting"
+              @click="submitQuiz"
+            />
+          </div>
+        </div>
+      </template>
+    </Card>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import api from '../api/axios';
@@ -134,6 +188,12 @@ const loading = ref(true);
 const error = ref(false);
 const errorMessage = ref('Failed to load lesson.');
 const updating = ref(null);
+const quiz = ref(null);
+const quizLoading = ref(true);
+const quizError = ref(false);
+const quizSelections = ref({});
+const quizSubmitting = ref(false);
+const quizPassed = ref(false);
 
 const formatDuration = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -152,12 +212,13 @@ const locateLesson = (courseData, targetLessonId) => {
 };
 
 const loadLesson = async (silent = false) => {
+  const { courseId, lessonId } = route.params;
+  if (!courseId || !lessonId) return;
   if (!silent) {
     loading.value = true;
   }
   error.value = false;
   try {
-    const { courseId, lessonId } = route.params;
     const { data } = await api.get(`/courses/${courseId}`);
     course.value = data;
     const found = locateLesson(data, lessonId);
@@ -179,6 +240,28 @@ const loadLesson = async (silent = false) => {
     if (!silent) {
       loading.value = false;
     }
+  }
+};
+
+const loadQuiz = async () => {
+  const { lessonId } = route.params;
+  if (!lessonId) return;
+  quizLoading.value = true;
+  quizError.value = false;
+  quizSelections.value = {};
+  quizPassed.value = false;
+  try {
+    const { data } = await api.get(`/lessons/${lessonId}/quiz`);
+    quiz.value = data.questions?.length ? data : null;
+  } catch (err) {
+    if (err.response?.status === 404) {
+      quiz.value = null;
+    } else {
+      quizError.value = true;
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load quiz', life: 3000 });
+    }
+  } finally {
+    quizLoading.value = false;
   }
 };
 
@@ -216,12 +299,58 @@ const updateStatus = async (status, percent, key) => {
   }
 };
 
-loadLesson();
+const updateSelection = (questionId, optionId) => {
+  quizSelections.value = { ...quizSelections.value, [questionId]: optionId };
+};
+
+const canSubmitQuiz = computed(() => {
+  if (!quiz.value || !quiz.value.questions?.length) return false;
+  return quiz.value.questions.every((q) => quizSelections.value[q.id]);
+});
+
+const submitQuiz = async () => {
+  if (!quiz.value) return;
+  quizSubmitting.value = true;
+  try {
+    const payload = {
+      answers: quiz.value.questions.map((q) => ({
+        questionId: q.id,
+        optionId: quizSelections.value[q.id],
+      })),
+    };
+    const { data } = await api.post(`/lessons/${route.params.lessonId}/quiz/attempt`, payload);
+    quizPassed.value = data.passed;
+    toast.add({
+      severity: data.passed ? 'success' : 'warn',
+      summary: 'Quiz submitted',
+      detail: `Score ${data.scorePercent}%`,
+      life: 4000,
+    });
+    if (data.passed) {
+      try {
+        await api.get(`/courses/${route.params.courseId}/progress`);
+      } catch (err) {
+        console.warn('Failed to refresh course progress', err);
+      }
+    }
+  } catch (err) {
+    const detail = err.response?.data?.error || 'Failed to submit quiz';
+    toast.add({ severity: 'error', summary: 'Error', detail, life: 3000 });
+  } finally {
+    quizSubmitting.value = false;
+  }
+};
+
+onMounted(() => {
+  loadLesson();
+  loadQuiz();
+});
 
 watch(
   () => [route.params.courseId, route.params.lessonId],
   () => {
     loadLesson();
+    loadQuiz();
   },
 );
 
@@ -237,6 +366,10 @@ const breadcrumbItems = computed(() => {
   }
   return items;
 });
+
+const showQuizSection = computed(
+  () => quizLoading.value || quizError.value || (quiz.value && quiz.value.questions?.length),
+);
 </script>
 
 <style scoped>
@@ -284,6 +417,31 @@ const breadcrumbItems = computed(() => {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.quiz-card {
+  margin-top: 1.5rem;
+}
+
+.quiz-question {
+  margin-bottom: 1.5rem;
+}
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.quiz-actions {
+  margin-top: 1rem;
 }
 
 .content-area {
