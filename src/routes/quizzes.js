@@ -210,4 +210,50 @@ router.post('/lessons/:id/quiz/attempt', requireRole(['student']), async (req, r
   }
 });
 
+/**
+ * Example:
+ * curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/lessons/<lessonId>/quiz/score
+ */
+router.get('/lessons/:id/quiz/score', requireRole(['student']), async (req, res) => {
+  const lessonId = req.params.id;
+  try {
+    const lesson = await getLessonCourse(lessonId);
+    if (!lesson) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+
+    const enrolled = await ensureEnrollment(lesson.course_id, req.user.id);
+    if (!enrolled) {
+      return res.status(403).json({ error: 'Not enrolled in this course' });
+    }
+
+    const scoreRes = await pool.query(
+      `
+        SELECT
+          MAX(score_percent)::int AS best_score,
+          (
+            SELECT qa.score_percent::int
+            FROM quiz_attempts qa
+            WHERE qa.user_id = $1 AND qa.lesson_id = $2
+            ORDER BY qa.created_at DESC
+            LIMIT 1
+          ) AS last_score
+        FROM quiz_attempts
+        WHERE user_id = $1 AND lesson_id = $2
+      `,
+      [req.user.id, lessonId],
+    );
+
+    const row = scoreRes.rows[0] || {};
+    return res.json({
+      lessonId,
+      bestScore: row.best_score ?? null,
+      lastScore: row.last_score ?? null,
+    });
+  } catch (err) {
+    console.error('Failed to fetch quiz score', err);
+    return res.status(500).json({ error: 'Failed to fetch quiz score' });
+  }
+});
+
 module.exports = router;
