@@ -71,6 +71,8 @@ const quizAttemptSchema = z.object({
     .min(1, 'At least one answer is required'),
 });
 
+const questionTypeEnum = z.enum(['single_choice', 'true_false']);
+
 const preprocessInt = (min = 1) =>
   z.preprocess((val) => {
     if (val === undefined || val === null || val === '') {
@@ -82,6 +84,44 @@ const preprocessInt = (min = 1) =>
     const parsed = Number(val);
     return Number.isNaN(parsed) ? val : parsed;
   }, z.number().int().min(min));
+
+const quizQuestionCreateSchema = z.object({
+  questionText: z
+    .string({ required_error: 'questionText is required' })
+    .trim()
+    .min(1, 'questionText is required'),
+  questionType: questionTypeEnum.optional(),
+  orderIndex: preprocessInt().optional(),
+});
+
+const quizQuestionUpdateSchema = z
+  .object({
+    questionText: z.string().trim().min(1).optional(),
+    questionType: questionTypeEnum.optional(),
+    orderIndex: preprocessInt().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
+const quizOptionCreateSchema = z.object({
+  optionText: z
+    .string({ required_error: 'optionText is required' })
+    .trim()
+    .min(1, 'optionText is required'),
+  isCorrect: z.boolean().optional(),
+  orderIndex: preprocessInt().optional(),
+});
+
+const quizOptionUpdateSchema = z
+  .object({
+    optionText: z.string().trim().min(1).optional(),
+    isCorrect: z.boolean().optional(),
+    orderIndex: preprocessInt().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
 
 const courseCreateSchema = z.object({
   title: z
@@ -168,5 +208,9 @@ module.exports = {
   lessonCreateSchema,
   lessonUpdateSchema,
   quizAttemptSchema,
+  quizQuestionCreateSchema,
+  quizQuestionUpdateSchema,
+  quizOptionCreateSchema,
+  quizOptionUpdateSchema,
   formatZodError,
 };

@@ -11,9 +11,15 @@ router.use(auth);
 const getLessonCourse = async (lessonId) => {
   const result = await pool.query(
     `
-      SELECT l.id, m.course_id
+      SELECT
+        l.id,
+        l.is_published AS lesson_published,
+        m.course_id,
+        m.is_published AS module_published,
+        c.is_published AS course_published
       FROM lessons l
       JOIN modules m ON m.id = l.module_id
+      JOIN courses c ON c.id = m.course_id
       WHERE l.id = $1
       LIMIT 1
     `,
@@ -43,6 +49,10 @@ router.get('/lessons/:id/quiz', requireRole(['student']), async (req, res) => {
       return res.status(404).json({ error: 'Lesson not found' });
     }
 
+    if (!lesson.course_published || !lesson.module_published || !lesson.lesson_published) {
+      return res.status(404).json({ error: 'Quiz not found' });
+    }
+
     const enrolled = await ensureEnrollment(lesson.course_id, req.user.id);
     if (!enrolled) {
       return res.status(403).json({ error: 'You are not enrolled in this course' });
@@ -57,7 +67,8 @@ router.get('/lessons/:id/quiz', requireRole(['student']), async (req, res) => {
           qq.order_index,
           qo.id AS option_id,
           qo.option_text,
-          qo.order_index AS option_order
+          qo.order_index AS option_order,
+          qo.is_correct
         FROM quiz_questions qq
         LEFT JOIN quiz_options qo ON qo.question_id = qq.id
         WHERE qq.lesson_id = $1
@@ -71,6 +82,7 @@ router.get('/lessons/:id/quiz', requireRole(['student']), async (req, res) => {
     }
 
     const questionsMap = new Map();
+    let quizReady = true;
     for (const row of quizRes.rows) {
       if (!questionsMap.has(row.question_id)) {
         questionsMap.set(row.question_id, {
@@ -79,19 +91,49 @@ router.get('/lessons/:id/quiz', requireRole(['student']), async (req, res) => {
           questionType: row.question_type,
           orderIndex: row.order_index,
           options: [],
+          correctCount: 0,
         });
       }
       if (row.option_id) {
-        questionsMap.get(row.question_id).options.push({
+        const question = questionsMap.get(row.question_id);
+        question.options.push({
           id: row.option_id,
           optionText: row.option_text,
         });
+        if (row.is_correct) {
+          question.correctCount += 1;
+        }
       }
+    }
+
+    for (const question of questionsMap.values()) {
+      if (question.options.length < 2) {
+        quizReady = false;
+        break;
+      }
+      if (question.questionType === 'single_choice' && question.correctCount !== 1) {
+        quizReady = false;
+        break;
+      }
+      if (question.questionType === 'true_false' && question.correctCount === 0) {
+        quizReady = false;
+        break;
+      }
+    }
+
+    if (!quizReady) {
+      return res.status(404).json({ error: 'Quiz not ready' });
     }
 
     return res.json({
       lessonId,
-      questions: Array.from(questionsMap.values()),
+      questions: Array.from(questionsMap.values()).map((question) => ({
+        id: question.id,
+        questionText: question.questionText,
+        questionType: question.questionType,
+        orderIndex: question.orderIndex,
+        options: question.options,
+      })),
     });
   } catch (err) {
     console.error('Failed to load quiz', err);
@@ -110,6 +152,9 @@ router.post('/lessons/:id/quiz/attempt', requireRole(['student']), async (req, r
   try {
     const lesson = await getLessonCourse(lessonId);
     if (!lesson) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+    if (!lesson.course_published || !lesson.module_published || !lesson.lesson_published) {
       return res.status(404).json({ error: 'Lesson not found' });
     }
 

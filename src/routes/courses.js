@@ -4,7 +4,6 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const { uuidSchema, formatZodError } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
-const { canEditCourse } = require('../utils/cmsPermissions');
 
 const router = express.Router();
 

@@ -210,10 +210,14 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import api from '../api/axios';
+import PreviewBanner from '../components/PreviewBanner.vue';
+import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+
+const auth = useAuthStore();
 
 const course = ref(null);
 const moduleInfo = ref(null);
@@ -285,7 +289,10 @@ const loadLesson = async () => {
   error.value = false;
 
   try {
-    const { data } = await api.get(`/courses/${courseId.value}`);
+    const courseUrl = isPreview.value
+      ? `/courses/${courseId.value}?preview=1`
+      : `/courses/${courseId.value}`;
+    const { data } = await api.get(courseUrl);
     course.value = data;
 
     const found = locateLesson(data, lessonId.value);
@@ -374,6 +381,11 @@ const openVideo = (url) => {
 // Quiz score fetch (FIX 2: derive quizPassed from best/last)
 const fetchQuizScore = async () => {
   if (!lessonId.value) return;
+  if (isPreview.value) {
+    quizScore.value = null;
+    quizPassed.value = false;
+    return;
+  }
 
   loadingQuizScore.value = true;
   try {
@@ -413,7 +425,10 @@ const loadQuiz = async () => {
   quizExists.value = false;
 
   try {
-    const { data } = await api.get(`/lessons/${lessonId.value}/quiz`);
+    const endpoint = isPreview.value
+      ? `/cms/lessons/${lessonId.value}/quiz`
+      : `/lessons/${lessonId.value}/quiz`;
+    const { data } = await api.get(endpoint);
     quiz.value = data;
     quizExists.value = Boolean(data?.questions?.length);
     // Do NOT reset quizPassed here (it comes from fetchQuizScore)

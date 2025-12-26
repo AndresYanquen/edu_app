@@ -28,6 +28,20 @@ export const publishLesson = (lessonId) =>
 export const unpublishLesson = (lessonId) =>
   unwrap(api.post(`/cms/lessons/${lessonId}/unpublish`));
 
+export const getLessonQuiz = (lessonId) => unwrap(api.get(`/cms/lessons/${lessonId}/quiz`));
+export const createQuizQuestion = (lessonId, payload) =>
+  unwrap(api.post(`/cms/lessons/${lessonId}/quiz/questions`, payload));
+export const updateQuizQuestion = (questionId, payload) =>
+  unwrap(api.patch(`/cms/quiz/questions/${questionId}`, payload));
+export const deleteQuizQuestion = (questionId) =>
+  unwrap(api.delete(`/cms/quiz/questions/${questionId}`));
+export const createQuizOption = (questionId, payload) =>
+  unwrap(api.post(`/cms/quiz/questions/${questionId}/options`, payload));
+export const updateQuizOption = (optionId, payload) =>
+  unwrap(api.patch(`/cms/quiz/options/${optionId}`, payload));
+export const deleteQuizOption = (optionId) =>
+  unwrap(api.delete(`/cms/quiz/options/${optionId}`));
+
 export default {
   listCourses,
   createCourse,
@@ -45,4 +59,11 @@ export default {
   updateLesson,
   publishLesson,
   unpublishLesson,
+  getLessonQuiz,
+  createQuizQuestion,
+  updateQuizQuestion,
+  deleteQuizQuestion,
+  createQuizOption,
+  updateQuizOption,
+  deleteQuizOption,
 };

@@ -10,6 +10,10 @@ const {
   moduleUpdateSchema,
   lessonCreateSchema,
   lessonUpdateSchema,
+  quizQuestionCreateSchema,
+  quizQuestionUpdateSchema,
+  quizOptionCreateSchema,
+  quizOptionUpdateSchema,
   formatZodError,
 } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
@@ -38,6 +42,7 @@ const fetchCourseIdByLesson = async (lessonId) => {
   return rows[0]?.course_id;
 };
 
+
 const ensureCourseEditable = async (courseId, user, res) => {
   if (!courseId) {
     res.status(404).json({ error: 'Course not found' });
@@ -49,6 +54,31 @@ const ensureCourseEditable = async (courseId, user, res) => {
     return false;
   }
   return true;
+};
+
+const mapQuizRowsToQuestions = (rows) => {
+  const map = new Map();
+  for (const row of rows) {
+    if (!map.has(row.question_id)) {
+      map.set(row.question_id, {
+        id: row.question_id,
+        lessonId: row.lesson_id,
+        questionText: row.question_text,
+        questionType: row.question_type,
+        orderIndex: row.order_index,
+        options: [],
+      });
+    }
+    if (row.option_id) {
+      map.get(row.question_id).options.push({
+        id: row.option_id,
+        optionText: row.option_text,
+        isCorrect: row.is_correct,
+        orderIndex: row.option_order,
+      });
+    }
+  }
+  return Array.from(map.values());
 };
 
 router.get('/courses', async (req, res) => {
@@ -553,5 +583,468 @@ const toggleLessonPublish = async (req, res, isPublished) => {
 
 router.post('/lessons/:id/publish', (req, res) => toggleLessonPublish(req, res, true));
 router.post('/lessons/:id/unpublish', (req, res) => toggleLessonPublish(req, res, false));
+
+router.get('/lessons/:lessonId/quiz', async (req, res) => {
+  const lessonId = req.params.lessonId;
+  try {
+    const courseId = await fetchCourseIdByLesson(lessonId);
+    if (!courseId) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+    const allowed = await canEditCourse(courseId, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT
+          qq.id AS question_id,
+          qq.lesson_id,
+          qq.question_text,
+          qq.question_type,
+          qq.order_index,
+          qo.id AS option_id,
+          qo.option_text,
+          qo.is_correct,
+          qo.order_index AS option_order
+        FROM quiz_questions qq
+        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        WHERE qq.lesson_id = $1
+        ORDER BY qq.order_index ASC, qo.order_index ASC
+      `,
+      [lessonId],
+    );
+
+    return res.json({
+      lessonId,
+      questions: mapQuizRowsToQuestions(rows),
+    });
+  } catch (err) {
+    console.error('Failed to load lesson quiz', err);
+    return res.status(500).json({ error: 'Failed to load quiz' });
+  }
+});
+
+router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
+  const lessonId = req.params.lessonId;
+  const parsed = quizQuestionCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const courseId = await fetchCourseIdByLesson(lessonId);
+    if (!courseId) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+    const allowed = await canEditCourse(courseId, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    let orderIndex = parsed.data.orderIndex;
+    if (!orderIndex) {
+      const { rows } = await pool.query(
+        'SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM quiz_questions WHERE lesson_id = $1',
+        [lessonId],
+      );
+      orderIndex = rows[0].next;
+    }
+
+    const questionType = parsed.data.questionType || 'single_choice';
+
+    const insertRes = await pool.query(
+      `
+        INSERT INTO quiz_questions (lesson_id, question_text, question_type, order_index)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+      `,
+      [lessonId, parsed.data.questionText, questionType, orderIndex],
+    );
+    const questionId = insertRes.rows[0].id;
+
+    if (questionType === 'true_false') {
+      await pool.query(
+        `
+          INSERT INTO quiz_options (question_id, option_text, is_correct, order_index)
+          VALUES
+            ($1, 'True', false, 1),
+            ($1, 'False', false, 2)
+        `,
+        [questionId],
+      );
+    }
+
+    const questionRows = await pool.query(
+      `
+        SELECT
+          qq.id AS question_id,
+          qq.lesson_id,
+          qq.question_text,
+          qq.question_type,
+          qq.order_index,
+          qo.id AS option_id,
+          qo.option_text,
+          qo.is_correct,
+          qo.order_index AS option_order
+        FROM quiz_questions qq
+        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        WHERE qq.id = $1
+        ORDER BY qo.order_index ASC
+      `,
+      [questionId],
+    );
+
+    return res.status(201).json(mapQuizRowsToQuestions(questionRows.rows)[0]);
+  } catch (err) {
+    console.error('Failed to create quiz question', err);
+    return res.status(500).json({ error: 'Failed to create quiz question' });
+  }
+});
+
+router.patch('/quiz/questions/:id', async (req, res) => {
+  const questionId = req.params.id;
+  const parsed = quizQuestionUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const questionRes = await pool.query(
+      `
+        SELECT qq.id, qq.lesson_id, qq.question_type, m.course_id
+        FROM quiz_questions qq
+        JOIN lessons l ON l.id = qq.lesson_id
+        JOIN modules m ON m.id = l.module_id
+        WHERE qq.id = $1
+        LIMIT 1
+      `,
+      [questionId],
+    );
+    const question = questionRes.rows[0];
+    if (!question) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    const allowed = await canEditCourse(question.course_id, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    const updates = [];
+    const values = [];
+    if (parsed.data.questionText !== undefined) {
+      values.push(parsed.data.questionText);
+      updates.push(`question_text = $${values.length}`);
+    }
+    if (parsed.data.questionType !== undefined) {
+      values.push(parsed.data.questionType);
+      updates.push(`question_type = $${values.length}`);
+    }
+    if (parsed.data.orderIndex !== undefined) {
+      values.push(parsed.data.orderIndex);
+      updates.push(`order_index = $${values.length}`);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    const updateRes = await pool.query(
+      `
+        UPDATE quiz_questions
+        SET ${updates.join(', ')}, updated_at = now()
+        WHERE id = $${values.length + 1}
+        RETURNING id
+      `,
+      [...values, questionId],
+    );
+    if (!updateRes.rows.length) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    if (parsed.data.questionType === 'true_false') {
+      await pool.query('DELETE FROM quiz_options WHERE question_id = $1', [questionId]);
+      await pool.query(
+        `
+          INSERT INTO quiz_options (question_id, option_text, is_correct, order_index)
+          VALUES
+            ($1, 'True', false, 1),
+            ($1, 'False', false, 2)
+        `,
+        [questionId],
+      );
+    }
+
+    const questionRows = await pool.query(
+      `
+        SELECT
+          qq.id AS question_id,
+          qq.lesson_id,
+          qq.question_text,
+          qq.question_type,
+          qq.order_index,
+          qo.id AS option_id,
+          qo.option_text,
+          qo.is_correct,
+          qo.order_index AS option_order
+        FROM quiz_questions qq
+        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        WHERE qq.id = $1
+        ORDER BY qo.order_index ASC
+      `,
+      [questionId],
+    );
+
+    return res.json(mapQuizRowsToQuestions(questionRows.rows)[0]);
+  } catch (err) {
+    console.error('Failed to update quiz question', err);
+    return res.status(500).json({ error: 'Failed to update quiz question' });
+  }
+});
+
+router.delete('/quiz/questions/:id', async (req, res) => {
+  const questionId = req.params.id;
+  try {
+    const questionRes = await pool.query(
+      `
+        SELECT qq.lesson_id, m.course_id
+        FROM quiz_questions qq
+        JOIN lessons l ON l.id = qq.lesson_id
+        JOIN modules m ON m.id = l.module_id
+        WHERE qq.id = $1
+        LIMIT 1
+      `,
+      [questionId],
+    );
+    const question = questionRes.rows[0];
+    if (!question) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    const allowed = await canEditCourse(question.course_id, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    await pool.query('DELETE FROM quiz_questions WHERE id = $1', [questionId]);
+    return res.json({ id: questionId });
+  } catch (err) {
+    console.error('Failed to delete quiz question', err);
+    return res.status(500).json({ error: 'Failed to delete quiz question' });
+  }
+});
+
+router.post('/quiz/questions/:id/options', async (req, res) => {
+  const questionId = req.params.id;
+  const parsed = quizOptionCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const questionRes = await pool.query(
+      `
+        SELECT qq.id, qq.question_type, m.course_id
+        FROM quiz_questions qq
+        JOIN lessons l ON l.id = qq.lesson_id
+        JOIN modules m ON m.id = l.module_id
+        WHERE qq.id = $1
+        LIMIT 1
+      `,
+      [questionId],
+    );
+    const question = questionRes.rows[0];
+    if (!question) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    const allowed = await canEditCourse(question.course_id, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    if (question.question_type === 'true_false') {
+      return res.status(400).json({ error: 'True/False questions already include default options' });
+    }
+
+    let orderIndex = parsed.data.orderIndex;
+    if (!orderIndex) {
+      const { rows } = await pool.query(
+        'SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM quiz_options WHERE question_id = $1',
+        [questionId],
+      );
+      orderIndex = rows[0].next;
+    }
+
+    const optionRes = await pool.query(
+      `
+        INSERT INTO quiz_options (question_id, option_text, is_correct, order_index)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+      `,
+      [questionId, parsed.data.optionText, parsed.data.isCorrect || false, orderIndex],
+    );
+
+    if (parsed.data.isCorrect) {
+      await pool.query(
+        `
+          UPDATE quiz_options
+          SET is_correct = false
+          WHERE question_id = $1 AND id <> $2
+        `,
+        [questionId, optionRes.rows[0].id],
+      );
+    }
+
+    const rows = await pool.query(
+      `
+        SELECT
+          qo.id,
+          qo.option_text,
+          qo.is_correct,
+          qo.order_index
+        FROM quiz_options qo
+        WHERE qo.question_id = $1
+        ORDER BY qo.order_index ASC
+      `,
+      [questionId],
+    );
+
+    return res.status(201).json(rows.rows);
+  } catch (err) {
+    console.error('Failed to create quiz option', err);
+    return res.status(500).json({ error: 'Failed to create quiz option' });
+  }
+});
+
+router.patch('/quiz/options/:id', async (req, res) => {
+  const optionId = req.params.id;
+  const parsed = quizOptionUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  try {
+    const optionRes = await pool.query(
+      `
+        SELECT qo.id, qo.question_id, qq.question_type, m.course_id
+        FROM quiz_options qo
+        JOIN quiz_questions qq ON qq.id = qo.question_id
+        JOIN lessons l ON l.id = qq.lesson_id
+        JOIN modules m ON m.id = l.module_id
+        WHERE qo.id = $1
+        LIMIT 1
+      `,
+      [optionId],
+    );
+    const option = optionRes.rows[0];
+    if (!option) {
+      return res.status(404).json({ error: 'Option not found' });
+    }
+
+    const allowed = await canEditCourse(option.course_id, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    const updates = [];
+    const values = [];
+    if (parsed.data.optionText !== undefined) {
+      values.push(parsed.data.optionText);
+      updates.push(`option_text = $${values.length}`);
+    }
+    if (parsed.data.isCorrect !== undefined) {
+      values.push(parsed.data.isCorrect);
+      updates.push(`is_correct = $${values.length}`);
+    }
+    if (parsed.data.orderIndex !== undefined) {
+      values.push(parsed.data.orderIndex);
+      updates.push(`order_index = $${values.length}`);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    await pool.query(
+      `
+        UPDATE quiz_options
+        SET ${updates.join(', ')}, updated_at = now()
+        WHERE id = $${values.length + 1}
+      `,
+      [...values, optionId],
+    );
+
+    if (parsed.data.isCorrect && option.question_type === 'single_choice') {
+      await pool.query(
+        `
+          UPDATE quiz_options
+          SET is_correct = false
+          WHERE question_id = $1 AND id <> $2
+        `,
+        [option.question_id, optionId],
+      );
+    }
+
+    const rows = await pool.query(
+      `
+        SELECT
+          qo.id,
+          qo.option_text,
+          qo.is_correct,
+          qo.order_index
+        FROM quiz_options qo
+        WHERE qo.question_id = $1
+        ORDER BY qo.order_index ASC
+      `,
+      [option.question_id],
+    );
+
+    return res.json(rows.rows);
+  } catch (err) {
+    console.error('Failed to update quiz option', err);
+    return res.status(500).json({ error: 'Failed to update quiz option' });
+  }
+});
+
+router.delete('/quiz/options/:id', async (req, res) => {
+  const optionId = req.params.id;
+  try {
+    const optionRes = await pool.query(
+      `
+        SELECT qo.id, qo.question_id, qq.question_type, m.course_id
+        FROM quiz_options qo
+        JOIN quiz_questions qq ON qq.id = qo.question_id
+        JOIN lessons l ON l.id = qq.lesson_id
+        JOIN modules m ON m.id = l.module_id
+        WHERE qo.id = $1
+        LIMIT 1
+      `,
+      [optionId],
+    );
+    const option = optionRes.rows[0];
+    if (!option) {
+      return res.status(404).json({ error: 'Option not found' });
+    }
+
+    if (option.question_type === 'true_false') {
+      return res.status(400).json({ error: 'True/False questions require both options' });
+    }
+
+    const allowed = await canEditCourse(option.course_id, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You cannot edit this course' });
+    }
+
+    await pool.query('DELETE FROM quiz_options WHERE id = $1', [optionId]);
+
+    return res.json({ id: optionId });
+  } catch (err) {
+    console.error('Failed to delete quiz option', err);
+    return res.status(500).json({ error: 'Failed to delete quiz option' });
+  }
+});
 
 module.exports = router;

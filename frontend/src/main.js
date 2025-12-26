@@ -20,6 +20,8 @@ import Breadcrumb from 'primevue/breadcrumb';
 import RadioButton from 'primevue/radiobutton';
 import InputNumber from 'primevue/inputnumber';
 import Dialog from 'primevue/dialog';
+import Dropdown from 'primevue/dropdown';
+import Checkbox from 'primevue/checkbox';
 
 import 'primevue/resources/themes/lara-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
@@ -57,6 +59,8 @@ app.component('Breadcrumb', Breadcrumb);
 app.component('RadioButton', RadioButton);
 app.component('InputNumber', InputNumber);
 app.component('Dialog', Dialog);
+app.component('Dropdown', Dropdown);
+app.component('Checkbox', Checkbox);
 
 const bootstrap = async () => {
   const auth = useAuthStore();
