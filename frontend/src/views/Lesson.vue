@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <PreviewBanner v-if="showPreviewBanner" />
     <Breadcrumb class="mb-2" :home="breadcrumbHome" :model="breadcrumbItems" />
 
     <Card v-if="loading">
@@ -239,6 +240,10 @@ const loadingQuizScore = ref(false);
 
 const courseId = computed(() => route.params.courseId);
 const lessonId = computed(() => route.params.lessonId);
+const isPreview = computed(() => route.query.preview === '1' || route.query.preview === 'true');
+const showPreviewBanner = computed(
+  () => isPreview.value && ['admin', 'instructor'].includes(auth.role),
+);
 
 const breadcrumbHome = computed(() => ({
   icon: 'pi pi-home',
@@ -315,6 +320,10 @@ const goBack = () => {
 };
 
 const updateStatus = async (status, progressPercent, key) => {
+  if (isPreview.value) {
+    toast.add({ severity: 'info', summary: 'Preview mode', detail: 'Progress not available in preview', life: 2500 });
+    return;
+  }
   updating.value = key;
   try {
     await api.post(`/lessons/${lessonId.value}/progress`, { status, progressPercent });

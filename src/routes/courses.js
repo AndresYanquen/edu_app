@@ -3,6 +3,8 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const { uuidSchema, formatZodError } = require('../utils/validators');
+const { canEditCourse } = require('../utils/cmsPermissions');
+const { canEditCourse } = require('../utils/cmsPermissions');
 
 const router = express.Router();
 
@@ -11,6 +13,8 @@ router.use(auth);
 router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, res) => {
   const courseId = req.params.id;
   const { role, id: userId } = req.user;
+  const isPreview =
+    req.query.preview === '1' || req.query.preview === 'true';
 
   try {
     const courseRes = await pool.query(
@@ -38,11 +42,18 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    if (role === 'student' && !course.is_published) {
-      return res.status(404).json({ error: 'Course not found' });
-    }
-
-    if (role === 'student') {
+    if (isPreview) {
+      if (!['admin', 'instructor'].includes(role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const allowed = await canEditCourse(courseId, req.user);
+      if (!allowed) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    } else if (role === 'student') {
+      if (!course.is_published) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
       const enrollment = await pool.query(
         `
           SELECT 1
@@ -91,7 +102,7 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
       lessons: [],
     }));
 
-    if (role === 'student') {
+    if (!isPreview && role === 'student') {
       modules = modules.filter((module) => module.is_published);
     }
 
@@ -123,7 +134,7 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
       );
       lessons = lessonsRes.rows;
 
-      if (role === 'student') {
+      if (!isPreview && role === 'student') {
         lessons = lessons.filter((lesson) => lesson.is_published);
       }
     }

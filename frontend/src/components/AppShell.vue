@@ -60,10 +60,12 @@ const studentLinks = [
 
 const instructorLinks = [
   { label: 'Instructor Dashboard', to: '/instructor', icon: 'pi pi-users' },
+  { label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' },
 ];
 
 const adminLinks = [
   { label: 'Admin Home', to: '/admin', icon: 'pi pi-shield' },
+  { label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' },
 ];
 
 const navLinks = computed(() => {

@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <PreviewBanner v-if="showPreviewBanner" />
     <Breadcrumb class="mb-2" :home="breadcrumbHome" :model="breadcrumbItems" />
     <Card v-if="loading">
       <template #content>
@@ -24,7 +25,7 @@
             <span>Progress</span>
             <ProgressBar :value="progress?.percent ?? 0" />
             <small>Completed {{ progress?.completedLessons ?? 0 }} / {{ progress?.totalLessons ?? 0 }}</small>
-            <small v-if="progress?.nextLessonTitle">Next: {{ progress.nextLessonTitle }}</small>
+            <small v-if="progress?.nextLessonTitle">Next: {{ progress?.nextLessonTitle }}</small>
           </div>
         </div>
       </template>
@@ -32,12 +33,12 @@
         <div class="continue-card">
           <template v-if="!isCourseCompleted">
             <p>Continue with</p>
-            <h4>{{ progress.nextLessonTitle }}</h4>
+            <h4>{{ progress?.nextLessonTitle }}</h4>
             <Button
               label="Continue"
               icon="pi pi-arrow-right"
               :disabled="!progress?.nextLessonId"
-              @click="openLesson(progress.nextLessonId)"
+              @click="openLesson(progress?.nextLessonId)"
             />
           </template>
           <template v-else>
@@ -59,7 +60,7 @@
                     label="Mark done"
                     icon="pi pi-check"
                     class="p-button-sm"
-                    :disabled="isLessonCompleted(lesson.id)"
+                    :disabled="isLessonCompleted(lesson.id) || isPreview"
                     :loading="updatingLesson === lesson.id"
                     @click="markDone(lesson.id)"
                   />
@@ -78,11 +79,14 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import { useAuthStore } from '../stores/auth';
+import PreviewBanner from '../components/PreviewBanner.vue';
 import api from '../api/axios';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const auth = useAuthStore();
 
 const course = ref(null);
 const progress = ref(null);
@@ -90,8 +94,26 @@ const loading = ref(true);
 const error = ref(false);
 const updatingLesson = ref(null);
 const completedLessons = ref(new Set());
+const isPreview = computed(
+  () => route.query.preview === '1' || route.query.preview === 'true',
+);
+const showPreviewBanner = computed(
+  () => isPreview.value && ['admin', 'instructor'].includes(auth.role),
+);
+
+const defaultProgress = {
+  percent: 0,
+  completedLessons: 0,
+  totalLessons: 0,
+  nextLessonId: null,
+  nextLessonTitle: null,
+};
 
 const fetchProgress = async (id) => {
+  if (isPreview.value) {
+    progress.value = { ...defaultProgress };
+    return;
+  }
   const { data } = await api.get(`/courses/${id}/progress`);
   progress.value = data;
 };
@@ -100,7 +122,8 @@ const fetchData = async (id) => {
   loading.value = true;
   error.value = false;
   try {
-    const courseRes = await api.get(`/courses/${id}`);
+    const url = isPreview.value ? `/courses/${id}?preview=1` : `/courses/${id}`;
+    const courseRes = await api.get(url);
     course.value = courseRes.data;
     completedLessons.value = new Set();
     await fetchProgress(id);
@@ -115,7 +138,8 @@ const fetchData = async (id) => {
 const reload = () => fetchData(route.params.id);
 
 const openLesson = (lessonId) => {
-  router.push(`/student/course/${route.params.id}/lesson/${lessonId}`);
+  const query = isPreview.value ? { preview: '1' } : {};
+  router.push({ path: `/student/course/${route.params.id}/lesson/${lessonId}`, query });
 };
 
 const markLessonCompleted = (lessonId) => {
@@ -127,6 +151,10 @@ const markLessonCompleted = (lessonId) => {
 const isLessonCompleted = (lessonId) => completedLessons.value.has(lessonId);
 
 const markDone = async (lessonId) => {
+  if (isPreview.value) {
+    toast.add({ severity: 'info', summary: 'Preview mode', detail: 'Progress not available in preview', life: 2500 });
+    return;
+  }
   updatingLesson.value = lessonId;
   try {
     await api.post(`/lessons/${lessonId}/progress`, {
@@ -148,11 +176,17 @@ onMounted(() => {
 });
 
 watch(
-  () => route.params.id,
-  (newId) => newId && fetchData(newId),
+  [() => route.params.id, () => route.query.preview],
+  ([newId]) => {
+    if (newId) {
+      fetchData(newId);
+    }
+  },
 );
 
-const isCourseCompleted = computed(() => progress.value && !progress.value.nextLessonId);
+const isCourseCompleted = computed(
+  () => !!(progress.value && !progress.value.nextLessonId),
+);
 
 const breadcrumbHome = { label: 'Student', to: '/student' };
 const breadcrumbItems = computed(() => [
