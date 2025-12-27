@@ -196,6 +196,42 @@ const formatZodError = (error) =>
     })
     .join(', ');
 
+const enrollStudentSchema = z.object({
+  studentId: z
+    .string({ required_error: 'studentId is required' })
+    .trim()
+    .uuid({ message: 'studentId must be a valid UUID' }),
+  groupId: z
+    .string()
+    .uuid({ message: 'groupId must be a valid UUID' })
+    .optional()
+    .nullable(),
+});
+
+const assignGroupSchema = z.object({
+  groupId: z
+    .string({ required_error: 'groupId is required' })
+    .trim()
+    .uuid({ message: 'groupId must be a valid UUID' })
+    .nullable(),
+});
+
+const bulkEnrollSchema = z.object({
+  studentIds: z
+    .array(
+      z
+        .string()
+        .trim()
+        .uuid({ message: 'studentIds must contain valid UUIDs' }),
+    )
+    .min(1, 'Select at least one student'),
+  groupId: z
+    .string()
+    .uuid({ message: 'groupId must be a valid UUID' })
+    .optional()
+    .nullable(),
+});
+
 module.exports = {
   loginSchema,
   lessonProgressSchema,
@@ -212,5 +248,8 @@ module.exports = {
   quizQuestionUpdateSchema,
   quizOptionCreateSchema,
   quizOptionUpdateSchema,
+  enrollStudentSchema,
+  assignGroupSchema,
+  bulkEnrollSchema,
   formatZodError,
 };

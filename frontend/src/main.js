@@ -21,6 +21,7 @@ import RadioButton from 'primevue/radiobutton';
 import InputNumber from 'primevue/inputnumber';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
+import PickList from 'primevue/picklist';
 import Checkbox from 'primevue/checkbox';
 
 import 'primevue/resources/themes/lara-light-blue/theme.css';
@@ -60,6 +61,7 @@ app.component('RadioButton', RadioButton);
 app.component('InputNumber', InputNumber);
 app.component('Dialog', Dialog);
 app.component('Dropdown', Dropdown);
+app.component('PickList', PickList);
 app.component('Checkbox', Checkbox);
 
 const bootstrap = async () => {

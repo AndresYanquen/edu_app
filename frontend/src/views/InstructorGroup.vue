@@ -48,6 +48,8 @@
               paginator
               :rows="10"
               :rowsPerPageOptions="[10, 25, 50]"
+              :sortField="'percent'"
+              :sortOrder="-1"
             >
               <Column field="fullName" header="Student" />
               <Column field="email" header="Email" />
@@ -59,7 +61,23 @@
                   </div>
                 </template>
               </Column>
-              <Column field="nextLessonTitle" header="Next Lesson" />
+              <Column header="Last activity">
+                <template #body="{ data }">
+                  <div class="activity-cell">
+                    <Tag
+                      v-if="!data.lastSeenAt"
+                      value="Never accessed"
+                      severity="warning"
+                    />
+                    <span v-else>{{ formatLastActivity(data.lastSeenAt) }}</span>
+                  </div>
+                </template>
+              </Column>
+              <Column header="Best quiz score">
+                <template #body="{ data }">
+                  <span>{{ formatScore(data.bestQuizScore) }}</span>
+                </template>
+              </Column>
             </DataTable>
 
             <div v-if="!filteredStudents.length" class="empty-state">
@@ -77,114 +95,108 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
-import api from '../api/axios'
+import { computed, ref, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
+import api from '../api/axios';
 
-const route = useRoute()
-const router = useRouter()
-const toast = useToast()
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
 
-const group = ref(null)
-const students = ref([])
-const loading = ref(true)
-const error = ref(false)
-const filter = ref('')
-
-const mapProgress = (progressList) =>
-  progressList.reduce((acc, item) => {
-    acc[item.studentId] = item
-    return acc
-  }, {})
+const group = ref(null);
+const students = ref([]);
+const loading = ref(true);
+const error = ref(false);
+const filter = ref('');
 
 const loadData = async () => {
-  loading.value = true
-  error.value = false
+  loading.value = true;
+  error.value = false;
 
   try {
-    // Get group header info (name/schedule) from instructor groups list
-    const groupsRes = await api.get('/instructor/groups')
+    const [groupsRes, analyticsRes] = await Promise.all([
+      api.get('/instructor/groups'),
+      api.get(`/groups/${route.params.id}/analytics`),
+    ]);
+
     group.value = groupsRes.data
       .map((g) => ({
         id: g.group_id,
         name: g.group_name,
         schedule_text: g.schedule_text,
       }))
-      .find((g) => g.id === route.params.id)
+      .find((g) => g.id === route.params.id) || { name: 'Group', schedule_text: '' };
 
-    if (!group.value) {
-      group.value = { name: 'Group', schedule_text: '' }
-    }
-
-    // Fetch students + progress in parallel
-    const [studentsRes, progressRes] = await Promise.all([
-      api.get(`/groups/${route.params.id}/students`),
-      api.get(`/groups/${route.params.id}/progress`),
-    ])
-
-    const progressMap = mapProgress(
-      (progressRes.data || []).map((p) => ({
-        studentId: p.studentId,
-        percent: p.percent,
-        nextLessonTitle: p.nextLessonTitle,
-      })),
-    )
-
-    students.value = (studentsRes.data || []).map((student) => ({
-      id: student.id,
-      fullName: student.full_name,
-      email: student.email,
-      percent: progressMap[student.id]?.percent ?? 0,
-      nextLessonTitle: progressMap[student.id]?.nextLessonTitle ?? '—',
-    }))
+    students.value = (analyticsRes.data || []).map((row) => ({
+      id: row.studentId,
+      fullName: row.fullName,
+      email: row.email,
+      percent: row.percent,
+      lastSeenAt: row.lastSeenAt,
+      bestQuizScore: row.bestQuizScore,
+      lastQuizScore: row.lastQuizScore,
+    }));
   } catch (err) {
-    error.value = true
+    error.value = true;
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to load group',
       life: 3000,
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const goBack = () => {
-  router.push('/instructor')
-}
+  router.push('/instructor');
+};
 
 const filteredStudents = computed(() => {
-  const term = filter.value.trim().toLowerCase()
-  const sorted = [...students.value].sort((a, b) => (b.percent || 0) - (a.percent || 0))
-  if (!term) return sorted
+  const term = filter.value.trim().toLowerCase();
+  const sorted = [...students.value].sort((a, b) => (b.percent || 0) - (a.percent || 0));
+  if (!term) return sorted;
 
   return sorted.filter((s) => {
-    const name = (s.fullName || '').toLowerCase()
-    const email = (s.email || '').toLowerCase()
-    return name.includes(term) || email.includes(term)
-  })
-})
+    const name = (s.fullName || '').toLowerCase();
+    const email = (s.email || '').toLowerCase();
+    return name.includes(term) || email.includes(term);
+  });
+});
 
-const totalStudents = computed(() => students.value.length)
+const totalStudents = computed(() => students.value.length);
 
 const averagePercent = computed(() => {
-  if (!students.value.length) return 0
-  const sum = students.value.reduce((acc, s) => acc + (s.percent || 0), 0)
-  return Math.round(sum / students.value.length)
-})
+  if (!students.value.length) return 0;
+  const sum = students.value.reduce((acc, s) => acc + (s.percent || 0), 0);
+  return Math.round(sum / students.value.length);
+});
+
+const formatLastActivity = (value) => {
+  if (!value) return 'Never accessed';
+  const date = new Date(value);
+  return date.toLocaleString();
+};
+
+const formatScore = (value) => {
+  if (value === null || value === undefined) {
+    return '—';
+  }
+  return `${value}%`;
+};
 
 onMounted(() => {
-  loadData()
-})
+  loadData();
+});
 
 watch(
   () => route.params.id,
   (newId, oldId) => {
-    if (newId && newId !== oldId) loadData()
+    if (newId && newId !== oldId) loadData();
   },
-)
+);
 </script>
 
 <style scoped>
@@ -233,6 +245,12 @@ watch(
   text-align: right;
   color: #6b7280;
   font-size: 0.85rem;
+}
+
+.activity-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .empty-state {

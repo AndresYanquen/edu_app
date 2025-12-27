@@ -14,6 +14,9 @@ const {
   quizQuestionUpdateSchema,
   quizOptionCreateSchema,
   quizOptionUpdateSchema,
+  enrollStudentSchema,
+  assignGroupSchema,
+  bulkEnrollSchema,
   formatZodError,
 } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
@@ -41,6 +44,26 @@ const fetchCourseIdByLesson = async (lessonId) => {
   );
   return rows[0]?.course_id;
 };
+
+const fetchGroupById = async (groupId) => {
+  const { rows } = await pool.query(
+    'SELECT id, course_id, name FROM groups WHERE id = $1 LIMIT 1',
+    [groupId],
+  );
+  return rows[0];
+};
+
+const removeStudentFromCourseGroups = (client, courseId, studentId) =>
+  client.query(
+    `
+      DELETE FROM group_students gs
+      USING groups g
+      WHERE gs.group_id = g.id
+        AND g.course_id = $1
+        AND gs.user_id = $2
+    `,
+    [courseId, studentId],
+  );
 
 
 const ensureCourseEditable = async (courseId, user, res) => {
@@ -1044,6 +1067,382 @@ router.delete('/quiz/options/:id', async (req, res) => {
   } catch (err) {
     console.error('Failed to delete quiz option', err);
     return res.status(500).json({ error: 'Failed to delete quiz option' });
+  }
+});
+
+router.get('/courses/:courseId/groups', async (req, res) => {
+  const courseId = req.params.courseId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT id, name, schedule_text
+        FROM groups
+        WHERE course_id = $1
+        ORDER BY name ASC
+      `,
+      [courseId],
+    );
+
+    return res.json(
+      rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        scheduleText: row.schedule_text,
+      })),
+    );
+  } catch (err) {
+    console.error('Failed to list course groups', err);
+    return res.status(500).json({ error: 'Failed to list groups' });
+  }
+});
+
+router.get('/courses/:courseId/students/available', async (req, res) => {
+  const courseId = req.params.courseId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT u.id, u.full_name, u.email
+        FROM users u
+        JOIN academy_memberships am ON am.user_id = u.id
+        WHERE am.role = 'student'
+          AND am.status = 'active'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM enrollments e
+            WHERE e.course_id = $1
+              AND e.user_id = u.id
+          )
+        ORDER BY u.full_name ASC
+      `,
+      [courseId],
+    );
+
+    return res.json(
+      rows.map((row) => ({
+        id: row.id,
+        fullName: row.full_name,
+        email: row.email,
+      })),
+    );
+  } catch (err) {
+    console.error('Failed to list available students', err);
+    return res.status(500).json({ error: 'Failed to list students' });
+  }
+});
+
+router.get('/courses/:courseId/enrollments', async (req, res) => {
+  const courseId = req.params.courseId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT
+          e.user_id AS student_id,
+          u.full_name,
+          u.email,
+          assignment.group_id,
+          assignment.group_name
+        FROM enrollments e
+        JOIN users u ON u.id = e.user_id
+        JOIN academy_memberships am ON am.user_id = u.id AND am.role = 'student'
+        LEFT JOIN LATERAL (
+          SELECT gs.group_id, g.name AS group_name
+          FROM group_students gs
+          JOIN groups g ON g.id = gs.group_id
+          WHERE gs.user_id = e.user_id
+            AND g.course_id = e.course_id
+          LIMIT 1
+        ) assignment ON true
+        WHERE e.course_id = $1
+        ORDER BY u.full_name ASC
+      `,
+      [courseId],
+    );
+
+    return res.json(
+      rows.map((row) => ({
+        studentId: row.student_id,
+        fullName: row.full_name,
+        email: row.email,
+        groupId: row.group_id || null,
+        groupName: row.group_name || null,
+      })),
+    );
+  } catch (err) {
+    console.error('Failed to list enrollments', err);
+    return res.status(500).json({ error: 'Failed to list enrollments' });
+  }
+});
+
+router.post('/courses/:courseId/enroll', async (req, res) => {
+  const courseId = req.params.courseId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  const parsed = enrollStudentSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const studentRes = await client.query(
+      `
+        SELECT u.id
+        FROM users u
+        JOIN academy_memberships am ON am.user_id = u.id
+        WHERE u.id = $1
+          AND am.role = 'student'
+        LIMIT 1
+      `,
+      [parsed.data.studentId],
+    );
+    if (!studentRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const existing = await client.query(
+      `
+        SELECT 1
+        FROM enrollments
+        WHERE course_id = $1 AND user_id = $2
+        LIMIT 1
+      `,
+      [courseId, parsed.data.studentId],
+    );
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Student already enrolled in this course' });
+    }
+
+    await client.query(
+      `
+        INSERT INTO enrollments (course_id, user_id)
+        VALUES ($1, $2)
+      `,
+      [courseId, parsed.data.studentId],
+    );
+
+    if (parsed.data.groupId) {
+      const group = await fetchGroupById(parsed.data.groupId);
+      if (!group || group.course_id !== courseId) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Group must belong to this course' });
+      }
+
+      await removeStudentFromCourseGroups(client, courseId, parsed.data.studentId);
+      await client.query(
+        `
+          INSERT INTO group_students (group_id, user_id)
+          VALUES ($1, $2)
+          ON CONFLICT (group_id, user_id) DO NOTHING
+        `,
+        [parsed.data.groupId, parsed.data.studentId],
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.status(201).json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to enroll student', err);
+    return res.status(500).json({ error: 'Failed to enroll student' });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/courses/:courseId/enroll/:studentId', async (req, res) => {
+  const courseId = req.params.courseId;
+  const studentId = req.params.studentId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const deleted = await client.query(
+      `
+        DELETE FROM enrollments
+        WHERE course_id = $1 AND user_id = $2
+        RETURNING 1
+      `,
+      [courseId, studentId],
+    );
+    if (!deleted.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Enrollment not found' });
+    }
+
+    await removeStudentFromCourseGroups(client, courseId, studentId);
+
+    await client.query('COMMIT');
+    return res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to remove enrollment', err);
+    return res.status(500).json({ error: 'Failed to remove enrollment' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/courses/:courseId/enroll/:studentId/group', async (req, res) => {
+  const courseId = req.params.courseId;
+  const studentId = req.params.studentId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  const parsed = assignGroupSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const enrolled = await client.query(
+      `
+        SELECT 1
+        FROM enrollments
+        WHERE course_id = $1 AND user_id = $2
+        LIMIT 1
+      `,
+      [courseId, studentId],
+    );
+    if (!enrolled.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Student is not enrolled in this course' });
+    }
+
+    if (parsed.data.groupId) {
+      const group = await fetchGroupById(parsed.data.groupId);
+      if (!group || group.course_id !== courseId) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Group must belong to this course' });
+      }
+    }
+
+    await removeStudentFromCourseGroups(client, courseId, studentId);
+
+    if (parsed.data.groupId) {
+      await client.query(
+        `
+          INSERT INTO group_students (group_id, user_id)
+          VALUES ($1, $2)
+          ON CONFLICT (group_id, user_id) DO NOTHING
+        `,
+        [parsed.data.groupId, studentId],
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to update group assignment', err);
+    return res.status(500).json({ error: 'Failed to update group assignment' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/courses/:courseId/enroll/bulk', async (req, res) => {
+  const courseId = req.params.courseId;
+  const allowed = await ensureCourseEditable(courseId, req.user, res);
+  if (!allowed) return;
+
+  const parsed = bulkEnrollSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const studentIds = [...new Set(parsed.data.studentIds)];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (parsed.data.groupId) {
+      const group = await fetchGroupById(parsed.data.groupId);
+      if (!group || group.course_id !== courseId) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Group must belong to this course' });
+      }
+    }
+
+    const { rows: studentRows } = await client.query(
+      `
+        SELECT u.id
+        FROM users u
+        JOIN academy_memberships am ON am.user_id = u.id
+        WHERE u.id = ANY($1::uuid[])
+          AND am.role = 'student'
+      `,
+      [studentIds],
+    );
+    const validStudents = new Set(studentRows.map((row) => row.id));
+
+    const enrolled = [];
+    const skipped = [];
+
+    for (const studentId of studentIds) {
+      if (!validStudents.has(studentId)) {
+        skipped.push({ studentId, reason: 'not_student' });
+        continue;
+      }
+
+      const insertRes = await client.query(
+        `
+          INSERT INTO enrollments (course_id, user_id)
+          VALUES ($1, $2)
+          ON CONFLICT (course_id, user_id) DO NOTHING
+          RETURNING user_id
+        `,
+        [courseId, studentId],
+      );
+
+      if (!insertRes.rows.length) {
+        skipped.push({ studentId, reason: 'already_enrolled' });
+        continue;
+      }
+
+      if (parsed.data.groupId) {
+        await removeStudentFromCourseGroups(client, courseId, studentId);
+        await client.query(
+          `
+            INSERT INTO group_students (group_id, user_id)
+            VALUES ($1, $2)
+            ON CONFLICT (group_id, user_id) DO NOTHING
+          `,
+          [parsed.data.groupId, studentId],
+        );
+      }
+
+      enrolled.push(studentId);
+    }
+
+    await client.query('COMMIT');
+    const statusCode = enrolled.length ? 201 : 200;
+    return res.status(statusCode).json({ enrolled, skipped });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to bulk enroll students', err);
+    return res.status(500).json({ error: 'Failed to enroll students' });
+  } finally {
+    client.release();
   }
 });
 

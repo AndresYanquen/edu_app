@@ -42,6 +42,21 @@ export const updateQuizOption = (optionId, payload) =>
 export const deleteQuizOption = (optionId) =>
   unwrap(api.delete(`/cms/quiz/options/${optionId}`));
 
+export const getCourseGroups = (courseId) =>
+  unwrap(api.get(`/cms/courses/${courseId}/groups`));
+export const getAvailableStudents = (courseId) =>
+  unwrap(api.get(`/cms/courses/${courseId}/students/available`));
+export const getCourseEnrollments = (courseId) =>
+  unwrap(api.get(`/cms/courses/${courseId}/enrollments`));
+export const enrollStudent = (courseId, payload) =>
+  unwrap(api.post(`/cms/courses/${courseId}/enroll`, payload));
+export const removeEnrollment = (courseId, studentId) =>
+  unwrap(api.delete(`/cms/courses/${courseId}/enroll/${studentId}`));
+export const updateEnrollmentGroup = (courseId, studentId, payload) =>
+  unwrap(api.post(`/cms/courses/${courseId}/enroll/${studentId}/group`, payload));
+export const bulkEnrollStudents = (courseId, payload) =>
+  unwrap(api.post(`/cms/courses/${courseId}/enroll/bulk`, payload));
+
 export default {
   listCourses,
   createCourse,
@@ -66,4 +81,11 @@ export default {
   createQuizOption,
   updateQuizOption,
   deleteQuizOption,
+  getCourseGroups,
+  getAvailableStudents,
+  getCourseEnrollments,
+  enrollStudent,
+  removeEnrollment,
+  updateEnrollmentGroup,
+  bulkEnrollStudents,
 };

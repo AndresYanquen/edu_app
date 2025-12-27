@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "dev",
+      "label": "API: npm run dev",
+      "problemMatcher": [],
+      "detail": "Start the Express API server with live debugging support."
+    },
+    {
+      "type": "npm",
+      "script": "dev",
+      "path": "frontend",
+      "label": "Frontend: npm run dev",
+      "problemMatcher": [],
+      "detail": "Start the Vite frontend dev server.",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      }
+    }
+  ]
+}
