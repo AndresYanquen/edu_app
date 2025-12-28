@@ -1,58 +1,95 @@
 <template>
   <div class="shell">
-    <Toolbar class="topbar">
-      <template #start>
-        <div class="brand">
-          <i class="pi pi-graduation-cap"></i>
-          <div>
-            <h3>Academy</h3>
-            <small>MVP</small>
+    <aside :class="['sidebar', { collapsed }]">
+      <div class="sidebar-inner">
+        <div class="sidebar-header">
+          <Avatar label="AC" shape="circle" size="large" class="brand-avatar" />
+          <div class="brand-copy" v-if="!collapsed">
+            <strong>Academy</strong>
+            <small>Learning</small>
+          </div>
+          <Button
+            :icon="toggleIcon"
+            class="p-button-rounded p-button-text collapse-btn"
+            @click="toggleSidebar"
+            aria-label="Toggle sidebar"
+          />
+        </div>
+
+        <!-- <div class="sidebar-search" v-if="!collapsed">
+          <span class="p-input-icon-left">
+            <i class="pi pi-search" />
+            <InputText placeholder="Search" />
+          </span>
+        </div> -->
+
+        <div class="sidebar-section">
+          <small v-if="!collapsed">Workspace</small>
+          <div class="nav-list">
+            <Button
+              v-for="link in navLinks"
+              :key="link.to"
+              class="nav-item"
+              :label="collapsed ? '' : link.label"
+              :icon="link.icon"
+              :severity="isActive(link.to) ? 'primary' : null"
+              :outlined="!isActive(link.to)"
+              @click="navigate(link.to)"
+              :aria-label="link.label"
+            />
           </div>
         </div>
-      </template>
-      <template #center>
-        <div class="nav-links" v-if="navLinks.length">
-          <Button
-            v-for="link in navLinks"
-            :key="link.to"
-            class="p-button-text"
-            :label="link.label"
-            :icon="link.icon"
-            @click="navigate(link.to)"
-            :severity="isActive(link.to) ? 'info' : null"
-          />
-        </div>
-      </template>
-      <template #end>
-        <div class="user-meta">
-          <span class="user-name">{{ auth.user?.fullName }}</span>
-          <Tag :value="auth.role" severity="info" />
-          <Button
-            label="Logout"
-            icon="pi pi-sign-out"
-            class="p-button-rounded p-button-text"
-            @click="handleLogout"
-          />
-        </div>
-      </template>
-    </Toolbar>
 
-    <div class="shell-body">
-      <div class="shell-content">
-        <slot />
+        <Divider />
+
+        <!-- <div class="sidebar-section" v-if="!collapsed">
+          <small>Projects</small>
+          <div class="project-dots">
+            <span class="dot dot-green"></span>
+            <span class="dot dot-blue"></span>
+            <span class="dot dot-purple"></span>
+          </div>
+        </div> -->
+
+        <div class="spacer" />
+
+        <div class="user-card">
+          <div class="user-info">
+            <Avatar :label="initials" shape="circle" />
+            <div class="container-user-info" v-if="!collapsed">
+              <strong>{{ auth.user?.fullName }}</strong>
+              <small>{{ auth.user?.email }}</small>
+            </div>
+          </div>
+          <div class="user-actions">
+            <Tag :value="auth.role" severity="info" size="small" v-if="!collapsed" />
+            <Button
+              v-if="!collapsed"
+              icon="pi pi-sign-out"
+              class="p-button-rounded p-button-text"
+              label="Logout"
+              @click="handleLogout"
+            />
+          </div>
+        </div>
       </div>
-    </div>
+    </aside>
+
+    <main class="shell-content">
+      <slot />
+    </main>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const collapsed = ref(false);
 
 const studentLinks = [
   { label: 'Student Dashboard', to: '/student', icon: 'pi pi-home' },
@@ -87,77 +124,214 @@ const handleLogout = async () => {
   await auth.logout();
   router.push('/login');
 };
+
+const toggleSidebar = () => {
+  collapsed.value = !collapsed.value;
+};
+
+const initials = computed(() => {
+  if (!auth.user?.fullName) return 'AC';
+  return auth.user.fullName
+    .split(' ')
+    .map((chunk) => chunk.charAt(0))
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+});
+
+const toggleIcon = computed(() =>
+  collapsed.value ? 'pi pi-chevron-right' : 'pi pi-chevron-left',
+);
 </script>
 
 <style scoped>
 .shell {
-  min-height: 100vh;
-  background-color: #f4f5f7;
+  height: 100vh;
+  display: flex;
+  background-color: var(--app-bg);
+  overflow: hidden;
 }
 
-.topbar {
-  background-color: #0f172a;
-  color: #fff;
-  padding: 0 1.5rem;
+.sidebar {
+  width: 280px;
+  background: var(--app-surface);
+  border-right: 1px solid var(--app-border);
+  padding: 20px 5px;
+  transition: width 0.2s ease;
+  display: flex;
+  height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
-.brand {
+.sidebar.collapsed {
+  width: 52px;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 1rem;
+  height: 100%;
+}
+
+.sidebar-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.brand-avatar {
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover));
+  color: #fff;
+  width: 2.5rem;
+  height: 2.5rem;
   font-size: 1rem;
 }
 
-.brand i {
-  font-size: 1.5rem;
-}
-
-.brand h3 {
-  margin: 0;
+.brand-copy strong {
+  display: block;
   font-size: 1rem;
 }
 
-.brand small {
-  color: #cbd5f5;
+.brand-copy small {
+  color: var(--text-muted);
 }
 
-.nav-links {
-  display: flex;
+.collapse-btn {
+  margin-left: auto;
+  color: var(--text-muted);
+  order: 3;
+}
+
+.sidebar.collapsed .sidebar-header {
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0.5rem;
 }
 
-.user-meta {
+.sidebar.collapsed .collapse-btn {
+  order: -1;
+  margin-left: 0;
+}
+
+.sidebar-search .p-input-icon-left {
+  width: 100%;
+}
+
+.sidebar-search input {
+  width: 100%;
+  border-radius: 999px;
+}
+
+.sidebar-section small {
+  display: block;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nav-item {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 0.75rem;
+  font-weight: 600; 
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  border-radius: 1rem;
+  padding: 0.5rem 0.5rem;
+  min-height: 38px;
+}
+
+.project-dots {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+}
+
+.dot-green {
+  background: #a7f3d0;
+}
+
+.dot-blue {
+  background: #bfdbfe;
+}
+
+.dot-purple {
+  background: #ddd6fe;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.user-card {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--brand-primary-soft);
+  color: var(--text-primary);
+  position: sticky;
+  bottom: 1rem;
+}
+
+.user-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
-.user-name {
-  font-weight: 600;
+.sidebar.collapsed .user-card {
+  padding: 10px 0px;
 }
 
-.shell-body {
-  padding: 1.5rem;
+.sidebar.collapsed .user-info {
+  justify-content: center;
+}
+
+.user-info small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.container-user-info{
+  display: grid;
+}
+
+.container-user-info:nth-child(2){
+  overflow-x: hidden;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.sidebar.collapsed .user-actions {
+  justify-content: center;
 }
 
 .shell-content {
-  min-height: calc(100vh - 4rem);
-}
-
-@media (max-width: 768px) {
-  .topbar {
-    flex-wrap: wrap;
-    gap: 1rem;
-  }
-
-  .nav-links {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .user-meta {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+  flex: 1;
+  padding: 2rem;
+  height: 100vh;
+  background: var(--app-bg);
+  overflow: auto;
 }
 </style>

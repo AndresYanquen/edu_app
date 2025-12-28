@@ -244,6 +244,12 @@
       :contentStyle="{ minHeight: '60vh' }"
       class="enroll-dialog"
     >
+      <div class="picklist-search">
+        <span class="p-input-icon-left">
+          <i class="pi pi-search" />
+          <InputText v-model="picklistFilter" placeholder="Search students" />
+        </span>
+      </div>
       <PickList
         v-model="picklistModel"
         dataKey="id"
@@ -374,8 +380,20 @@ const availableStudents = ref([]);
 const loadingAvailableStudents = ref(false);
 const enrollForm = ref({ groupId: null });
 const picklistModel = ref([[], []]);
+const picklistFilter = ref('');
 const picklistSource = computed(() => picklistModel.value[0]);
 const picklistTarget = computed(() => picklistModel.value[1]);
+const filteredAvailableStudents = computed(() => {
+  const term = picklistFilter.value.trim().toLowerCase();
+  if (!term) {
+    return availableStudents.value || [];
+  }
+  return (availableStudents.value || []).filter((student) => {
+    const name = student.fullName?.toLowerCase() || '';
+    const email = student.email?.toLowerCase() || '';
+    return name.includes(term) || email.includes(term);
+  });
+});
 const submittingEnrollment = ref(false);
 const removingEnrollmentId = ref(null);
 const updatingGroupId = ref(null);
@@ -462,7 +480,7 @@ const syncPicklistSource = () => {
   if (!showEnrollDialog.value) return;
   const target = picklistTarget.value;
   const targetIds = new Set(target.map((student) => student.id));
-  const nextSource = (availableStudents.value || []).filter(
+  const nextSource = (filteredAvailableStudents.value || []).filter(
     (student) => !targetIds.has(student.id),
   );
   setPicklistState(nextSource, target);
@@ -814,6 +832,10 @@ watch(availableStudents, () => {
   syncPicklistSource();
 });
 
+watch(picklistFilter, () => {
+  syncPicklistSource();
+});
+
 watch(
   showEnrollDialog,
   (visible) => {
@@ -821,6 +843,7 @@ watch(
       setPicklistState([], []);
       enrollForm.value.groupId = null;
       bulkErrors.value = [];
+      picklistFilter.value = '';
     }
   },
 );
@@ -994,6 +1017,18 @@ init();
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.picklist-search {
+  max-width: 400px;
+}
+
+.picklist-search .p-input-icon-left {
+  width: 100%;
+}
+
+.picklist-search input {
+  width: 100%;
 }
 
 .enroll-picklist {
