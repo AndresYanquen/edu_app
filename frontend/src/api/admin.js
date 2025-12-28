@@ -7,6 +7,12 @@ export const listUsers = (params = {}) => unwrap(api.get('/admin/users', { param
 export const resetUserPassword = (id) => unwrap(api.post(`/admin/users/${id}/reset-password`));
 export const deactivateUser = (id) => unwrap(api.post(`/admin/users/${id}/deactivate`));
 export const activateUser = (id) => unwrap(api.post(`/admin/users/${id}/activate`));
+export const bulkInviteUsers = (formData) =>
+  unwrap(
+    api.post('/admin/users/bulk-invite', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  );
 
 export default {
   createUser,
@@ -14,4 +20,5 @@ export default {
   resetUserPassword,
   deactivateUser,
   activateUser,
+  bulkInviteUsers,
 };

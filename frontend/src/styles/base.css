@@ -1,0 +1,55 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--app-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+
+.page {
+  padding: 1.5rem;
+  min-height: calc(100vh - 4rem);
+  background-color: var(--app-bg);
+}
+
+.p-card,
+.card-surface {
+  background-color: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 1rem;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-primary-soft);
+  outline-offset: 2px;
+}
+
+input,
+textarea,
+.p-inputtext,
+.p-inputtextarea {
+  color: var(--text-primary);
+}

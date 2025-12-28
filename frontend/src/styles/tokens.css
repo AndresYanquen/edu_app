@@ -1,0 +1,22 @@
+:root {
+  --brand-primary: #2563eb;
+  --brand-primary-hover: #1d4ed8;
+  --brand-primary-soft: #dbeafe;
+
+  --brand-success: #16a34a;
+  --brand-success-soft: #dcfce7;
+
+  --brand-warning: #f59e0b;
+  --brand-warning-soft: #fef3c7;
+
+  --brand-danger: #dc2626;
+  --brand-danger-soft: #fee2e2;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-border: #e5e7eb;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+}

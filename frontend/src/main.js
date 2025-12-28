@@ -24,10 +24,12 @@ import Dropdown from 'primevue/dropdown';
 import PickList from 'primevue/picklist';
 import Checkbox from 'primevue/checkbox';
 
-import 'primevue/resources/themes/lara-light-blue/theme.css';
+import 'primevue/resources/themes/aura-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
 import 'primeicons/primeicons.css';
-import './style.css';
+import './styles/tokens.css';
+import './styles/base.css';
+import './styles/prime-overrides.css';
 
 import App from './App.vue';
 import router from './router';
