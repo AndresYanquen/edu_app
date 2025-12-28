@@ -10,6 +10,7 @@ import AdminHome from '../views/AdminHome.vue';
 import CmsCourses from '../views/CmsCourses.vue';
 import CmsCourseBuilder from '../views/CmsCourseBuilder.vue';
 import CmsLessonEditor from '../views/CmsLessonEditor.vue';
+import ActivateAccount from '../views/ActivateAccount.vue';
 import { useAuthStore } from '../stores/auth';
 
 const roleHome = {
@@ -28,6 +29,7 @@ const canAccess = (rolesMeta, userRole) => {
 
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true } },
+  { path: '/activate', name: 'activate', component: ActivateAccount, meta: { public: true } },
   { path: '/auth/login', redirect: '/login', meta: { public: true } },
   {
     path: '/student',

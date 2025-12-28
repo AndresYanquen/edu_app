@@ -71,6 +71,32 @@ const quizAttemptSchema = z.object({
     .min(1, 'At least one answer is required'),
 });
 
+const passwordSchema = z
+  .string({ required_error: 'password is required' })
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[a-z]/, 'Password must include a lowercase letter')
+  .regex(/[A-Z]/, 'Password must include an uppercase letter')
+  .regex(/[0-9]/, 'Password must include a digit');
+
+const userCreateSchema = z.object({
+  fullName: z
+    .string({ required_error: 'fullName is required' })
+    .trim()
+    .min(1, 'fullName is required'),
+  email: z
+    .string({ required_error: 'email is required' })
+    .trim()
+    .email('Email must be valid'),
+  role: z.enum(['student', 'instructor'], {
+    errorMap: () => ({ message: 'role must be student or instructor' }),
+  }),
+});
+
+const activationSchema = z.object({
+  token: z.string({ required_error: 'token is required' }).min(1, 'token is required'),
+  password: passwordSchema,
+});
+
 const questionTypeEnum = z.enum(['single_choice', 'true_false']);
 
 const preprocessInt = (min = 1) =>
@@ -248,6 +274,8 @@ module.exports = {
   quizQuestionUpdateSchema,
   quizOptionCreateSchema,
   quizOptionUpdateSchema,
+  userCreateSchema,
+  activationSchema,
   enrollStudentSchema,
   assignGroupSchema,
   bulkEnrollSchema,

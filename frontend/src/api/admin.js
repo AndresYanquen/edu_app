@@ -1,0 +1,17 @@
+import api from './axios';
+
+const unwrap = (promise) => promise.then((res) => res.data);
+
+export const createUser = (payload) => unwrap(api.post('/admin/users', payload));
+export const listUsers = (params = {}) => unwrap(api.get('/admin/users', { params }));
+export const resetUserPassword = (id) => unwrap(api.post(`/admin/users/${id}/reset-password`));
+export const deactivateUser = (id) => unwrap(api.post(`/admin/users/${id}/deactivate`));
+export const activateUser = (id) => unwrap(api.post(`/admin/users/${id}/activate`));
+
+export default {
+  createUser,
+  listUsers,
+  resetUserPassword,
+  deactivateUser,
+  activateUser,
+};

@@ -2,13 +2,14 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const pool = require('../db');
-const { loginSchema, formatZodError } = require('../utils/validators');
+const { loginSchema, activationSchema, formatZodError } = require('../utils/validators');
 const {
   createAccessToken,
   generateRefreshToken,
   buildCookieOptions,
   hashRefreshToken,
 } = require('../utils/authTokens');
+const { hashInviteToken } = require('../utils/inviteTokens');
 
 const router = express.Router();
 const refreshCookieOptions = buildCookieOptions();
@@ -81,6 +82,8 @@ router.post('/login', loginLimiter, async (req, res) => {
           u.email,
           u.password_hash,
           u.full_name,
+          u.must_set_password,
+          u.is_active,
           m.role,
           m.status AS membership_status
         FROM users u
@@ -98,6 +101,14 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     if (user.membership_status !== 'active') {
       return res.status(403).json({ error: 'User membership is not active' });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'User is not active' });
+    }
+
+    if (user.must_set_password) {
+      return res.status(403).json({ error: 'Account not activated' });
     }
 
     const passwordMatches = await bcrypt.compare(password, user.password_hash || '');
@@ -199,6 +210,60 @@ router.post('/logout', async (req, res) => {
   clearRefreshCookie(res);
 
   return res.json({ ok: true });
+});
+
+router.post('/activate', async (req, res) => {
+  const parsed = activationSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const { token, password } = parsed.data;
+  const tokenHash = hashInviteToken(token);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const inviteRes = await client.query(
+      `
+        SELECT ui.id, ui.user_id, ui.expires_at, ui.used_at, u.must_set_password
+        FROM user_invites ui
+        JOIN users u ON u.id = ui.user_id
+        WHERE ui.token_hash = $1
+        LIMIT 1
+      `,
+      [tokenHash],
+    );
+
+    const invite = inviteRes.rows[0];
+    if (!invite || invite.used_at || !invite.must_set_password || new Date(invite.expires_at) <= new Date()) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await client.query(
+      `
+        UPDATE users
+        SET password_hash = $1, must_set_password = false, is_active = true
+        WHERE id = $2
+      `,
+      [passwordHash, invite.user_id],
+    );
+
+    await client.query('UPDATE user_invites SET used_at = now() WHERE id = $1', [invite.id]);
+
+    await client.query('COMMIT');
+
+    return res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to activate account', err);
+    return res.status(500).json({ error: 'Failed to activate account' });
+  } finally {
+    client.release();
+  }
 });
 
 module.exports = router;

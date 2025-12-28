@@ -14,6 +14,7 @@ const progressRoutes = require('./routes/progress');
 const quizzesRoutes = require('./routes/quizzes');
 const instructorRoutes = require('./routes/instructor');
 const cmsRoutes = require('./routes/cms');
+const adminRoutes = require('./routes/admin');
 const swaggerDocument = require('./docs/openapi');
 
 const app = express();
@@ -41,6 +42,7 @@ app.use('/auth', authRoutes);
 app.use('/me', meRoutes);
 app.use('/courses', coursesRoutes);
 app.use('/cms', cmsRoutes);
+app.use('/admin', adminRoutes);
 app.use(progressRoutes);
 app.use(quizzesRoutes);
 app.use(instructorRoutes);
