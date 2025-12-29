@@ -1,7 +1,11 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const {
+  requireGlobalRoleAny,
+  requireCourseRoleAny,
+  hasGlobalRole,
+} = require('../middleware/roles');
 const {
   courseCreateSchema,
   courseUpdateSchema,
@@ -21,10 +25,15 @@ const {
 } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
 
+const CMS_GLOBAL_ROLES = ['admin', 'instructor', 'content_editor', 'enrollment_manager'];
+const CONTENT_ROLES = ['instructor', 'content_editor'];
+const ENROLLMENT_ROLES = ['instructor', 'enrollment_manager'];
+const COURSE_STAFF_ROLES = ['instructor', 'content_editor', 'enrollment_manager'];
+
 const router = express.Router();
 
 router.use(auth);
-router.use(requireRole(['admin', 'instructor']));
+router.use(requireGlobalRoleAny(CMS_GLOBAL_ROLES));
 
 const fetchCourseIdByModule = async (moduleId) => {
   const { rows } = await pool.query('SELECT course_id FROM modules WHERE id = $1 LIMIT 1', [moduleId]);
@@ -44,6 +53,16 @@ const fetchCourseIdByLesson = async (lessonId) => {
   );
   return rows[0]?.course_id;
 };
+
+const resolveCourseIdFromParam = (param) => (req) => req.params[param];
+const resolveCourseIdFromModuleParam = (param) => async (req) =>
+  fetchCourseIdByModule(req.params[param]);
+const resolveCourseIdFromLessonParam = (param) => async (req) =>
+  fetchCourseIdByLesson(req.params[param]);
+
+const requireCourseContentRole = (resolver) => requireCourseRoleAny(resolver, CONTENT_ROLES);
+const requireCourseEnrollmentRole = (resolver) =>
+  requireCourseRoleAny(resolver, ENROLLMENT_ROLES);
 
 const fetchGroupById = async (groupId) => {
   const { rows } = await pool.query(
@@ -65,19 +84,6 @@ const removeStudentFromCourseGroups = (client, courseId, studentId) =>
     [courseId, studentId],
   );
 
-
-const ensureCourseEditable = async (courseId, user, res) => {
-  if (!courseId) {
-    res.status(404).json({ error: 'Course not found' });
-    return false;
-  }
-  const allowed = await canEditCourse(courseId, user);
-  if (!allowed) {
-    res.status(403).json({ error: 'You cannot edit this course' });
-    return false;
-  }
-  return true;
-};
 
 const mapQuizRowsToQuestions = (rows) => {
   const map = new Map();
@@ -106,8 +112,9 @@ const mapQuizRowsToQuestions = (rows) => {
 
 router.get('/courses', async (req, res) => {
   try {
+    const isAdmin = hasGlobalRole(req.user, 'admin');
     let rows;
-    if (req.user.role === 'admin') {
+    if (isAdmin) {
       ({ rows } = await pool.query(
         `
           SELECT id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
@@ -129,11 +136,13 @@ router.get('/courses', async (req, res) => {
             c.created_at,
             c.updated_at
           FROM courses c
-          LEFT JOIN course_instructors ci ON ci.course_id = c.id
-          WHERE c.owner_user_id = $1 OR ci.user_id = $1
+          LEFT JOIN course_user_roles cur
+            ON cur.course_id = c.id AND cur.user_id = $1
+          LEFT JOIN roles r ON r.id = cur.role_id
+          WHERE c.owner_user_id = $1 OR r.name = ANY($2)
           ORDER BY c.created_at DESC
         `,
-        [req.user.id],
+        [req.user.id, COURSE_STAFF_ROLES],
       ));
     }
 
@@ -151,10 +160,8 @@ router.post('/courses', async (req, res) => {
   }
 
   try {
-    const ownerUserId =
-      req.user.role === 'admin'
-        ? parsed.data.ownerUserId || null
-        : req.user.id;
+    const isAdmin = hasGlobalRole(req.user, 'admin');
+    const ownerUserId = isAdmin ? parsed.data.ownerUserId || null : req.user.id;
 
     const { rows } = await pool.query(
       `
@@ -172,7 +179,10 @@ router.post('/courses', async (req, res) => {
   }
 });
 
-router.patch('/courses/:id', async (req, res) => {
+router.patch(
+  '/courses/:id',
+  requireCourseContentRole(resolveCourseIdFromParam('id')),
+  async (req, res) => {
   const courseId = req.params.id;
   const parsed = courseUpdateSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -180,11 +190,6 @@ router.patch('/courses/:id', async (req, res) => {
   }
 
   try {
-    const allowed = await canEditCourse(courseId, req.user);
-    if (!allowed) {
-      return res.status(403).json({ error: 'You cannot edit this course' });
-    }
-
     const updates = [];
     const values = [];
 
@@ -201,7 +206,7 @@ router.patch('/courses/:id', async (req, res) => {
       updates.push(`level = $${values.length}`);
     }
 
-    if (req.user.role === 'admin' && parsed.data.ownerUserId !== undefined) {
+    if (hasGlobalRole(req.user, 'admin') && parsed.data.ownerUserId !== undefined) {
       values.push(parsed.data.ownerUserId);
       updates.push(`owner_user_id = $${values.length}`);
     }
@@ -233,10 +238,6 @@ router.patch('/courses/:id', async (req, res) => {
 const toggleCoursePublish = async (req, res, isPublished) => {
   const courseId = req.params.id;
   try {
-    const allowed = await canEditCourse(courseId, req.user);
-    if (!allowed) {
-      return res.status(403).json({ error: 'You cannot edit this course' });
-    }
     const { rows } = await pool.query(
       `
         UPDATE courses
@@ -259,11 +260,19 @@ const toggleCoursePublish = async (req, res, isPublished) => {
   }
 };
 
-router.post('/courses/:id/publish', (req, res) => toggleCoursePublish(req, res, true));
-router.post('/courses/:id/unpublish', (req, res) => toggleCoursePublish(req, res, false));
+router.post(
+  '/courses/:id/publish',
+  requireCourseContentRole(resolveCourseIdFromParam('id')),
+  (req, res) => toggleCoursePublish(req, res, true),
+);
+router.post(
+  '/courses/:id/unpublish',
+  requireCourseContentRole(resolveCourseIdFromParam('id')),
+  (req, res) => toggleCoursePublish(req, res, false),
+);
 
 router.post('/courses/:id/instructors', async (req, res) => {
-  if (req.user.role !== 'admin') {
+  if (!hasGlobalRole(req.user, 'admin')) {
     return res.status(403).json({ error: 'Only admins can assign instructors' });
   }
   const courseId = req.params.id;
@@ -277,6 +286,20 @@ router.post('/courses/:id/instructors', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const roleRes = await client.query(
+      `
+        SELECT id
+        FROM roles
+        WHERE name = 'instructor'
+        LIMIT 1
+      `,
+    );
+    const instructorRoleId = roleRes.rows[0]?.id;
+    if (!instructorRoleId) {
+      await client.query('ROLLBACK');
+      return res.status(500).json({ error: 'Instructor role not configured' });
+    }
 
     const courseCheck = await client.query('SELECT 1 FROM courses WHERE id = $1 LIMIT 1', [courseId]);
     if (!courseCheck.rows.length) {
@@ -299,15 +322,27 @@ router.post('/courses/:id/instructors', async (req, res) => {
       }
     }
 
-    await client.query('DELETE FROM course_instructors WHERE course_id = $1', [courseId]);
+    await client.query(
+      'DELETE FROM course_user_roles WHERE course_id = $1 AND role_id = $2',
+      [courseId, instructorRoleId],
+    );
 
     if (instructorIds.length) {
-      for (const instructorId of instructorIds) {
-        await client.query('INSERT INTO course_instructors (course_id, user_id) VALUES ($1, $2)', [
-          courseId,
-          instructorId,
-        ]);
-      }
+      const values = [];
+      const placeholders = [];
+      instructorIds.forEach((instructorId, index) => {
+        const offset = index * 3;
+        placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
+        values.push(courseId, instructorId, instructorRoleId);
+      });
+      await client.query(
+        `
+          INSERT INTO course_user_roles (course_id, user_id, role_id)
+          VALUES ${placeholders.join(', ')}
+          ON CONFLICT DO NOTHING
+        `,
+        values,
+      );
     }
 
     await client.query('COMMIT');
@@ -321,12 +356,12 @@ router.post('/courses/:id/instructors', async (req, res) => {
   }
 });
 
-router.get('/courses/:courseId/modules', async (req, res) => {
-  const courseId = req.params.courseId;
-  try {
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
-
+router.get(
+  '/courses/:courseId/modules',
+  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    try {
     const { rows } = await pool.query(
       `
         SELECT id, course_id, title, position, order_index, is_published, published_at, created_at, updated_at
@@ -336,24 +371,25 @@ router.get('/courses/:courseId/modules', async (req, res) => {
       `,
       [courseId],
     );
-    return res.json(rows);
-  } catch (err) {
-    console.error('Failed to list modules', err);
-    return res.status(500).json({ error: 'Failed to list modules' });
-  }
-});
+      return res.json(rows);
+    } catch (err) {
+      console.error('Failed to list modules', err);
+      return res.status(500).json({ error: 'Failed to list modules' });
+    }
+  },
+);
 
-router.post('/courses/:courseId/modules', async (req, res) => {
-  const courseId = req.params.courseId;
+router.post(
+  '/courses/:courseId/modules',
+  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
   const parsed = moduleCreateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: formatZodError(parsed.error) });
   }
 
   try {
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
-
     let orderIndex = parsed.data.orderIndex;
     if (!orderIndex) {
       const { rows } = await pool.query(
@@ -371,24 +407,24 @@ router.post('/courses/:courseId/modules', async (req, res) => {
       `,
       [courseId, parsed.data.title, orderIndex, orderIndex],
     );
-    return res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error('Failed to create module', err);
-    return res.status(500).json({ error: 'Failed to create module' });
-  }
-});
+      return res.status(201).json(rows[0]);
+    } catch (err) {
+      console.error('Failed to create module', err);
+      return res.status(500).json({ error: 'Failed to create module' });
+    }
+  },
+);
 
-router.patch('/modules/:id', async (req, res) => {
-  const moduleId = req.params.id;
+router.patch(
+  '/modules/:id',
+  requireCourseContentRole(resolveCourseIdFromModuleParam('id')),
+  async (req, res) => {
+    const moduleId = req.params.id;
   const parsed = moduleUpdateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: formatZodError(parsed.error) });
   }
   try {
-    const courseId = await fetchCourseIdByModule(moduleId);
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
-
     const updates = [];
     const values = [];
     if (parsed.data.title !== undefined) {
@@ -416,19 +452,17 @@ router.patch('/modules/:id', async (req, res) => {
     if (!rows.length) {
       return res.status(404).json({ error: 'Module not found' });
     }
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('Failed to update module', err);
-    return res.status(500).json({ error: 'Failed to update module' });
-  }
-});
+      return res.json(rows[0]);
+    } catch (err) {
+      console.error('Failed to update module', err);
+      return res.status(500).json({ error: 'Failed to update module' });
+    }
+  },
+);
 
 const toggleModulePublish = async (req, res, isPublished) => {
   const moduleId = req.params.id;
   try {
-    const courseId = await fetchCourseIdByModule(moduleId);
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
     const { rows } = await pool.query(
       `
         UPDATE modules
@@ -451,16 +485,23 @@ const toggleModulePublish = async (req, res, isPublished) => {
   }
 };
 
-router.post('/modules/:id/publish', (req, res) => toggleModulePublish(req, res, true));
-router.post('/modules/:id/unpublish', (req, res) => toggleModulePublish(req, res, false));
+router.post(
+  '/modules/:id/publish',
+  requireCourseContentRole(resolveCourseIdFromModuleParam('id')),
+  (req, res) => toggleModulePublish(req, res, true),
+);
+router.post(
+  '/modules/:id/unpublish',
+  requireCourseContentRole(resolveCourseIdFromModuleParam('id')),
+  (req, res) => toggleModulePublish(req, res, false),
+);
 
-router.get('/modules/:moduleId/lessons', async (req, res) => {
-  const moduleId = req.params.moduleId;
-  try {
-    const courseId = await fetchCourseIdByModule(moduleId);
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
-
+router.get(
+  '/modules/:moduleId/lessons',
+  requireCourseContentRole(resolveCourseIdFromModuleParam('moduleId')),
+  async (req, res) => {
+    const moduleId = req.params.moduleId;
+    try {
     const { rows } = await pool.query(
       `
         SELECT id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
@@ -470,24 +511,24 @@ router.get('/modules/:moduleId/lessons', async (req, res) => {
       `,
       [moduleId],
     );
-    return res.json(rows);
-  } catch (err) {
-    console.error('Failed to list lessons', err);
-    return res.status(500).json({ error: 'Failed to list lessons' });
-  }
-});
+      return res.json(rows);
+    } catch (err) {
+      console.error('Failed to list lessons', err);
+      return res.status(500).json({ error: 'Failed to list lessons' });
+    }
+  },
+);
 
-router.post('/modules/:moduleId/lessons', async (req, res) => {
-  const moduleId = req.params.moduleId;
+router.post(
+  '/modules/:moduleId/lessons',
+  requireCourseContentRole(resolveCourseIdFromModuleParam('moduleId')),
+  async (req, res) => {
+    const moduleId = req.params.moduleId;
   const parsed = lessonCreateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: formatZodError(parsed.error) });
   }
   try {
-    const courseId = await fetchCourseIdByModule(moduleId);
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
-
     let orderIndex = parsed.data.orderIndex;
     if (!orderIndex) {
       const { rows } = await pool.query(
@@ -512,24 +553,24 @@ router.post('/modules/:moduleId/lessons', async (req, res) => {
         orderIndex,
       ],
     );
-    return res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error('Failed to create lesson', err);
-    return res.status(500).json({ error: 'Failed to create lesson' });
-  }
-});
+      return res.status(201).json(rows[0]);
+    } catch (err) {
+      console.error('Failed to create lesson', err);
+      return res.status(500).json({ error: 'Failed to create lesson' });
+    }
+  },
+);
 
-router.patch('/lessons/:id', async (req, res) => {
-  const lessonId = req.params.id;
+router.patch(
+  '/lessons/:id',
+  requireCourseContentRole(resolveCourseIdFromLessonParam('id')),
+  async (req, res) => {
+    const lessonId = req.params.id;
   const parsed = lessonUpdateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: formatZodError(parsed.error) });
   }
   try {
-    const courseId = await fetchCourseIdByLesson(lessonId);
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
-
     const updates = [];
     const values = [];
     if (parsed.data.title !== undefined) {
@@ -569,19 +610,17 @@ router.patch('/lessons/:id', async (req, res) => {
     if (!rows.length) {
       return res.status(404).json({ error: 'Lesson not found' });
     }
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('Failed to update lesson', err);
-    return res.status(500).json({ error: 'Failed to update lesson' });
-  }
-});
+      return res.json(rows[0]);
+    } catch (err) {
+      console.error('Failed to update lesson', err);
+      return res.status(500).json({ error: 'Failed to update lesson' });
+    }
+  },
+);
 
 const toggleLessonPublish = async (req, res, isPublished) => {
   const lessonId = req.params.id;
   try {
-    const courseId = await fetchCourseIdByLesson(lessonId);
-    const allowed = await ensureCourseEditable(courseId, req.user, res);
-    if (!allowed) return;
     const { rows } = await pool.query(
       `
         UPDATE lessons
@@ -604,50 +643,53 @@ const toggleLessonPublish = async (req, res, isPublished) => {
   }
 };
 
-router.post('/lessons/:id/publish', (req, res) => toggleLessonPublish(req, res, true));
-router.post('/lessons/:id/unpublish', (req, res) => toggleLessonPublish(req, res, false));
+router.post(
+  '/lessons/:id/publish',
+  requireCourseContentRole(resolveCourseIdFromLessonParam('id')),
+  (req, res) => toggleLessonPublish(req, res, true),
+);
+router.post(
+  '/lessons/:id/unpublish',
+  requireCourseContentRole(resolveCourseIdFromLessonParam('id')),
+  (req, res) => toggleLessonPublish(req, res, false),
+);
 
-router.get('/lessons/:lessonId/quiz', async (req, res) => {
-  const lessonId = req.params.lessonId;
-  try {
-    const courseId = await fetchCourseIdByLesson(lessonId);
-    if (!courseId) {
-      return res.status(404).json({ error: 'Lesson not found' });
+router.get(
+  '/lessons/:lessonId/quiz',
+  requireCourseContentRole(resolveCourseIdFromLessonParam('lessonId')),
+  async (req, res) => {
+    const lessonId = req.params.lessonId;
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT
+            qq.id AS question_id,
+            qq.lesson_id,
+            qq.question_text,
+            qq.question_type,
+            qq.order_index,
+            qo.id AS option_id,
+            qo.option_text,
+            qo.is_correct,
+            qo.order_index AS option_order
+          FROM quiz_questions qq
+          LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+          WHERE qq.lesson_id = $1
+          ORDER BY qq.order_index ASC, qo.order_index ASC
+        `,
+        [lessonId],
+      );
+
+      return res.json({
+        lessonId,
+        questions: mapQuizRowsToQuestions(rows),
+      });
+    } catch (err) {
+      console.error('Failed to load lesson quiz', err);
+      return res.status(500).json({ error: 'Failed to load quiz' });
     }
-    const allowed = await canEditCourse(courseId, req.user);
-    if (!allowed) {
-      return res.status(403).json({ error: 'You cannot edit this course' });
-    }
-
-    const { rows } = await pool.query(
-      `
-        SELECT
-          qq.id AS question_id,
-          qq.lesson_id,
-          qq.question_text,
-          qq.question_type,
-          qq.order_index,
-          qo.id AS option_id,
-          qo.option_text,
-          qo.is_correct,
-          qo.order_index AS option_order
-        FROM quiz_questions qq
-        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
-        WHERE qq.lesson_id = $1
-        ORDER BY qq.order_index ASC, qo.order_index ASC
-      `,
-      [lessonId],
-    );
-
-    return res.json({
-      lessonId,
-      questions: mapQuizRowsToQuestions(rows),
-    });
-  } catch (err) {
-    console.error('Failed to load lesson quiz', err);
-    return res.status(500).json({ error: 'Failed to load quiz' });
-  }
-});
+  },
+);
 
 router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
   const lessonId = req.params.lessonId;
@@ -1070,133 +1112,139 @@ router.delete('/quiz/options/:id', async (req, res) => {
   }
 });
 
-router.get('/courses/:courseId/groups', async (req, res) => {
-  const courseId = req.params.courseId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
+router.get(
+  '/courses/:courseId/groups',
+  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
 
-  try {
-    const { rows } = await pool.query(
-      `
-        SELECT id, name, schedule_text
-        FROM groups
-        WHERE course_id = $1
-        ORDER BY name ASC
-      `,
-      [courseId],
-    );
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT id, name, schedule_text
+          FROM groups
+          WHERE course_id = $1
+          ORDER BY name ASC
+        `,
+        [courseId],
+      );
 
-    return res.json(
-      rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        scheduleText: row.schedule_text,
-      })),
-    );
-  } catch (err) {
-    console.error('Failed to list course groups', err);
-    return res.status(500).json({ error: 'Failed to list groups' });
-  }
-});
+      return res.json(
+        rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          scheduleText: row.schedule_text,
+        })),
+      );
+    } catch (err) {
+      console.error('Failed to list course groups', err);
+      return res.status(500).json({ error: 'Failed to list groups' });
+    }
+  },
+);
 
-router.get('/courses/:courseId/students/available', async (req, res) => {
-  const courseId = req.params.courseId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
+router.get(
+  '/courses/:courseId/students/available',
+  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
 
-  try {
-    const { rows } = await pool.query(
-      `
-        SELECT u.id, u.full_name, u.email
-        FROM users u
-        JOIN academy_memberships am ON am.user_id = u.id
-        WHERE am.role = 'student'
-          AND am.status = 'active'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM enrollments e
-            WHERE e.course_id = $1
-              AND e.user_id = u.id
-          )
-        ORDER BY u.full_name ASC
-      `,
-      [courseId],
-    );
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT u.id, u.full_name, u.email
+          FROM users u
+          JOIN academy_memberships am ON am.user_id = u.id
+          WHERE am.role = 'student'
+            AND am.status = 'active'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM enrollments e
+              WHERE e.course_id = $1
+                AND e.user_id = u.id
+            )
+          ORDER BY u.full_name ASC
+        `,
+        [courseId],
+      );
 
-    return res.json(
-      rows.map((row) => ({
-        id: row.id,
-        fullName: row.full_name,
-        email: row.email,
-      })),
-    );
-  } catch (err) {
-    console.error('Failed to list available students', err);
-    return res.status(500).json({ error: 'Failed to list students' });
-  }
-});
+      return res.json(
+        rows.map((row) => ({
+          id: row.id,
+          fullName: row.full_name,
+          email: row.email,
+        })),
+      );
+    } catch (err) {
+      console.error('Failed to list available students', err);
+      return res.status(500).json({ error: 'Failed to list students' });
+    }
+  },
+);
 
-router.get('/courses/:courseId/enrollments', async (req, res) => {
-  const courseId = req.params.courseId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
+router.get(
+  '/courses/:courseId/enrollments',
+  requireCourseEnrollmentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
 
-  try {
-    const { rows } = await pool.query(
-      `
-        SELECT
-          e.user_id AS student_id,
-          u.full_name,
-          u.email,
-          assignment.group_id,
-          assignment.group_name
-        FROM enrollments e
-        JOIN users u ON u.id = e.user_id
-        JOIN academy_memberships am ON am.user_id = u.id AND am.role = 'student'
-        LEFT JOIN LATERAL (
-          SELECT gs.group_id, g.name AS group_name
-          FROM group_students gs
-          JOIN groups g ON g.id = gs.group_id
-          WHERE gs.user_id = e.user_id
-            AND g.course_id = e.course_id
-          LIMIT 1
-        ) assignment ON true
-        WHERE e.course_id = $1
-        ORDER BY u.full_name ASC
-      `,
-      [courseId],
-    );
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT
+            e.user_id AS student_id,
+            u.full_name,
+            u.email,
+            assignment.group_id,
+            assignment.group_name
+          FROM enrollments e
+          JOIN users u ON u.id = e.user_id
+          JOIN academy_memberships am ON am.user_id = u.id AND am.role = 'student'
+          LEFT JOIN LATERAL (
+            SELECT gs.group_id, g.name AS group_name
+            FROM group_students gs
+            JOIN groups g ON g.id = gs.group_id
+            WHERE gs.user_id = e.user_id
+              AND g.course_id = e.course_id
+            LIMIT 1
+          ) assignment ON true
+          WHERE e.course_id = $1
+          ORDER BY u.full_name ASC
+        `,
+        [courseId],
+      );
 
-    return res.json(
-      rows.map((row) => ({
-        studentId: row.student_id,
-        fullName: row.full_name,
-        email: row.email,
-        groupId: row.group_id || null,
-        groupName: row.group_name || null,
-      })),
-    );
-  } catch (err) {
-    console.error('Failed to list enrollments', err);
-    return res.status(500).json({ error: 'Failed to list enrollments' });
-  }
-});
+      return res.json(
+        rows.map((row) => ({
+          studentId: row.student_id,
+          fullName: row.full_name,
+          email: row.email,
+          groupId: row.group_id || null,
+          groupName: row.group_name || null,
+        })),
+      );
+    } catch (err) {
+      console.error('Failed to list enrollments', err);
+      return res.status(500).json({ error: 'Failed to list enrollments' });
+    }
+  },
+);
 
-router.post('/courses/:courseId/enroll', async (req, res) => {
-  const courseId = req.params.courseId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
+router.post(
+  '/courses/:courseId/enroll',
+  requireCourseEnrollmentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    const parsed = enrollStudentSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
 
-  const parsed = enrollStudentSchema.safeParse(req.body || {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: formatZodError(parsed.error) });
-  }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const studentRes = await client.query(
+      const studentRes = await client.query(
       `
         SELECT u.id
         FROM users u
@@ -1252,26 +1300,28 @@ router.post('/courses/:courseId/enroll', async (req, res) => {
       );
     }
 
-    await client.query('COMMIT');
-    return res.status(201).json({ success: true });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Failed to enroll student', err);
-    return res.status(500).json({ error: 'Failed to enroll student' });
-  } finally {
-    client.release();
-  }
-});
+      await client.query('COMMIT');
+      return res.status(201).json({ success: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Failed to enroll student', err);
+      return res.status(500).json({ error: 'Failed to enroll student' });
+    } finally {
+      client.release();
+    }
+  },
+);
 
-router.delete('/courses/:courseId/enroll/:studentId', async (req, res) => {
-  const courseId = req.params.courseId;
-  const studentId = req.params.studentId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
+router.delete(
+  '/courses/:courseId/enroll/:studentId',
+  requireCourseEnrollmentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    const studentId = req.params.studentId;
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
     const deleted = await client.query(
       `
@@ -1288,33 +1338,35 @@ router.delete('/courses/:courseId/enroll/:studentId', async (req, res) => {
 
     await removeStudentFromCourseGroups(client, courseId, studentId);
 
-    await client.query('COMMIT');
-    return res.json({ success: true });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Failed to remove enrollment', err);
-    return res.status(500).json({ error: 'Failed to remove enrollment' });
-  } finally {
-    client.release();
-  }
-});
+      await client.query('COMMIT');
+      return res.json({ success: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Failed to remove enrollment', err);
+      return res.status(500).json({ error: 'Failed to remove enrollment' });
+    } finally {
+      client.release();
+    }
+  },
+);
 
-router.post('/courses/:courseId/enroll/:studentId/group', async (req, res) => {
-  const courseId = req.params.courseId;
-  const studentId = req.params.studentId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
+router.post(
+  '/courses/:courseId/enroll/:studentId/group',
+  requireCourseEnrollmentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    const studentId = req.params.studentId;
 
-  const parsed = assignGroupSchema.safeParse(req.body || {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: formatZodError(parsed.error) });
-  }
+    const parsed = assignGroupSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const enrolled = await client.query(
+      const enrolled = await client.query(
       `
         SELECT 1
         FROM enrollments
@@ -1349,41 +1401,42 @@ router.post('/courses/:courseId/enroll/:studentId/group', async (req, res) => {
       );
     }
 
-    await client.query('COMMIT');
-    return res.json({ success: true });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Failed to update group assignment', err);
-    return res.status(500).json({ error: 'Failed to update group assignment' });
-  } finally {
-    client.release();
-  }
-});
+      await client.query('COMMIT');
+      return res.json({ success: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Failed to update group assignment', err);
+      return res.status(500).json({ error: 'Failed to update group assignment' });
+    } finally {
+      client.release();
+    }
+  },
+);
 
-router.post('/courses/:courseId/enroll/bulk', async (req, res) => {
-  const courseId = req.params.courseId;
-  const allowed = await ensureCourseEditable(courseId, req.user, res);
-  if (!allowed) return;
-
-  const parsed = bulkEnrollSchema.safeParse(req.body || {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: formatZodError(parsed.error) });
-  }
-
-  const studentIds = [...new Set(parsed.data.studentIds)];
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    if (parsed.data.groupId) {
-      const group = await fetchGroupById(parsed.data.groupId);
-      if (!group || group.course_id !== courseId) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Group must belong to this course' });
-      }
+router.post(
+  '/courses/:courseId/enroll/bulk',
+  requireCourseEnrollmentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    const parsed = bulkEnrollSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
     }
 
-    const { rows: studentRows } = await client.query(
+    const studentIds = [...new Set(parsed.data.studentIds)];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      if (parsed.data.groupId) {
+        const group = await fetchGroupById(parsed.data.groupId);
+        if (!group || group.course_id !== courseId) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Group must belong to this course' });
+        }
+      }
+
+      const { rows: studentRows } = await client.query(
       `
         SELECT u.id
         FROM users u
@@ -1434,16 +1487,17 @@ router.post('/courses/:courseId/enroll/bulk', async (req, res) => {
       enrolled.push(studentId);
     }
 
-    await client.query('COMMIT');
-    const statusCode = enrolled.length ? 201 : 200;
-    return res.status(statusCode).json({ enrolled, skipped });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Failed to bulk enroll students', err);
-    return res.status(500).json({ error: 'Failed to enroll students' });
-  } finally {
-    client.release();
-  }
-});
+      await client.query('COMMIT');
+      const statusCode = enrolled.length ? 201 : 200;
+      return res.status(statusCode).json({ enrolled, skipped });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Failed to bulk enroll students', err);
+      return res.status(500).json({ error: 'Failed to enroll students' });
+    } finally {
+      client.release();
+    }
+  },
+);
 
 module.exports = router;

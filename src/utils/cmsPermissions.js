@@ -1,37 +1,54 @@
 const pool = require('../db');
+const { hasCourseRole } = require('./roleService');
+
+const CONTENT_ROLES = ['instructor', 'content_editor'];
+
+const extractRoles = (user) => {
+  if (!user) {
+    return [];
+  }
+  if (Array.isArray(user.globalRoles) && user.globalRoles.length) {
+    return user.globalRoles;
+  }
+  if (user.role) {
+    return [user.role];
+  }
+  return [];
+};
 
 const canEditCourse = async (courseId, user) => {
   if (!courseId || !user) {
     return false;
   }
 
-  if (user.role === 'admin') {
+  const roles = extractRoles(user);
+  if (roles.includes('admin')) {
     return true;
   }
 
-  if (user.role !== 'instructor') {
+  if (!roles.some((role) => CONTENT_ROLES.includes(role))) {
     return false;
   }
 
   const { rows } = await pool.query(
     `
-      SELECT 1
-      FROM courses c
-      WHERE c.id = $1
-        AND (
-          c.owner_user_id = $2
-          OR EXISTS (
-            SELECT 1
-            FROM course_instructors ci
-            WHERE ci.course_id = c.id AND ci.user_id = $2
-          )
-        )
+      SELECT owner_user_id
+      FROM courses
+      WHERE id = $1
       LIMIT 1
     `,
-    [courseId, user.id],
+    [courseId],
   );
+  const course = rows[0];
+  if (!course) {
+    return false;
+  }
 
-  return rows.length > 0;
+  if (course.owner_user_id === user.id) {
+    return true;
+  }
+
+  return hasCourseRole(user.id, courseId, CONTENT_ROLES);
 };
 
 module.exports = {

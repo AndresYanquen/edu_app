@@ -14,6 +14,12 @@ export const bulkInviteUsers = (formData) =>
     }),
   );
 
+export const getCourseStaff = (courseId) => unwrap(api.get(`/admin/courses/${courseId}/staff`));
+export const assignCourseStaff = (courseId, payload) =>
+  unwrap(api.post(`/admin/courses/${courseId}/staff`, payload));
+export const removeCourseStaffRole = (courseId, userId, roleName) =>
+  unwrap(api.delete(`/admin/courses/${courseId}/staff/${userId}/role/${roleName}`));
+
 export default {
   createUser,
   listUsers,
@@ -21,4 +27,7 @@ export default {
   deactivateUser,
   activateUser,
   bulkInviteUsers,
+  getCourseStaff,
+  assignCourseStaff,
+  removeCourseStaffRole,
 };

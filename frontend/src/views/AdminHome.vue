@@ -36,6 +36,13 @@
             <small>Students and instructors</small>
           </div>
           <div class="section-actions">
+            <span class="search-input">
+              <i class="pi pi-search" />
+              <InputText
+                v-model="userSearch"
+                placeholder="Search name or email"
+              />
+            </span>
             <Dropdown
               v-model="filterRole"
               :options="filterOptions"
@@ -44,8 +51,8 @@
               placeholder="All roles"
               showClear
               class="filter-dropdown"
-              @update:modelValue="loadUsers"
             />
+            <Tag class="total-tag" severity="info" :value="`Total: ${totalUsers} usuarios`" />
             <Button icon="pi pi-refresh" class="p-button-text" :loading="loadingUsers" @click="loadUsers" />
           </div>
         </div>
@@ -60,12 +67,33 @@
           No users found for this filter.
         </div>
         <div v-else>
-          <DataTable :value="users" responsiveLayout="scroll">
+          <DataTable
+            :value="users"
+            responsiveLayout="scroll"
+            scrollable
+            scrollHeight="420px"
+            class="user-table"
+            paginator
+            lazy
+            :rows="rows"
+            :totalRecords="totalUsers"
+            :rowsPerPageOptions="rowsPerPageOptions"
+            :first="page * rows"
+            :loading="loadingUsers"
+            @page="onPageChange"
+          >
             <Column field="full_name" header="Name" />
             <Column field="email" header="Email" />
-            <Column header="Role" style="width: 8rem">
+            <Column header="Role" style="width: 12rem">
               <template #body="{ data }">
-                <Tag :value="data.role" severity="info" />
+                <div class="role-tag-wrap">
+                  <Tag
+                    v-for="role in userRoles(data)"
+                    :key="`${data.id}-${role}`"
+                    :value="roleLabel(role)"
+                    severity="info"
+                  />
+                </div>
               </template>
             </Column>
             <Column header="Activation" style="width: 12rem">
@@ -270,17 +298,22 @@ const creating = ref(false);
 const users = ref([]);
 const loadingUsers = ref(false);
 const filterRole = ref(null);
+const userSearch = ref('');
 const resettingId = ref(null);
 const togglingId = ref(null);
 
 const linkDialogVisible = ref(false);
 const activationLink = ref('');
 
-const roleOptions = [
-  { label: 'Student', value: 'student' },
-  { label: 'Instructor', value: 'instructor' },
-];
-const filterOptions = [{ label: 'Students', value: 'student' }, { label: 'Instructors', value: 'instructor' }];
+const ROLE_LABELS = {
+  student: 'Student',
+  instructor: 'Instructor',
+  content_editor: 'Content editor',
+  enrollment_manager: 'Enrollment manager',
+};
+
+const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({ label, value }));
+const filterOptions = [...roleOptions];
 
 const courses = ref([]);
 const allGroups = ref([]);
@@ -295,6 +328,10 @@ const bulkFileInput = ref(null);
 const uploading = ref(false);
 const bulkResults = ref([]);
 const bulkTotals = ref(null);
+const page = ref(0);
+const rows = ref(20);
+const rowsPerPageOptions = [10, 20, 50];
+const totalUsers = ref(0);
 
 const courseOptions = computed(() =>
   courses.value.map((course) => ({ label: course.title, value: course.id })),
@@ -309,15 +346,66 @@ const filteredGroupOptions = computed(() => {
 });
 const bulkFileName = computed(() => bulkFile.value?.name || '');
 
+const roleLabel = (role) => ROLE_LABELS[role] || role;
+const userRoles = (user) => {
+  if (Array.isArray(user.global_roles) && user.global_roles.length) {
+    return user.global_roles;
+  }
+  return [user.role].filter(Boolean);
+};
+
+const buildUserQuery = () => {
+  const params = {
+    page: page.value + 1,
+    pageSize: rows.value,
+  };
+  if (filterRole.value) {
+    params.role = filterRole.value;
+  }
+  if (userSearch.value.trim()) {
+    params.search = userSearch.value.trim();
+  }
+  return params;
+};
+
 const loadUsers = async () => {
   loadingUsers.value = true;
   try {
-    users.value = await listUsers(filterRole.value ? { role: filterRole.value } : undefined);
+    const response = await listUsers(buildUserQuery());
+    const dataRows = Array.isArray(response?.users)
+      ? response.users
+      : Array.isArray(response)
+      ? response
+      : [];
+    const currentRows = rows.value || 20;
+    const nextPageSize =
+      typeof response?.pageSize === 'number' && response.pageSize > 0
+        ? response.pageSize
+        : currentRows;
+    const nextPage =
+      typeof response?.page === 'number' && response.page > 0
+        ? response.page - 1
+        : 0;
+    const nextTotal =
+      typeof response?.total === 'number' && response.total >= 0
+        ? response.total
+        : dataRows.length;
+
+    users.value = dataRows;
+    totalUsers.value = nextTotal;
+    rows.value = nextPageSize;
+    page.value = nextPage;
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Error', detail: err.response?.data?.error || 'Failed to load users', life: 3500 });
   } finally {
     loadingUsers.value = false;
   }
+};
+
+const onPageChange = (event) => {
+  page.value = event.page;
+  rows.value = event.rows;
+  loadUsers();
 };
 
 const submit = async () => {
@@ -573,6 +661,16 @@ watch(
   },
 );
 
+watch(filterRole, () => {
+  page.value = 0;
+  loadUsers();
+});
+
+watch(userSearch, () => {
+  page.value = 0;
+  loadUsers();
+});
+
 onMounted(() => {
   loadUsers();
   loadCourses();
@@ -612,6 +710,20 @@ onMounted(() => {
   align-items: center;
   gap: 0.5rem;
 }
+.search-input {
+  position: relative;
+}
+.search-input i {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+.search-input :deep(.p-inputtext) {
+  padding-left: 2.25rem;
+  min-width: 14rem;
+}
 .link-box {
   display: flex;
   gap: 0.5rem;
@@ -627,12 +739,22 @@ onMounted(() => {
 .filter-dropdown {
   min-width: 10rem;
 }
+.total-tag {
+  white-space: nowrap;
+}
 .actions-row {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-</style>
+.user-table :deep(.p-datatable-wrapper) {
+  max-height: 420px;
+}
+.role-tag-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
 .bulk-info {
   background: #f8fafc;
   border-radius: 0.75rem;
@@ -673,3 +795,4 @@ onMounted(() => {
 .mt-2 {
   margin-top: 1rem;
 }
+</style>

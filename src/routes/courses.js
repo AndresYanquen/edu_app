@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
 const { uuidSchema, formatZodError } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
 
@@ -9,9 +9,12 @@ const router = express.Router();
 
 router.use(auth);
 
-router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, res) => {
+router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), async (req, res) => {
   const courseId = req.params.id;
-  const { role, id: userId } = req.user;
+  const { id: userId } = req.user;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  const isInstructor = hasGlobalRole(req.user, 'instructor');
+  const isStudent = hasGlobalRole(req.user, 'student');
   const isPreview =
     req.query.preview === '1' || req.query.preview === 'true';
 
@@ -42,14 +45,11 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
     }
 
     if (isPreview) {
-      if (!['admin', 'instructor'].includes(role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-      const allowed = await canEditCourse(courseId, req.user);
+      const allowed = isAdmin || (await canEditCourse(courseId, req.user));
       if (!allowed) {
         return res.status(403).json({ error: 'Forbidden' });
       }
-    } else if (role === 'student') {
+    } else if (isStudent && !isAdmin && !isInstructor) {
       if (!course.is_published) {
         return res.status(404).json({ error: 'Course not found' });
       }
@@ -65,7 +65,7 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
       if (!enrollment.rows.length) {
         return res.status(403).json({ error: 'You are not enrolled in this course' });
       }
-    } else if (role === 'instructor') {
+    } else if (!isAdmin) {
       let allowed = course.owner_user_id === userId;
       if (!allowed) {
         const teaching = await pool.query(
@@ -101,7 +101,7 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
       lessons: [],
     }));
 
-    if (!isPreview && role === 'student') {
+    if (!isPreview && isStudent && !isAdmin && !isInstructor) {
       modules = modules.filter((module) => module.is_published);
     }
 
@@ -133,7 +133,7 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
       );
       lessons = lessonsRes.rows;
 
-      if (!isPreview && role === 'student') {
+      if (!isPreview && isStudent && !isAdmin && !isInstructor) {
         lessons = lessons.filter((lesson) => lesson.is_published);
       }
     }
@@ -217,9 +217,15 @@ router.get('/:id', requireRole(['admin', 'instructor', 'student']), async (req, 
  * curl -H "Authorization: Bearer $TOKEN" \
  *   "http://localhost:3000/courses/<courseId>/progress?studentId=<studentId>"
  */
-router.get('/:id/progress', requireRole(['student', 'instructor', 'admin']), async (req, res) => {
+router.get(
+  '/:id/progress',
+  requireGlobalRoleAny(['student', 'instructor', 'admin']),
+  async (req, res) => {
   const courseId = req.params.id;
-  const { role, id: userId } = req.user;
+  const { id: userId } = req.user;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  const isInstructor = hasGlobalRole(req.user, 'instructor');
+  const isStudent = hasGlobalRole(req.user, 'student');
   let targetStudentId = req.query.studentId;
 
   if (targetStudentId) {
@@ -240,7 +246,7 @@ router.get('/:id/progress', requireRole(['student', 'instructor', 'admin']), asy
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    if (role === 'student') {
+    if (isStudent && !isAdmin && !isInstructor) {
       if (targetStudentId && targetStudentId !== userId) {
         return res.status(403).json({ error: 'Students can only view their own progress' });
       }
@@ -253,7 +259,7 @@ router.get('/:id/progress', requireRole(['student', 'instructor', 'admin']), asy
       if (!enrollment.rows.length) {
         return res.status(403).json({ error: 'You are not enrolled in this course' });
       }
-    } else if (role === 'instructor') {
+    } else if (isInstructor && !isAdmin) {
       if (!targetStudentId) {
         return res.status(400).json({ error: 'studentId query parameter is required' });
       }
@@ -293,7 +299,7 @@ router.get('/:id/progress', requireRole(['student', 'instructor', 'admin']), asy
       if (!teachesStudent.rows.length) {
         return res.status(403).json({ error: 'Student is not in your groups for this course' });
       }
-    } else if (role === 'admin') {
+    } else if (isAdmin) {
       if (!targetStudentId) {
         return res.status(400).json({ error: 'studentId query parameter is required' });
       }
@@ -355,6 +361,7 @@ router.get('/:id/progress', requireRole(['student', 'instructor', 'admin']), asy
     console.error('Failed to load course progress', err);
     return res.status(500).json({ error: 'Failed to load course progress' });
   }
-});
+  },
+);
 
 module.exports = router;

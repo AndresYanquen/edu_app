@@ -23,6 +23,7 @@ import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import PickList from 'primevue/picklist';
 import Checkbox from 'primevue/checkbox';
+import MultiSelect from 'primevue/multiselect';
 
 import 'primevue/resources/themes/aura-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
@@ -65,6 +66,7 @@ app.component('Dialog', Dialog);
 app.component('Dropdown', Dropdown);
 app.component('PickList', PickList);
 app.component('Checkbox', Checkbox);
+app.component('MultiSelect', MultiSelect);
 
 const bootstrap = async () => {
   const auth = useAuthStore();

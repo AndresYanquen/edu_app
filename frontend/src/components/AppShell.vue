@@ -62,7 +62,7 @@
             </div>
           </div>
           <div class="user-actions">
-            <Tag :value="auth.role" severity="info" size="small" v-if="!collapsed" />
+            <Tag :value="roleSummary" severity="info" size="small" v-if="!collapsed" />
             <Button
               v-if="!collapsed"
               icon="pi pi-sign-out"
@@ -91,9 +91,7 @@ const route = useRoute();
 const auth = useAuthStore();
 const collapsed = ref(false);
 
-const studentLinks = [
-  { label: 'Student Dashboard', to: '/student', icon: 'pi pi-home' },
-];
+const studentLinks = [{ label: 'Student Dashboard', to: '/student', icon: 'pi pi-home' }];
 
 const instructorLinks = [
   { label: 'Instructor Dashboard', to: '/instructor', icon: 'pi pi-users' },
@@ -105,11 +103,32 @@ const adminLinks = [
   { label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' },
 ];
 
+const staffLinks = [{ label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' }];
+
 const navLinks = computed(() => {
-  if (auth.role === 'student') return studentLinks;
-  if (auth.role === 'instructor') return instructorLinks;
-  if (auth.role === 'admin') return adminLinks;
-  return [];
+  const links = [];
+  const addLinks = (items) => {
+    items.forEach((item) => {
+      if (!links.some((existing) => existing.to === item.to)) {
+        links.push(item);
+      }
+    });
+  };
+
+  if (auth.hasRole && auth.hasRole('admin')) {
+    addLinks(adminLinks);
+  }
+  if (auth.hasRole && auth.hasRole('instructor')) {
+    addLinks(instructorLinks);
+  }
+  if (auth.hasAnyRole && auth.hasAnyRole(['content_editor', 'enrollment_manager'])) {
+    addLinks(staffLinks);
+  }
+  if (auth.hasRole && auth.hasRole('student')) {
+    addLinks(studentLinks);
+  }
+
+  return links;
 });
 
 const navigate = (path) => {
@@ -128,6 +147,10 @@ const handleLogout = async () => {
 const toggleSidebar = () => {
   collapsed.value = !collapsed.value;
 };
+
+const roleSummary = computed(() =>
+  auth.globalRoles?.length ? auth.globalRoles.join(', ') : 'No role',
+);
 
 const initials = computed(() => {
   if (!auth.user?.fullName) return 'AC';

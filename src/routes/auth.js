@@ -10,6 +10,7 @@ const {
   hashRefreshToken,
 } = require('../utils/authTokens');
 const { hashInviteToken } = require('../utils/inviteTokens');
+const { getGlobalRolesForUser } = require('../utils/roleService');
 
 const router = express.Router();
 const refreshCookieOptions = buildCookieOptions();
@@ -116,7 +117,15 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const accessToken = createAccessToken({ id: user.id, role: user.role });
+    const globalRoles = await getGlobalRolesForUser(user.id);
+    const normalizedRoles =
+      globalRoles.length || !user.role ? globalRoles : [user.role].filter(Boolean);
+
+    const accessToken = createAccessToken({
+      id: user.id,
+      role: user.role,
+      globalRoles: normalizedRoles,
+    });
     const refreshToken = generateRefreshToken();
     await insertRefreshToken(user.id, refreshToken.hash, refreshToken.expiresAt);
     setRefreshCookie(res, refreshToken.token);
@@ -128,6 +137,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         email: user.email,
         fullName: user.full_name,
         role: user.role,
+        globalRoles: normalizedRoles,
       },
     });
   } catch (err) {
@@ -187,7 +197,15 @@ router.post('/refresh', async (req, res) => {
     await insertRefreshToken(user.id, newRefresh.hash, newRefresh.expiresAt);
     setRefreshCookie(res, newRefresh.token);
 
-    const accessToken = createAccessToken({ id: user.id, role: user.role });
+    const globalRoles = await getGlobalRolesForUser(user.id);
+    const normalizedRoles =
+      globalRoles.length || !user.role ? globalRoles : [user.role].filter(Boolean);
+
+    const accessToken = createAccessToken({
+      id: user.id,
+      role: user.role,
+      globalRoles: normalizedRoles,
+    });
 
     return res.json({ accessToken });
   } catch (err) {

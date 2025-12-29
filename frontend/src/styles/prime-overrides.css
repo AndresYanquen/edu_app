@@ -62,3 +62,15 @@
   border: 1px solid var(--app-border);
   background: var(--app-surface);
 }
+
+:root {
+  --table-row-padding-y: 0.4rem;
+  --table-row-padding-x: 0.75rem;
+}
+
+.p-datatable .p-datatable-tbody > tr > td,
+.p-datatable .p-datatable-thead > tr > th {
+  padding: var(--table-row-padding-y) var(--table-row-padding-x);
+  line-height: 1.15;
+}
+

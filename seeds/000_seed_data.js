@@ -30,6 +30,17 @@ const students = [
 
 const allUsers = [admin, ...instructors, ...students];
 
+const ROLE_NAMES = ['admin', 'instructor', 'student', 'content_editor', 'enrollment_manager'];
+const roleRows = ROLE_NAMES.map((name) => ({
+  id: uuid(),
+  name,
+  created_at: TIMESTAMP,
+}));
+const roleIdByName = roleRows.reduce((acc, role) => {
+  acc[role.name] = role.id;
+  return acc;
+}, {});
+
 const buildUserRow = (user) => ({
   id: user.id,
   email: user.email,
@@ -56,6 +67,19 @@ const memberships = [
     joined_at: TIMESTAMP,
   })),
 ];
+
+const userRoles = memberships
+  .map((membership) => {
+    const roleId = roleIdByName[membership.role];
+    if (!roleId) {
+      return null;
+    }
+    return {
+      user_id: membership.user_id,
+      role_id: roleId,
+    };
+  })
+  .filter(Boolean);
 
 const courseFullStackId = uuid();
 const courseAnalyticsId = uuid();
@@ -483,11 +507,33 @@ const groups = [
   },
 ];
 
-const courseInstructors = [
-  { course_id: courseFullStackId, user_id: instructors[0].id },
-  { course_id: courseAnalyticsId, user_id: instructors[1].id },
-  { course_id: courseAnalyticsId, user_id: instructors[0].id },
+const courseStaffAssignments = [
+  {
+    courseId: courseFullStackId,
+    userId: instructors[0].id,
+    roles: ['instructor', 'content_editor'],
+  },
+  {
+    courseId: courseAnalyticsId,
+    userId: instructors[1].id,
+    roles: ['instructor', 'enrollment_manager'],
+  },
+  {
+    courseId: courseAnalyticsId,
+    userId: instructors[0].id,
+    roles: ['content_editor'],
+  },
 ];
+
+const courseUserRoles = courseStaffAssignments.flatMap(({ courseId, userId, roles }) =>
+  roles
+    .map((roleName) => ({
+      course_id: courseId,
+      user_id: userId,
+      role_id: roleIdByName[roleName],
+    }))
+    .filter((entry) => Boolean(entry.role_id)),
+);
 
 const groupTeachers = [
   { group_id: groupFsWeeknightId, user_id: instructors[0].id, role: 'lead', assigned_at: TIMESTAMP },
@@ -576,7 +622,9 @@ exports.seed = async (knex) => {
     await trx.raw(`
       TRUNCATE TABLE
         announcements,
-        course_instructors,
+        course_user_roles,
+        user_roles,
+        roles,
         quiz_attempts,
         quiz_options,
         quiz_questions,
@@ -595,16 +643,18 @@ exports.seed = async (knex) => {
       RESTART IDENTITY CASCADE
     `);
 
+    await trx('roles').insert(roleRows);
     await trx('users').insert(usersRows);
     await trx('academy_memberships').insert(memberships);
+    await trx('user_roles').insert(userRoles);
     await trx('courses').insert(courses);
+    await trx('course_user_roles').insert(courseUserRoles);
     await trx('modules').insert(modules);
     await trx('lessons').insert(lessons);
     await trx('quiz_questions').insert(quizQuestions);
     await trx('quiz_options').insert(quizOptions);
     await trx('assets').insert(assets);
     await trx('lesson_assets').insert(lessonAssets);
-    await trx('course_instructors').insert(courseInstructors);
     await trx('groups').insert(groups);
     await trx('group_teachers').insert(groupTeachers);
     await trx('group_students').insert(groupStudents);

@@ -1,12 +1,12 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const { requireGlobalRoleAny } = require('../middleware/roles');
 const { lessonProgressSchema, formatZodError } = require('../utils/validators');
 
 const router = express.Router();
 
-router.post('/lessons/:id/progress', auth, requireRole(['student']), async (req, res) => {
+router.post('/lessons/:id/progress', auth, requireGlobalRoleAny(['student']), async (req, res) => {
   const lessonId = req.params.id;
   const parsedBody = lessonProgressSchema.safeParse(req.body || {});
   if (!parsedBody.success) {

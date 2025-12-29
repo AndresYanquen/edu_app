@@ -98,7 +98,7 @@ const isPreview = computed(
   () => route.query.preview === '1' || route.query.preview === 'true',
 );
 const showPreviewBanner = computed(
-  () => isPreview.value && ['admin', 'instructor'].includes(auth.role),
+  () => isPreview.value && auth.hasAnyRole(['admin', 'instructor', 'content_editor']),
 );
 
 const defaultProgress = {

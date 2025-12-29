@@ -1,83 +1,26 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const {
+  requireGlobalRoleAny,
+  requireCourseRoleAny,
+  hasGlobalRole,
+  getCourseIdFromGroup,
+} = require('../middleware/roles');
 
 const router = express.Router();
 
-router.use(auth, requireRole(['instructor', 'admin']));
+router.use(auth, requireGlobalRoleAny(['instructor', 'admin']));
 
-const ensureCourseAccess = async (courseId, user) => {
-  const courseRes = await pool.query('SELECT id FROM courses WHERE id = $1 LIMIT 1', [courseId]);
-  const course = courseRes.rows[0];
-  if (!course) {
-    return { allowed: false, status: 404, message: 'Course not found' };
-  }
-
-  if (user.role === 'admin') {
-    return { allowed: true, course };
-  }
-
-  const assignment = await pool.query(
-    `
-      SELECT 1
-      FROM group_teachers gt
-      JOIN groups g ON g.id = gt.group_id
-      WHERE gt.user_id = $1 AND g.course_id = $2
-      LIMIT 1
-    `,
-    [user.id, courseId],
-  );
-
-  if (!assignment.rows.length) {
-    return {
-      allowed: false,
-      status: 403,
-      message: 'You are not assigned to this course',
-    };
-  }
-
-  return { allowed: true, course };
-};
-
-const ensureGroupAccess = async (groupId, user) => {
-  const groupRes = await pool.query('SELECT id, course_id FROM groups WHERE id = $1 LIMIT 1', [
-    groupId,
-  ]);
-  const group = groupRes.rows[0];
-  if (!group) {
-    return { allowed: false, status: 404, message: 'Group not found' };
-  }
-
-  if (user.role === 'admin') {
-    return { allowed: true, group };
-  }
-
-  const assignment = await pool.query(
-    `
-      SELECT 1
-      FROM group_teachers
-      WHERE user_id = $1 AND group_id = $2
-      LIMIT 1
-    `,
-    [user.id, groupId],
-  );
-
-  if (!assignment.rows.length) {
-    return {
-      allowed: false,
-      status: 403,
-      message: 'You are not assigned to this group',
-    };
-  }
-
-  return { allowed: true, group };
-};
+const resolveCourseIdFromParam = (param) => (req) => req.params[param];
+const requireInstructorCourseRole = (resolver) =>
+  requireCourseRoleAny(resolver, ['instructor']);
 
 router.get('/instructor/groups', async (req, res) => {
   try {
+    const isAdmin = hasGlobalRole(req.user, 'admin');
     let rows;
-    if (req.user.role === 'admin') {
+    if (isAdmin) {
       ({ rows } = await pool.query(
         `
           SELECT
@@ -100,10 +43,16 @@ router.get('/instructor/groups', async (req, res) => {
             g.schedule_text,
             c.id AS course_id,
             c.title AS course_title
-          FROM group_teachers gt
-          JOIN groups g ON g.id = gt.group_id
+          FROM groups g
           JOIN courses c ON c.id = g.course_id
-          WHERE gt.user_id = $1
+          WHERE EXISTS (
+            SELECT 1
+            FROM course_user_roles cur
+            JOIN roles r ON r.id = cur.role_id
+            WHERE cur.course_id = c.id
+              AND cur.user_id = $1
+              AND r.name = 'instructor'
+          )
           ORDER BY c.title, g.name
         `,
         [req.user.id],
@@ -117,32 +66,14 @@ router.get('/instructor/groups', async (req, res) => {
   }
 });
 
-router.get('/groups/:id/students', async (req, res) => {
-  const groupId = req.params.id;
+router.get(
+  '/groups/:id/students',
+  requireInstructorCourseRole((req) => getCourseIdFromGroup(req.params.id)),
+  async (req, res) => {
+    const groupId = req.params.id;
 
-  try {
-    const groupRes = await pool.query('SELECT id FROM groups WHERE id = $1 LIMIT 1', [groupId]);
-    if (!groupRes.rows.length) {
-      return res.status(404).json({ error: 'Group not found' });
-    }
-
-    if (req.user.role !== 'admin') {
-      const assignment = await pool.query(
-        `
-          SELECT 1
-          FROM group_teachers
-          WHERE user_id = $1 AND group_id = $2
-          LIMIT 1
-        `,
-        [req.user.id, groupId],
-      );
-
-      if (!assignment.rows.length) {
-        return res.status(403).json({ error: 'You are not assigned to this group' });
-      }
-    }
-
-    const { rows } = await pool.query(
+    try {
+      const { rows } = await pool.query(
       `
         SELECT
           u.id,
@@ -155,27 +86,33 @@ router.get('/groups/:id/students', async (req, res) => {
           AND m.role = 'student'
         ORDER BY u.full_name
       `,
-      [groupId],
-    );
+        [groupId],
+      );
 
-    return res.json(rows);
-  } catch (err) {
-    console.error('Failed to load group students', err);
-    return res.status(500).json({ error: 'Failed to load group students' });
-  }
-});
-
-router.get('/groups/:id/progress', async (req, res) => {
-  const groupId = req.params.id;
-
-  try {
-    const access = await ensureGroupAccess(groupId, req.user);
-    if (!access.allowed) {
-      return res.status(access.status).json({ error: access.message });
+      return res.json(rows);
+    } catch (err) {
+      console.error('Failed to load group students', err);
+      return res.status(500).json({ error: 'Failed to load group students' });
     }
-    const { group } = access;
+  },
+);
 
-    const lessonsRes = await pool.query(
+router.get(
+  '/groups/:id/progress',
+  requireInstructorCourseRole((req) => getCourseIdFromGroup(req.params.id)),
+  async (req, res) => {
+    const groupId = req.params.id;
+
+    try {
+      const groupRes = await pool.query('SELECT id, course_id FROM groups WHERE id = $1 LIMIT 1', [
+        groupId,
+      ]);
+      const group = groupRes.rows[0];
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      const lessonsRes = await pool.query(
       `
         SELECT
           l.id,
@@ -185,12 +122,12 @@ router.get('/groups/:id/progress', async (req, res) => {
         WHERE m.course_id = $1
         ORDER BY m.position ASC, l.position ASC
       `,
-      [group.course_id],
-    );
-    const lessons = lessonsRes.rows;
-    const totalLessons = lessons.length;
+        [group.course_id],
+      );
+      const lessons = lessonsRes.rows;
+      const totalLessons = lessons.length;
 
-    const studentsRes = await pool.query(
+      const studentsRes = await pool.query(
       `
         SELECT u.id, u.full_name
         FROM group_students gs
@@ -200,15 +137,15 @@ router.get('/groups/:id/progress', async (req, res) => {
           AND m.role = 'student'
         ORDER BY u.full_name
       `,
-      [groupId],
-    );
-    const students = studentsRes.rows;
-    if (!students.length) {
-      return res.json([]);
-    }
+        [groupId],
+      );
+      const students = studentsRes.rows;
+      if (!students.length) {
+        return res.json([]);
+      }
 
-    const studentIds = students.map((student) => student.id);
-    const progressRes = await pool.query(
+      const studentIds = students.map((student) => student.id);
+      const progressRes = await pool.query(
       `
         SELECT
           lp.user_id,
@@ -220,52 +157,51 @@ router.get('/groups/:id/progress', async (req, res) => {
           AND lp.status = 'done'
           AND m.course_id = $2
       `,
-      [studentIds, group.course_id],
-    );
+        [studentIds, group.course_id],
+      );
 
-    const progressMap = {};
-    for (const row of progressRes.rows) {
-      if (!progressMap[row.user_id]) {
-        progressMap[row.user_id] = new Set();
+      const progressMap = {};
+      for (const row of progressRes.rows) {
+        if (!progressMap[row.user_id]) {
+          progressMap[row.user_id] = new Set();
+        }
+        progressMap[row.user_id].add(row.lesson_id);
       }
-      progressMap[row.user_id].add(row.lesson_id);
+
+      const response = students.map((student) => {
+        const doneLessons = progressMap[student.id] || new Set();
+        const completedLessons = doneLessons.size;
+        const percent =
+          totalLessons === 0 ? 0 : Math.floor((completedLessons * 100) / totalLessons);
+        const nextLesson =
+          lessons.find((lesson) => !doneLessons.has(lesson.id)) || null;
+
+        return {
+          studentId: student.id,
+          studentName: student.full_name,
+          totalLessons,
+          completedLessons,
+          percent,
+          nextLessonTitle: nextLesson ? nextLesson.title : null,
+        };
+      });
+
+      return res.json(response);
+    } catch (err) {
+      console.error('Failed to load group progress', err);
+      return res.status(500).json({ error: 'Failed to load group progress' });
     }
+  },
+);
 
-    const response = students.map((student) => {
-      const doneLessons = progressMap[student.id] || new Set();
-      const completedLessons = doneLessons.size;
-      const percent =
-        totalLessons === 0 ? 0 : Math.floor((completedLessons * 100) / totalLessons);
-      const nextLesson =
-        lessons.find((lesson) => !doneLessons.has(lesson.id)) || null;
+router.get(
+  '/instructor/courses/:courseId/analytics',
+  requireInstructorCourseRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.params.courseId;
 
-      return {
-        studentId: student.id,
-        studentName: student.full_name,
-        totalLessons,
-        completedLessons,
-        percent,
-        nextLessonTitle: nextLesson ? nextLesson.title : null,
-      };
-    });
-
-    return res.json(response);
-  } catch (err) {
-    console.error('Failed to load group progress', err);
-    return res.status(500).json({ error: 'Failed to load group progress' });
-  }
-});
-
-router.get('/instructor/courses/:courseId/analytics', async (req, res) => {
-  const courseId = req.params.courseId;
-
-  try {
-    const access = await ensureCourseAccess(courseId, req.user);
-    if (!access.allowed) {
-      return res.status(access.status).json({ error: access.message });
-    }
-
-    const totalLessonsRes = await pool.query(
+    try {
+      const totalLessonsRes = await pool.query(
       `
         SELECT COUNT(*)::int AS total
         FROM lessons l
@@ -276,7 +212,7 @@ router.get('/instructor/courses/:courseId/analytics', async (req, res) => {
     );
     const totalLessons = totalLessonsRes.rows[0]?.total ?? 0;
 
-    const analyticsRes = await pool.query(
+      const analyticsRes = await pool.query(
       `
         WITH course_lessons AS (
           SELECT l.id
@@ -310,39 +246,45 @@ router.get('/instructor/courses/:courseId/analytics', async (req, res) => {
         ORDER BY COALESCE(lc.completed_lessons, 0) DESC, cs.full_name ASC
       `,
       [courseId],
-    );
+      );
 
-    const response = analyticsRes.rows.map((row) => {
-      const completedLessons = row.completed_lessons || 0;
-      const percent =
-        totalLessons === 0 ? 0 : Math.round((completedLessons * 100) / totalLessons);
-      return {
-        studentId: row.student_id,
-        fullName: row.full_name,
-        email: row.email,
-        completedLessons,
-        totalLessons,
-        percent,
-      };
-    });
+      const response = analyticsRes.rows.map((row) => {
+        const completedLessons = row.completed_lessons || 0;
+        const percent =
+          totalLessons === 0 ? 0 : Math.round((completedLessons * 100) / totalLessons);
+        return {
+          studentId: row.student_id,
+          fullName: row.full_name,
+          email: row.email,
+          completedLessons,
+          totalLessons,
+          percent,
+        };
+      });
 
-    return res.json(response);
-  } catch (err) {
-    console.error('Failed to load course analytics', err);
-    return res.status(500).json({ error: 'Failed to load course analytics' });
-  }
-});
-
-router.get('/groups/:id/analytics', async (req, res) => {
-  const groupId = req.params.id;
-  try {
-    const access = await ensureGroupAccess(groupId, req.user);
-    if (!access.allowed) {
-      return res.status(access.status).json({ error: access.message });
+      return res.json(response);
+    } catch (err) {
+      console.error('Failed to load course analytics', err);
+      return res.status(500).json({ error: 'Failed to load course analytics' });
     }
-    const { group } = access;
+  },
+);
 
-    const totalLessonsRes = await pool.query(
+router.get(
+  '/groups/:id/analytics',
+  requireInstructorCourseRole((req) => getCourseIdFromGroup(req.params.id)),
+  async (req, res) => {
+    const groupId = req.params.id;
+    try {
+      const groupRes = await pool.query('SELECT id, course_id FROM groups WHERE id = $1 LIMIT 1', [
+        groupId,
+      ]);
+      const group = groupRes.rows[0];
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      const totalLessonsRes = await pool.query(
       `
         SELECT COUNT(*)::int AS total
         FROM lessons l
@@ -353,7 +295,7 @@ router.get('/groups/:id/analytics', async (req, res) => {
     );
     const totalLessons = totalLessonsRes.rows[0]?.total ?? 0;
 
-    const analyticsRes = await pool.query(
+      const analyticsRes = await pool.query(
       `
         WITH group_students_cte AS (
           SELECT
@@ -416,32 +358,32 @@ router.get('/groups/:id/analytics', async (req, res) => {
         LEFT JOIN quiz_last ql ON ql.user_id = gs.user_id
         ORDER BY COALESCE(p.completed_lessons, 0) DESC, gs.full_name ASC
       `,
-      [groupId, group.course_id],
-    );
+        [groupId, group.course_id],
+      );
 
+      const response = analyticsRes.rows.map((row) => {
+        const completedLessons = row.completed_lessons || 0;
+        const percent =
+          totalLessons === 0 ? 0 : Math.round((completedLessons * 100) / totalLessons);
+        return {
+          studentId: row.student_id,
+          fullName: row.full_name,
+          email: row.email,
+          percent,
+          completedLessons,
+          totalLessons,
+          lastSeenAt: row.last_seen_at,
+          bestQuizScore: row.best_score ?? null,
+          lastQuizScore: row.last_score ?? null,
+        };
+      });
 
-    const response = analyticsRes.rows.map((row) => {
-      const completedLessons = row.completed_lessons || 0;
-      const percent =
-        totalLessons === 0 ? 0 : Math.round((completedLessons * 100) / totalLessons);
-      return {
-        studentId: row.student_id,
-        fullName: row.full_name,
-        email: row.email,
-        percent,
-        completedLessons,
-        totalLessons,
-        lastSeenAt: row.last_seen_at,
-        bestQuizScore: row.best_score ?? null,
-        lastQuizScore: row.last_score ?? null,
-      };
-    });
-
-    return res.json(response);
-  } catch (err) {
-    console.error('Failed to load group analytics', err);
-    return res.status(500).json({ error: 'Failed to load group analytics' });
-  }
-});
+      return res.json(response);
+    } catch (err) {
+      console.error('Failed to load group analytics', err);
+      return res.status(500).json({ error: 'Failed to load group analytics' });
+    }
+  },
+);
 
 module.exports = router;

@@ -1,20 +1,33 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
-const { userCreateSchema, formatZodError } = require('../utils/validators');
+const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
+const { userCreateSchema, courseStaffAssignSchema, formatZodError } = require('../utils/validators');
 const { generateInviteToken, DEFAULT_INVITE_TTL_DAYS } = require('../utils/inviteTokens');
+const {
+  STAFF_ROLES,
+  listCourseStaff,
+  setCourseStaffRoles,
+  removeCourseStaffRole,
+  ensureCourseExists,
+  hasCourseRole,
+  grantGlobalRoles,
+} = require('../utils/roleService');
 
 const router = express.Router();
 
 router.use(auth);
-router.use(requireRole(['admin']));
+
+const requireAdmin = requireGlobalRoleAny(['admin']);
+const requireBulkInviteAccess = requireGlobalRoleAny(['admin', 'enrollment_manager']);
 
 const MAX_BULK_UPLOAD_SIZE = 1024 * 1024;
-const ALLOWED_ROLES = ['student', 'instructor'];
+const ALLOWED_ROLES = ['student', 'instructor', 'content_editor', 'enrollment_manager'];
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const membershipRoleFor = (roleName) => (roleName === 'student' ? 'student' : 'instructor');
 
 const parseMultipartForm = (req, maxSize = MAX_BULK_UPLOAD_SIZE) =>
   new Promise((resolve, reject) => {
@@ -186,13 +199,14 @@ const updateUserActivation = async (client, userId, isActive) => {
   ]);
 };
 
-router.post('/users', async (req, res) => {
+router.post('/users', requireAdmin, async (req, res) => {
   const parsed = userCreateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: formatZodError(parsed.error) });
   }
 
   const { fullName, email, role } = parsed.data;
+  const membershipRole = membershipRoleFor(role);
 
   const client = await pool.connect();
   try {
@@ -219,8 +233,10 @@ router.post('/users', async (req, res) => {
         INSERT INTO academy_memberships (user_id, role)
         VALUES ($1, $2)
       `,
-      [user.id, role],
+      [user.id, membershipRole],
     );
+
+    await grantGlobalRoles(client, user.id, [role]);
 
     const invite = await createInvite(client, user.id);
 
@@ -244,34 +260,97 @@ router.post('/users', async (req, res) => {
   }
 });
 
-router.get('/users', async (req, res) => {
-  const roleFilter = req.query.role;
+router.get('/users', requireAdmin, async (req, res) => {
+  const roleFilter = (req.query.role || '').trim();
+  const search = (req.query.search || '').trim().toLowerCase();
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 20, 1), 100);
+  const offset = (page - 1) * pageSize;
+
   try {
     const params = [];
-    let filter = '';
-    if (roleFilter && ['student', 'instructor'].includes(roleFilter)) {
-      params.push(roleFilter);
-      filter = 'WHERE m.role = $1';
+    const whereParts = [];
+
+    if (roleFilter) {
+      if (['student', 'instructor'].includes(roleFilter)) {
+        params.push(roleFilter);
+        whereParts.push(`m.role = $${params.length}`);
+      } else {
+        params.push(roleFilter);
+        whereParts.push(`
+          EXISTS (
+            SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+              AND r.name = $${params.length}
+          )
+        `);
+      }
     }
 
-    const { rows } = await pool.query(
-      `
-        SELECT u.id, u.full_name, u.email, m.role, u.must_set_password, u.is_active, m.status, u.created_at
-        FROM users u
-        JOIN academy_memberships m ON m.user_id = u.id
-        ${filter}
-        ORDER BY u.created_at DESC
-      `,
-      params,
-    );
-    return res.json(rows);
+    if (search) {
+      params.push(`%${search}%`);
+      params.push(`%${search}%`);
+      const firstIndex = params.length - 1;
+      const secondIndex = params.length;
+      whereParts.push(
+        `(LOWER(u.full_name) LIKE $${firstIndex} OR LOWER(u.email) LIKE $${secondIndex})`,
+      );
+    }
+
+    const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    const countQuery = `
+      SELECT COUNT(*)::int AS total
+      FROM users u
+      JOIN academy_memberships m ON m.user_id = u.id
+      ${whereClause}
+    `;
+    const countRes = await pool.query(countQuery, params);
+    const total = countRes.rows[0]?.total ?? 0;
+
+    const dataQuery = `
+      SELECT
+        u.id,
+        u.full_name,
+        u.email,
+        m.role,
+        u.must_set_password,
+        u.is_active,
+        m.status,
+        u.created_at,
+        COALESCE(
+          (
+            SELECT array_agg(r2.name ORDER BY r2.name)
+            FROM user_roles ur2
+            JOIN roles r2 ON r2.id = ur2.role_id
+            WHERE ur2.user_id = u.id
+          ),
+          '{}'
+        ) AS global_roles
+      FROM users u
+      JOIN academy_memberships m ON m.user_id = u.id
+      ${whereClause}
+      ORDER BY u.created_at DESC
+      LIMIT ${pageSize}
+      OFFSET ${offset}
+    `;
+    const { rows } = await pool.query(dataQuery, params);
+
+    return res.json({
+      users: rows,
+      page,
+      pageSize,
+      total,
+    });
   } catch (err) {
     console.error('Failed to list users', err);
     return res.status(500).json({ error: 'Failed to list users' });
   }
 });
 
-router.post('/users/:id/reset-password', async (req, res) => {
+router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
   const userId = req.params.id;
   const client = await pool.connect();
   try {
@@ -320,7 +399,7 @@ const buildUserResponse = (user) => ({
   status: user.status,
 });
 
-router.post('/users/:id/deactivate', async (req, res) => {
+router.post('/users/:id/deactivate', requireAdmin, async (req, res) => {
   const userId = req.params.id;
   const client = await pool.connect();
   try {
@@ -352,7 +431,7 @@ router.post('/users/:id/deactivate', async (req, res) => {
   }
 });
 
-router.post('/users/:id/activate', async (req, res) => {
+router.post('/users/:id/activate', requireAdmin, async (req, res) => {
   const userId = req.params.id;
   const client = await pool.connect();
   try {
@@ -384,7 +463,7 @@ router.post('/users/:id/activate', async (req, res) => {
   }
 });
 
-router.post('/users/bulk-invite', async (req, res) => {
+router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
   let formData;
   try {
     formData = await parseMultipartForm(req);
@@ -484,6 +563,19 @@ router.post('/users/bulk-invite', async (req, res) => {
     enrolled: 0,
     enrollmentFailed: 0,
   };
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  const enrollmentRoleCache = new Map();
+  const canManageEnrollment = async (courseId) => {
+    if (!courseId || isAdmin) {
+      return true;
+    }
+    if (enrollmentRoleCache.has(courseId)) {
+      return enrollmentRoleCache.get(courseId);
+    }
+    const allowed = await hasCourseRole(req.user.id, courseId, ['enrollment_manager', 'instructor']);
+    enrollmentRoleCache.set(courseId, allowed);
+    return allowed;
+  };
 
   for (const row of rows) {
     const values = row.values;
@@ -536,7 +628,7 @@ router.post('/users/bulk-invite', async (req, res) => {
       continue;
     }
     if (!ALLOWED_ROLES.includes(rowRole)) {
-      result.error = 'Role must be student or instructor';
+      result.error = 'Invalid role value';
       pushResult('invalid_row');
       continue;
     }
@@ -556,13 +648,37 @@ router.post('/users/bulk-invite', async (req, res) => {
       continue;
     }
 
+    if (courseId && !isAdmin) {
+      const allowed = await canManageEnrollment(courseId);
+      if (!allowed) {
+        result.error = 'forbidden for course';
+        result.enrollment.status = 'forbidden';
+        result.enrollment.error = 'forbidden for course';
+        summary.enrollmentFailed += 1;
+        pushResult('failed');
+        continue;
+      }
+    }
+
     let userId = null;
-    let userRole = rowRole;
+    let userHasStudentRole = rowRole === 'student';
 
     try {
       const existingUserRes = await pool.query(
         `
-          SELECT u.id, u.full_name, m.role
+          SELECT
+            u.id,
+            u.full_name,
+            m.role,
+            COALESCE(
+              (
+                SELECT array_agg(r.name ORDER BY r.name)
+                FROM user_roles ur
+                JOIN roles r ON r.id = ur.role_id
+                WHERE ur.user_id = u.id
+              ),
+              '{}'
+            ) AS global_roles
           FROM users u
           JOIN academy_memberships m ON m.user_id = u.id
           WHERE LOWER(u.email) = LOWER($1)
@@ -574,8 +690,13 @@ router.post('/users/bulk-invite', async (req, res) => {
 
       if (existingUser) {
         userId = existingUser.id;
-        userRole = existingUser.role;
-        result.role = existingUser.role;
+        const existingGlobalRoles = existingUser.global_roles || [];
+        userHasStudentRole =
+          existingUser.role === 'student' || existingGlobalRoles.includes('student');
+        result.role = existingGlobalRoles.length
+          ? existingGlobalRoles.join(', ')
+          : existingUser.role;
+        await grantGlobalRoles(pool, userId, [rowRole]);
         pushResult('already_exists');
       } else {
         const client = await pool.connect();
@@ -596,8 +717,10 @@ router.post('/users/bulk-invite', async (req, res) => {
               INSERT INTO academy_memberships (user_id, role)
               VALUES ($1, $2)
             `,
-            [userId, rowRole],
+            [userId, membershipRoleFor(rowRole)],
           );
+
+          await grantGlobalRoles(client, userId, [rowRole]);
 
           const invite = await createInvite(client, userId, expiresDays);
           await client.query('COMMIT');
@@ -627,7 +750,7 @@ router.post('/users/bulk-invite', async (req, res) => {
       continue;
     }
 
-    if (userRole !== 'student') {
+    if (!userHasStudentRole) {
       result.enrollment.status = 'skipped_not_student';
       result.enrollment.error = 'Role is not student';
       continue;
@@ -706,6 +829,89 @@ router.post('/users/bulk-invite', async (req, res) => {
 
   summary.total = results.length;
   return res.json({ totals: summary, results });
+});
+
+router.get('/courses/:courseId/staff', requireAdmin, async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const course = await ensureCourseExists(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const staff = await listCourseStaff(course.id);
+    return res.json(staff);
+  } catch (err) {
+    console.error('Failed to list course staff', err);
+    return res.status(500).json({ error: 'Failed to list course staff' });
+  }
+});
+
+router.post('/courses/:courseId/staff', requireAdmin, async (req, res) => {
+  const { courseId } = req.params;
+  const parsed = courseStaffAssignSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const { userId, roles } = parsed.data;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const existingCourse = await ensureCourseExists(courseId, client);
+    if (!existingCourse) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const userRes = await client.query('SELECT id, full_name FROM users WHERE id = $1 LIMIT 1', [userId]);
+    if (!userRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await setCourseStaffRoles(client, existingCourse.id, userId, roles);
+    await client.query('COMMIT');
+
+    const staff = await listCourseStaff(existingCourse.id);
+    const entry = staff.find((member) => member.userId === userId) || {
+      userId,
+      roles,
+      fullName: userRes.rows[0].full_name || null,
+    };
+
+    return res.status(201).json(entry);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to assign course staff roles', err);
+    return res.status(500).json({ error: 'Failed to assign staff roles' });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/courses/:courseId/staff/:userId/role/:roleName', requireAdmin, async (req, res) => {
+  const { courseId, userId, roleName } = req.params;
+  if (!STAFF_ROLES.includes(roleName)) {
+    return res.status(400).json({ error: 'Invalid role name' });
+  }
+
+  try {
+    const course = await ensureCourseExists(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const removed = await removeCourseStaffRole(pool, course.id, userId, roleName);
+    if (!removed) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to remove course staff role', err);
+    return res.status(500).json({ error: 'Failed to remove staff role' });
+  }
 });
 
 module.exports = router;

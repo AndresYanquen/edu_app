@@ -18,11 +18,17 @@ module.exports = (req, res, next) => {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    if (!payload || !payload.id || !payload.role) {
+    if (!payload || !payload.id) {
       return res.status(401).json({ error: 'Invalid token payload' });
     }
 
-    req.user = { id: payload.id, role: payload.role };
+    const globalRoles = Array.isArray(payload.globalRoles) ? payload.globalRoles : [];
+
+    req.user = {
+      id: payload.id,
+      role: payload.role || null,
+      globalRoles,
+    };
     return next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });

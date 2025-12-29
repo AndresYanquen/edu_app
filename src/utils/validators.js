@@ -87,8 +87,8 @@ const userCreateSchema = z.object({
     .string({ required_error: 'email is required' })
     .trim()
     .email('Email must be valid'),
-  role: z.enum(['student', 'instructor'], {
-    errorMap: () => ({ message: 'role must be student or instructor' }),
+  role: z.enum(['student', 'instructor', 'content_editor', 'enrollment_manager'], {
+    errorMap: () => ({ message: 'Invalid role selection' }),
   }),
 });
 
@@ -172,6 +172,19 @@ const courseUpdateSchema = z
 
 const instructorAssignSchema = z.object({
   instructorIds: z.array(z.string().uuid()).optional(),
+});
+
+const staffRoleEnum = z.enum(['instructor', 'content_editor', 'enrollment_manager']);
+
+const courseStaffAssignSchema = z.object({
+  userId: z.string({ required_error: 'userId is required' }).uuid({ message: 'userId must be a valid UUID' }),
+  roles: z
+    .array(staffRoleEnum, { required_error: 'roles is required' })
+    .min(1, 'At least one role is required')
+    .refine(
+      (items) => new Set(items).size === items.length,
+      { message: 'roles must be unique', path: ['roles'] },
+    ),
 });
 
 const moduleCreateSchema = z.object({
@@ -265,6 +278,7 @@ module.exports = {
   courseCreateSchema,
   courseUpdateSchema,
   instructorAssignSchema,
+  courseStaffAssignSchema,
   moduleCreateSchema,
   moduleUpdateSchema,
   lessonCreateSchema,

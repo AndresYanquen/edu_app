@@ -39,12 +39,7 @@ const toast = useToast();
 const handleLogin = async () => {
   try {
     await auth.login(email.value, password.value);
-    const roleHome = {
-      instructor: '/instructor',
-      admin: '/instructor',
-      student: '/student',
-    };
-    router.push(roleHome[auth.role] || '/student');
+    router.push(auth.getDefaultRoute());
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Login failed', detail: 'Invalid credentials', life: 3000 });
   }

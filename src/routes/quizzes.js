@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const { requireGlobalRoleAny } = require('../middleware/roles');
 const { quizAttemptSchema, formatZodError } = require('../utils/validators');
 
 const router = express.Router();
@@ -41,7 +41,7 @@ const ensureEnrollment = async (courseId, userId) => {
   return result.rows.length > 0;
 };
 
-router.get('/lessons/:id/quiz', requireRole(['student']), async (req, res) => {
+router.get('/lessons/:id/quiz', requireGlobalRoleAny(['student']), async (req, res) => {
   const lessonId = req.params.id;
   try {
     const lesson = await getLessonCourse(lessonId);
@@ -141,7 +141,7 @@ router.get('/lessons/:id/quiz', requireRole(['student']), async (req, res) => {
   }
 });
 
-router.post('/lessons/:id/quiz/attempt', requireRole(['student']), async (req, res) => {
+router.post('/lessons/:id/quiz/attempt', requireGlobalRoleAny(['student']), async (req, res) => {
   const lessonId = req.params.id;
   const parseResult = quizAttemptSchema.safeParse(req.body || {});
   if (!parseResult.success) {
@@ -259,7 +259,7 @@ router.post('/lessons/:id/quiz/attempt', requireRole(['student']), async (req, r
  * Example:
  * curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/lessons/<lessonId>/quiz/score
  */
-router.get('/lessons/:id/quiz/score', auth, requireRole(['student']), async (req, res) => {
+router.get('/lessons/:id/quiz/score', auth, requireGlobalRoleAny(['student']), async (req, res) => {
   const lessonId = req.params.id;
 
   try {

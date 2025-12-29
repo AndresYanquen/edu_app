@@ -1,7 +1,8 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
+const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
+const { getGlobalRolesForUser } = require('../utils/roleService');
 
 const router = express.Router();
 
@@ -30,11 +31,14 @@ router.get('/', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const globalRoles = await getGlobalRolesForUser(user.id);
+
     return res.json({
       id: user.id,
       email: user.email,
       fullName: user.full_name,
       role: user.role,
+      globalRoles,
       membershipStatus: user.status,
     });
   } catch (err) {
@@ -43,13 +47,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/courses', requireRole(['student', 'instructor', 'admin']), async (req, res) => {
-  const { id: userId, role } = req.user;
+router.get('/courses', requireGlobalRoleAny(['student', 'instructor', 'admin']), async (req, res) => {
+  const { id: userId } = req.user;
 
   try {
     let rows = [];
 
-    if (role === 'student') {
+    if (hasGlobalRole(req.user, 'student')) {
       ({ rows } = await pool.query(
         `
           SELECT DISTINCT
@@ -68,7 +72,7 @@ router.get('/courses', requireRole(['student', 'instructor', 'admin']), async (r
         `,
         [userId],
       ));
-    } else if (role === 'instructor') {
+    } else if (hasGlobalRole(req.user, 'instructor')) {
       ({ rows } = await pool.query(
         `
           SELECT DISTINCT
@@ -86,7 +90,7 @@ router.get('/courses', requireRole(['student', 'instructor', 'admin']), async (r
         `,
         [userId],
       ));
-    } else if (role === 'admin') {
+    } else if (hasGlobalRole(req.user, 'admin')) {
       ({ rows } = await pool.query(
         `
           SELECT

@@ -203,6 +203,85 @@
           </div>
         </template>
       </Card>
+
+      <Card v-if="isAdmin" class="staff-card">
+        <template #title>
+          <div class="section-header">
+            <h3>Staff</h3>
+            <small>Assign instructors, editors, and enrollment managers</small>
+          </div>
+        </template>
+        <template #content>
+          <div class="staff-form-grid">
+            <div class="dialog-field">
+              <label>User</label>
+              <Dropdown
+                v-model="staffForm.userId"
+                :options="staffCandidates"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select user"
+                filter
+                :loading="loadingStaffCandidates"
+                @show="ensureStaffCandidates"
+              />
+            </div>
+            <div class="dialog-field">
+              <label>Roles</label>
+              <MultiSelect
+                v-model="staffForm.roles"
+                :options="staffRoleOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select roles"
+                display="chip"
+              />
+            </div>
+            <div class="staff-form-actions">
+              <Button
+                label="Assign roles"
+                :loading="assigningStaff"
+                @click="submitStaffAssignment"
+              />
+            </div>
+          </div>
+
+          <div class="staff-list">
+            <div v-if="loadingStaff">
+              <Skeleton height="2.5rem" class="mb-2" />
+              <Skeleton height="2.5rem" />
+            </div>
+            <div v-else-if="!staffAssignments.length" class="empty-state">
+              No staff assigned yet.
+            </div>
+            <div v-else>
+              <DataTable :value="staffAssignments" responsiveLayout="scroll">
+                <Column field="fullName" header="Name" />
+                <Column field="email" header="Email" />
+                <Column header="Roles">
+                  <template #body="{ data }">
+                    <div class="staff-role-tags">
+                      <div
+                        v-for="role in data.roles"
+                        :key="`${data.userId}-${role}`"
+                        class="staff-role-tag"
+                      >
+                        <Tag :value="staffRoleLabels[role] || role" severity="info" />
+                        <Button
+                          icon="pi pi-times"
+                          class="p-button-text p-button-danger"
+                          :loading="removingStaffRoleKey === `${data.userId}:${role}`"
+                          @click="removeStaffRole(data.userId, role)"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                </Column>
+              </DataTable>
+            </div>
+          </div>
+        </template>
+      </Card>
     </template>
     <div v-else class="empty-state">Course not found.</div>
 
@@ -323,6 +402,7 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import { useAuthStore } from '../stores/auth';
 import {
   listCourses,
   publishCourse,
@@ -344,10 +424,13 @@ import {
   updateEnrollmentGroup,
   bulkEnrollStudents,
 } from '../api/cms';
+import { listUsers, getCourseStaff, assignCourseStaff, removeCourseStaffRole } from '../api/admin';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.hasRole && auth.hasRole('admin'));
 
 const courseId = route.params.id;
 const course = ref(null);
@@ -398,6 +481,24 @@ const submittingEnrollment = ref(false);
 const removingEnrollmentId = ref(null);
 const updatingGroupId = ref(null);
 const bulkErrors = ref([]);
+
+const staffAssignments = ref([]);
+const loadingStaff = ref(false);
+const assigningStaff = ref(false);
+const removingStaffRoleKey = ref(null);
+const staffForm = ref({ userId: null, roles: [] });
+const staffRoleOptions = [
+  { label: 'Instructor', value: 'instructor' },
+  { label: 'Content editor', value: 'content_editor' },
+  { label: 'Enrollment manager', value: 'enrollment_manager' },
+];
+const staffRoleLabels = {
+  instructor: 'Instructor',
+  content_editor: 'Content editor',
+  enrollment_manager: 'Enrollment manager',
+};
+const staffCandidates = ref([]);
+const loadingStaffCandidates = ref(false);
 
 const selectedModule = computed(() => modules.value.find((m) => m.id === selectedModuleId.value));
 const groupDropdownOptions = computed(() => {
@@ -473,6 +574,111 @@ const loadEnrollmentData = async () => {
     });
   } finally {
     loadingEnrollments.value = false;
+  }
+};
+
+const ensureStaffCandidates = async () => {
+  if (!isAdmin.value || staffCandidates.value.length || loadingStaffCandidates.value) {
+    return;
+  }
+  loadingStaffCandidates.value = true;
+  try {
+    const response = await listUsers({ page: 1, pageSize: 500 });
+    const userList = Array.isArray(response?.users)
+      ? response.users
+      : Array.isArray(response)
+      ? response
+      : [];
+    staffCandidates.value = userList.map((user) => ({
+      label: `${user.full_name} (${user.email})`,
+      value: user.id,
+    }));
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load users',
+      life: 3000,
+    });
+  } finally {
+    loadingStaffCandidates.value = false;
+  }
+};
+
+const loadStaffAssignments = async () => {
+  if (!isAdmin.value) {
+    return;
+  }
+  loadingStaff.value = true;
+  try {
+    staffAssignments.value = await getCourseStaff(courseId);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load staff',
+      life: 3000,
+    });
+  } finally {
+    loadingStaff.value = false;
+  }
+};
+
+const submitStaffAssignment = async () => {
+  if (!staffForm.value.userId || !staffForm.value.roles.length) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing info',
+      detail: 'Select a user and at least one role',
+      life: 3000,
+    });
+    return;
+  }
+  assigningStaff.value = true;
+  try {
+    await assignCourseStaff(courseId, {
+      userId: staffForm.value.userId,
+      roles: staffForm.value.roles,
+    });
+    toast.add({
+      severity: 'success',
+      summary: 'Staff updated',
+      detail: 'Roles assigned successfully',
+      life: 2000,
+    });
+    staffForm.value = { userId: null, roles: [] };
+    await loadStaffAssignments();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to assign staff',
+      life: 3000,
+    });
+  } finally {
+    assigningStaff.value = false;
+  }
+};
+
+const removeStaffRole = async (userId, roleName) => {
+  removingStaffRoleKey.value = `${userId}:${roleName}`;
+  try {
+    await removeCourseStaffRole(courseId, userId, roleName);
+    toast.add({
+      severity: 'success',
+      summary: 'Role removed',
+      life: 2000,
+    });
+    await loadStaffAssignments();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to remove role',
+      life: 3000,
+    });
+  } finally {
+    removingStaffRoleKey.value = null;
   }
 };
 
@@ -848,6 +1054,19 @@ watch(
   },
 );
 
+watch(
+  isAdmin,
+  (value) => {
+    if (value) {
+      loadStaffAssignments();
+      ensureStaffCandidates();
+    } else {
+      staffAssignments.value = [];
+    }
+  },
+  { immediate: true },
+);
+
 const init = async () => {
   await loadCourse();
   if (course.value) {
@@ -951,6 +1170,35 @@ init();
 
 .enrollments-card {
   margin-top: 1rem;
+}
+
+.staff-card {
+  margin-top: 1rem;
+}
+
+.staff-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.staff-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.staff-role-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.staff-role-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .group-dropdown {

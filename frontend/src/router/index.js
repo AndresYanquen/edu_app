@@ -13,17 +13,15 @@ import CmsLessonEditor from '../views/CmsLessonEditor.vue';
 import ActivateAccount from '../views/ActivateAccount.vue';
 import { useAuthStore } from '../stores/auth';
 
-const roleHome = {
-  student: '/student',
-  instructor: '/instructor',
-  admin: '/admin',
-};
-
-const canAccess = (rolesMeta, userRole) => {
+const canAccess = (rolesMeta, auth) => {
   if (!rolesMeta) return true;
   const roles = Array.isArray(rolesMeta) ? rolesMeta : [rolesMeta];
-  if (roles.includes(userRole)) return true;
-  if (roles.includes('instructor') && userRole === 'admin') return true;
+  if (auth.hasAnyRole(roles)) {
+    return true;
+  }
+  if (roles.includes('instructor') && auth.hasRole('admin')) {
+    return true;
+  }
   return false;
 };
 
@@ -71,25 +69,28 @@ const routes = [
     path: '/cms/courses',
     name: 'cms-courses',
     component: CmsCourses,
-    meta: { requiresAuth: true, roles: ['admin', 'instructor'] },
+    meta: { requiresAuth: true, roles: ['admin', 'instructor', 'content_editor', 'enrollment_manager'] },
   },
   {
     path: '/cms/courses/:id',
     name: 'cms-course-builder',
     component: CmsCourseBuilder,
-    meta: { requiresAuth: true, roles: ['admin', 'instructor'] },
+    meta: { requiresAuth: true, roles: ['admin', 'instructor', 'content_editor', 'enrollment_manager'] },
   },
   {
     path: '/cms/lessons/:id/edit',
     name: 'cms-lesson-editor',
     component: CmsLessonEditor,
-    meta: { requiresAuth: true, roles: ['admin', 'instructor'] },
+    meta: { requiresAuth: true, roles: ['admin', 'instructor', 'content_editor', 'enrollment_manager'] },
   },
   {
     path: '/:pathMatch(.*)*',
     redirect: () => {
       const auth = useAuthStore();
-      return auth.isAuthenticated ? roleHome[auth.role] || '/student' : '/login';
+      if (!auth.isAuthenticated) {
+        return '/login';
+      }
+      return auth.getDefaultRoute();
     },
   },
 ];
@@ -119,7 +120,7 @@ router.beforeEach(async (to, from, next) => {
 
   if (to.meta.public) {
     if (to.path === '/login' && auth.isAuthenticated) {
-      return next(roleHome[auth.role] || '/student');
+      return next(auth.getDefaultRoute());
     }
     return next();
   }
@@ -129,15 +130,15 @@ router.beforeEach(async (to, from, next) => {
   }
 
   const requiredRoles = to.meta.roles || to.meta.role;
-  if (!canAccess(requiredRoles, auth.role)) {
+  if (!canAccess(requiredRoles, auth)) {
     const isStudentRoute =
       to.meta.role === 'student' ||
       (Array.isArray(to.meta.roles) && to.meta.roles.includes('student'));
     const wantsPreview = to.query.preview === '1' || to.query.preview === 'true';
-    if (isStudentRoute && wantsPreview && ['admin', 'instructor'].includes(auth.role)) {
+    if (isStudentRoute && wantsPreview && auth.hasAnyRole(['admin', 'instructor', 'content_editor'])) {
       return next();
     }
-    return next(roleHome[auth.role] || '/student');
+    return next(auth.getDefaultRoute());
   }
 
   return next();
