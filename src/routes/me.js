@@ -16,10 +16,9 @@ router.get('/', async (req, res) => {
           u.id,
           u.email,
           u.full_name,
-          m.role,
-          m.status
+          u.status,
+          u.is_active
         FROM users u
-        JOIN academy_memberships m ON m.user_id = u.id
         WHERE u.id = $1
         LIMIT 1
       `,
@@ -34,12 +33,14 @@ router.get('/', async (req, res) => {
     const globalRoles = await getGlobalRolesForUser(user.id);
 
     return res.json({
-      id: user.id,
-      email: user.email,
-      fullName: user.full_name,
-      role: user.role,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.full_name,
+        status: user.status,
+        isActive: user.is_active,
+      },
       globalRoles,
-      membershipStatus: user.status,
     });
   } catch (err) {
     console.error('Failed to fetch profile', err);

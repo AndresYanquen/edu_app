@@ -3,18 +3,8 @@ const { hasCourseRole } = require('./roleService');
 
 const CONTENT_ROLES = ['instructor', 'content_editor'];
 
-const extractRoles = (user) => {
-  if (!user) {
-    return [];
-  }
-  if (Array.isArray(user.globalRoles) && user.globalRoles.length) {
-    return user.globalRoles;
-  }
-  if (user.role) {
-    return [user.role];
-  }
-  return [];
-};
+const extractRoles = (user) =>
+  Array.isArray(user?.globalRoles) ? user.globalRoles : [];
 
 const canEditCourse = async (courseId, user) => {
   if (!courseId || !user) {

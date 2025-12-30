@@ -13,18 +13,6 @@ import CmsLessonEditor from '../views/CmsLessonEditor.vue';
 import ActivateAccount from '../views/ActivateAccount.vue';
 import { useAuthStore } from '../stores/auth';
 
-const canAccess = (rolesMeta, auth) => {
-  if (!rolesMeta) return true;
-  const roles = Array.isArray(rolesMeta) ? rolesMeta : [rolesMeta];
-  if (auth.hasAnyRole(roles)) {
-    return true;
-  }
-  if (roles.includes('instructor') && auth.hasRole('admin')) {
-    return true;
-  }
-  return false;
-};
-
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true } },
   { path: '/activate', name: 'activate', component: ActivateAccount, meta: { public: true } },
@@ -33,55 +21,55 @@ const routes = [
     path: '/student',
     name: 'student',
     component: StudentDashboard,
-    meta: { requiresAuth: true, role: 'student' },
+    meta: { requiresAuth: true, roles: ['student'] },
   },
   {
     path: '/student/course/:id',
     name: 'course',
     component: Course,
-    meta: { requiresAuth: true, role: 'student' },
+    meta: { requiresAuth: true, roles: ['student'] },
   },
   {
     path: '/student/course/:courseId/lesson/:lessonId',
     name: 'lesson',
     component: Lesson,
-    meta: { requiresAuth: true, role: 'student' },
+    meta: { requiresAuth: true, roles: ['student'] },
   },
   {
     path: '/instructor',
     name: 'instructor',
     component: InstructorDashboard,
-    meta: { requiresAuth: true, role: 'instructor' },
+    meta: { requiresAuth: true, roles: ['instructor'] },
   },
   {
     path: '/instructor/group/:id',
     name: 'instructor-group',
     component: InstructorGroup,
-    meta: { requiresAuth: true, role: 'instructor' },
+    meta: { requiresAuth: true, roles: ['instructor'] },
   },
   {
     path: '/admin',
     name: 'admin',
     component: AdminHome,
-    meta: { requiresAuth: true, role: 'admin' },
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/cms/courses',
     name: 'cms-courses',
     component: CmsCourses,
-    meta: { requiresAuth: true, roles: ['admin', 'instructor', 'content_editor', 'enrollment_manager'] },
+    meta: { requiresAuth: true, requiresStaff: true },
   },
   {
     path: '/cms/courses/:id',
     name: 'cms-course-builder',
     component: CmsCourseBuilder,
-    meta: { requiresAuth: true, roles: ['admin', 'instructor', 'content_editor', 'enrollment_manager'] },
+    meta: { requiresAuth: true, requiresStaff: true },
   },
   {
     path: '/cms/lessons/:id/edit',
     name: 'cms-lesson-editor',
     component: CmsLessonEditor,
-    meta: { requiresAuth: true, roles: ['admin', 'instructor', 'content_editor', 'enrollment_manager'] },
+    meta: { requiresAuth: true, requiresStaff: true },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -129,16 +117,31 @@ router.beforeEach(async (to, from, next) => {
     return next('/login');
   }
 
-  const requiredRoles = to.meta.roles || to.meta.role;
-  if (!canAccess(requiredRoles, auth)) {
-    const isStudentRoute =
-      to.meta.role === 'student' ||
-      (Array.isArray(to.meta.roles) && to.meta.roles.includes('student'));
-    const wantsPreview = to.query.preview === '1' || to.query.preview === 'true';
-    if (isStudentRoute && wantsPreview && auth.hasAnyRole(['admin', 'instructor', 'content_editor'])) {
-      return next();
-    }
+  if (to.meta.requiresAdmin && !auth.isAdmin) {
     return next(auth.getDefaultRoute());
+  }
+
+  if (to.meta.requiresStaff && !auth.isStaff) {
+    return next(auth.getDefaultRoute());
+  }
+
+  const requiredRoles = Array.isArray(to.meta.roles) ? to.meta.roles : [];
+  if (requiredRoles.length) {
+    const hasAccess =
+      auth.hasAnyRole(requiredRoles) ||
+      (requiredRoles.includes('instructor') && auth.isAdmin);
+    if (!hasAccess) {
+      const isStudentRoute = requiredRoles.includes('student');
+      const wantsPreview = to.query.preview === '1' || to.query.preview === 'true';
+      if (
+        isStudentRoute &&
+        wantsPreview &&
+        auth.hasAnyRole(['admin', 'instructor', 'content_editor'])
+      ) {
+        return next();
+      }
+      return next(auth.getDefaultRoute());
+    }
   }
 
   return next();

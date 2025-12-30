@@ -6,18 +6,8 @@ const {
   ensureCourseExists,
 } = require('../utils/roleService');
 
-const extractGlobalRoles = (user) => {
-  if (!user) {
-    return [];
-  }
-  if (Array.isArray(user.globalRoles) && user.globalRoles.length) {
-    return user.globalRoles;
-  }
-  if (user.role) {
-    return [user.role];
-  }
-  return [];
-};
+const extractGlobalRoles = (user) =>
+  Array.isArray(user?.globalRoles) ? user.globalRoles : [];
 
 const hasGlobalRole = (user, roleName) => extractGlobalRoles(user).includes(roleName);
 

@@ -310,9 +310,11 @@ router.post('/courses/:id/instructors', async (req, res) => {
     if (instructorIds.length) {
       const { rows } = await client.query(
         `
-          SELECT user_id
-          FROM academy_memberships
-          WHERE user_id = ANY($1::uuid[]) AND role = 'instructor'
+          SELECT DISTINCT ur.user_id
+          FROM user_roles ur
+          JOIN roles r ON r.id = ur.role_id
+          WHERE ur.user_id = ANY($1::uuid[])
+            AND r.name = 'instructor'
         `,
         [instructorIds],
       );
@@ -1152,11 +1154,17 @@ router.get(
     try {
       const { rows } = await pool.query(
         `
-          SELECT u.id, u.full_name, u.email
+          SELECT DISTINCT u.id, u.full_name, u.email
           FROM users u
-          JOIN academy_memberships am ON am.user_id = u.id
-          WHERE am.role = 'student'
-            AND am.status = 'active'
+          WHERE u.is_active = true
+            AND u.status = 'active'
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
             AND NOT EXISTS (
               SELECT 1
               FROM enrollments e
@@ -1199,7 +1207,6 @@ router.get(
             assignment.group_name
           FROM enrollments e
           JOIN users u ON u.id = e.user_id
-          JOIN academy_memberships am ON am.user_id = u.id AND am.role = 'student'
           LEFT JOIN LATERAL (
             SELECT gs.group_id, g.name AS group_name
             FROM group_students gs
@@ -1208,7 +1215,14 @@ router.get(
               AND g.course_id = e.course_id
             LIMIT 1
           ) assignment ON true
-          WHERE e.course_id = $1
+          WHERE EXISTS (
+            SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+              AND r.name = 'student'
+          )
+            AND e.course_id = $1
           ORDER BY u.full_name ASC
         `,
         [courseId],
@@ -1245,16 +1259,21 @@ router.post(
       await client.query('BEGIN');
 
       const studentRes = await client.query(
-      `
-        SELECT u.id
-        FROM users u
-        JOIN academy_memberships am ON am.user_id = u.id
-        WHERE u.id = $1
-          AND am.role = 'student'
-        LIMIT 1
-      `,
-      [parsed.data.studentId],
-    );
+        `
+          SELECT u.id
+          FROM users u
+          WHERE u.id = $1
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
+          LIMIT 1
+        `,
+        [parsed.data.studentId],
+      );
     if (!studentRes.rows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Student not found' });
@@ -1437,15 +1456,20 @@ router.post(
       }
 
       const { rows: studentRows } = await client.query(
-      `
-        SELECT u.id
-        FROM users u
-        JOIN academy_memberships am ON am.user_id = u.id
-        WHERE u.id = ANY($1::uuid[])
-          AND am.role = 'student'
-      `,
-      [studentIds],
-    );
+        `
+          SELECT DISTINCT u.id
+          FROM users u
+          WHERE u.id = ANY($1::uuid[])
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
+        `,
+        [studentIds],
+      );
     const validStudents = new Set(studentRows.map((row) => row.id));
 
     const enrolled = [];

@@ -347,12 +347,8 @@ const filteredGroupOptions = computed(() => {
 const bulkFileName = computed(() => bulkFile.value?.name || '');
 
 const roleLabel = (role) => ROLE_LABELS[role] || role;
-const userRoles = (user) => {
-  if (Array.isArray(user.global_roles) && user.global_roles.length) {
-    return user.global_roles;
-  }
-  return [user.role].filter(Boolean);
-};
+const userRoles = (user) =>
+  Array.isArray(user.global_roles) ? user.global_roles.filter(Boolean) : [];
 
 const buildUserQuery = () => {
   const params = {

@@ -27,8 +27,6 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const membershipRoleFor = (roleName) => (roleName === 'student' ? 'student' : 'instructor');
-
 const parseMultipartForm = (req, maxSize = MAX_BULK_UPLOAD_SIZE) =>
   new Promise((resolve, reject) => {
     const contentType = req.headers['content-type'] || '';
@@ -172,9 +170,23 @@ const createInvite = async (client, userId, ttlDays) => {
 const fetchManagedUser = async (client, userId) => {
   const { rows } = await client.query(
     `
-      SELECT u.id, u.email, u.full_name, u.is_active, m.role, m.status
+      SELECT
+        u.id,
+        u.email,
+        u.full_name,
+        u.is_active,
+        u.status,
+        u.must_set_password,
+        COALESCE(
+          (
+            SELECT array_agg(r.name ORDER BY r.name)
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+          ),
+          '{}'
+        ) AS global_roles
       FROM users u
-      JOIN academy_memberships m ON m.user_id = u.id
       WHERE u.id = $1
       LIMIT 1
     `,
@@ -184,19 +196,22 @@ const fetchManagedUser = async (client, userId) => {
   if (!user) {
     return null;
   }
-  if (user.role === 'admin') {
+  if ((user.global_roles || []).includes('admin')) {
     throw new Error('Cannot manage admin user');
   }
   return user;
 };
 
 const updateUserActivation = async (client, userId, isActive) => {
-  const membershipStatus = isActive ? 'active' : 'suspended';
-  await client.query('UPDATE users SET is_active = $1 WHERE id = $2', [isActive, userId]);
-  await client.query('UPDATE academy_memberships SET status = $1 WHERE user_id = $2', [
-    membershipStatus,
-    userId,
-  ]);
+  await client.query(
+    `
+      UPDATE users
+      SET is_active = $1,
+          status = $2
+      WHERE id = $3
+    `,
+    [isActive, isActive ? 'active' : 'suspended', userId],
+  );
 };
 
 router.post('/users', requireAdmin, async (req, res) => {
@@ -206,7 +221,6 @@ router.post('/users', requireAdmin, async (req, res) => {
   }
 
   const { fullName, email, role } = parsed.data;
-  const membershipRole = membershipRoleFor(role);
 
   const client = await pool.connect();
   try {
@@ -228,16 +242,9 @@ router.post('/users', requireAdmin, async (req, res) => {
     );
     const user = userInsert.rows[0];
 
-    await client.query(
-      `
-        INSERT INTO academy_memberships (user_id, role)
-        VALUES ($1, $2)
-      `,
-      [user.id, membershipRole],
-    );
-
     await grantGlobalRoles(client, user.id, [role]);
 
+    const globalRoles = await getGlobalRolesForUser(user.id, client);
     const invite = await createInvite(client, user.id);
 
     await client.query('COMMIT');
@@ -248,7 +255,7 @@ router.post('/users', requireAdmin, async (req, res) => {
       id: user.id,
       email: user.email,
       fullName: user.full_name,
-      role,
+      globalRoles,
       activationLink,
     });
   } catch (err) {
@@ -272,21 +279,16 @@ router.get('/users', requireAdmin, async (req, res) => {
     const whereParts = [];
 
     if (roleFilter) {
-      if (['student', 'instructor'].includes(roleFilter)) {
-        params.push(roleFilter);
-        whereParts.push(`m.role = $${params.length}`);
-      } else {
-        params.push(roleFilter);
-        whereParts.push(`
-          EXISTS (
-            SELECT 1
-            FROM user_roles ur
-            JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = u.id
-              AND r.name = $${params.length}
-          )
-        `);
-      }
+      params.push(roleFilter);
+      whereParts.push(`
+        EXISTS (
+          SELECT 1
+          FROM user_roles ur
+          JOIN roles r ON r.id = ur.role_id
+          WHERE ur.user_id = u.id
+            AND r.name = $${params.length}
+        )
+      `);
     }
 
     if (search) {
@@ -304,7 +306,6 @@ router.get('/users', requireAdmin, async (req, res) => {
     const countQuery = `
       SELECT COUNT(*)::int AS total
       FROM users u
-      JOIN academy_memberships m ON m.user_id = u.id
       ${whereClause}
     `;
     const countRes = await pool.query(countQuery, params);
@@ -315,10 +316,9 @@ router.get('/users', requireAdmin, async (req, res) => {
         u.id,
         u.full_name,
         u.email,
-        m.role,
         u.must_set_password,
         u.is_active,
-        m.status,
+        u.status,
         u.created_at,
         COALESCE(
           (
@@ -330,7 +330,6 @@ router.get('/users', requireAdmin, async (req, res) => {
           '{}'
         ) AS global_roles
       FROM users u
-      JOIN academy_memberships m ON m.user_id = u.id
       ${whereClause}
       ORDER BY u.created_at DESC
       LIMIT ${pageSize}
@@ -360,8 +359,14 @@ router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
       `
         SELECT u.id, u.email, u.full_name
         FROM users u
-        JOIN academy_memberships m ON m.user_id = u.id
-        WHERE u.id = $1 AND m.role IN ('student','instructor')
+        WHERE u.id = $1
+          AND EXISTS (
+            SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+              AND r.name = ANY('{student,instructor}')
+          )
         LIMIT 1
       `,
       [userId],
@@ -394,9 +399,10 @@ const buildUserResponse = (user) => ({
   id: user.id,
   email: user.email,
   full_name: user.full_name,
-  role: user.role,
   is_active: user.is_active,
   status: user.status,
+  must_set_password: user.must_set_password ?? false,
+  global_roles: user.global_roles || [],
 });
 
 router.post('/users/:id/deactivate', requireAdmin, async (req, res) => {
@@ -669,7 +675,6 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
           SELECT
             u.id,
             u.full_name,
-            m.role,
             COALESCE(
               (
                 SELECT array_agg(r.name ORDER BY r.name)
@@ -680,7 +685,6 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
               '{}'
             ) AS global_roles
           FROM users u
-          JOIN academy_memberships m ON m.user_id = u.id
           WHERE LOWER(u.email) = LOWER($1)
           LIMIT 1
         `,
@@ -692,10 +696,12 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
         userId = existingUser.id;
         const existingGlobalRoles = existingUser.global_roles || [];
         userHasStudentRole =
-          existingUser.role === 'student' || existingGlobalRoles.includes('student');
-        result.role = existingGlobalRoles.length
-          ? existingGlobalRoles.join(', ')
-          : existingUser.role;
+          existingGlobalRoles.includes('student') || rowRole === 'student';
+        const summarizedRoles = new Set(existingGlobalRoles);
+        if (rowRole) {
+          summarizedRoles.add(rowRole);
+        }
+        result.role = Array.from(summarizedRoles).join(', ');
         await grantGlobalRoles(pool, userId, [rowRole]);
         pushResult('already_exists');
       } else {
@@ -707,20 +713,13 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
               INSERT INTO users (email, full_name, password_hash, must_set_password)
               VALUES ($1, $2, '', true)
               RETURNING id
-            `,
+              `,
             [rawEmail, fullNameInput || rawEmail.split('@')[0] || rawEmail],
           );
           userId = insertUser.rows[0].id;
 
-          await client.query(
-            `
-              INSERT INTO academy_memberships (user_id, role)
-              VALUES ($1, $2)
-            `,
-            [userId, membershipRoleFor(rowRole)],
-          );
-
           await grantGlobalRoles(client, userId, [rowRole]);
+          userHasStudentRole = rowRole === 'student' || userHasStudentRole;
 
           const invite = await createInvite(client, userId, expiresDays);
           await client.query('COMMIT');

@@ -145,7 +145,7 @@
         </Card>
       </div>
 
-      <Card class="enrollments-card">
+      <Card v-if="canManageEnrollments" class="enrollments-card">
         <template #title>
           <div class="section-header">
             <h3>Enrollments</h3>
@@ -430,7 +430,10 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
-const isAdmin = computed(() => auth.hasRole && auth.hasRole('admin'));
+const isAdmin = computed(() => auth.isAdmin);
+const canManageEnrollments = computed(() =>
+  auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'enrollment_manager'])),
+);
 
 const courseId = route.params.id;
 const course = ref(null);
@@ -557,6 +560,11 @@ const loadLessons = async (moduleId) => {
 };
 
 const loadEnrollmentData = async () => {
+  if (!canManageEnrollments.value) {
+    enrollments.value = [];
+    courseGroups.value = [];
+    return;
+  }
   loadingEnrollments.value = true;
   try {
     const [enrollmentRows, groupRows] = await Promise.all([
@@ -693,6 +701,10 @@ const syncPicklistSource = () => {
 };
 
 const loadAvailableStudents = async () => {
+  if (!canManageEnrollments.value) {
+    availableStudents.value = [];
+    return;
+  }
   loadingAvailableStudents.value = true;
   try {
     availableStudents.value = await getAvailableStudents(courseId);
@@ -1070,9 +1082,15 @@ watch(
 const init = async () => {
   await loadCourse();
   if (course.value) {
-    await Promise.all([loadModules(), loadEnrollmentData(), loadAvailableStudents()]);
+    const tasks = [loadModules()];
+    if (canManageEnrollments.value) {
+      tasks.push(loadEnrollmentData(), loadAvailableStudents());
+    }
+    await Promise.all(tasks);
   }
 };
+
+const loadData = init;
 
 init();
 </script>

@@ -26,7 +26,6 @@ module.exports = (req, res, next) => {
 
     req.user = {
       id: payload.id,
-      role: payload.role || null,
       globalRoles,
     };
     return next();

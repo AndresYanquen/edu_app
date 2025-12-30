@@ -2,35 +2,33 @@ const { randomUUID } = require('node:crypto');
 
 const uuid = () => randomUUID();
 const TIMESTAMP = new Date().toISOString();
-const PASSWORD_HASH = '$2a$10$SYm36506oapBKJFZGySHc.In4qyqGcGAirduhwjf9ON7VB8iK4MMW'; // "password"
+const PASSWORD_HASH = '$2a$10$ED7AmyVF7i.vps96ZMLf6.ajCnBBVtWt1FuzNsuGxMmCWCrpwDzDK'; // "Password123!"
 
-const admin = { id: uuid(), email: 'admin@academy.local', fullName: 'Alex Rivera' };
+const makeUser = (email, fullName) => ({
+  id: uuid(),
+  email,
+  fullName,
+});
+
+const admin = makeUser('admin@academy.local', 'Jordan Avery');
 const instructors = [
-  { id: uuid(), email: 'natalie.roberts@academy.local', fullName: 'Natalie Roberts' },
-  { id: uuid(), email: 'marco.alvarez@academy.local', fullName: 'Marco Alvarez' },
+  makeUser('lena.carter@academy.local', 'Lena Carter'),
+  makeUser('darius.ford@academy.local', 'Darius Ford'),
 ];
-
+const contentEditor = makeUser('priya.desai@academy.local', 'Priya Desai');
+const enrollmentManager = makeUser('noah.fox@academy.local', 'Noah Fox');
 const students = [
-  { id: uuid(), email: 'ava.parker@academy.local', fullName: 'Ava Parker' },
-  { id: uuid(), email: 'liam.singh@academy.local', fullName: 'Liam Singh' },
-  { id: uuid(), email: 'emily.chen@academy.local', fullName: 'Emily Chen' },
-  { id: uuid(), email: 'noah.johnson@academy.local', fullName: 'Noah Johnson' },
-  { id: uuid(), email: 'mia.rodriguez@academy.local', fullName: 'Mia Rodriguez' },
-  { id: uuid(), email: 'lucas.patel@academy.local', fullName: 'Lucas Patel' },
-  { id: uuid(), email: 'sophia.martinez@academy.local', fullName: 'Sophia Martinez' },
-  { id: uuid(), email: 'ethan.kim@academy.local', fullName: 'Ethan Kim' },
-  { id: uuid(), email: 'harper.davis@academy.local', fullName: 'Harper Davis' },
-  { id: uuid(), email: 'isabella.lopez@academy.local', fullName: 'Isabella Lopez' },
-  { id: uuid(), email: 'mason.rivera@academy.local', fullName: 'Mason Rivera' },
-  { id: uuid(), email: 'amelia.nguyen@academy.local', fullName: 'Amelia Nguyen' },
-  { id: uuid(), email: 'logan.brooks@academy.local', fullName: 'Logan Brooks' },
-  { id: uuid(), email: 'chloe.ramirez@academy.local', fullName: 'Chloe Ramirez' },
-  { id: uuid(), email: 'ben.scott@academy.local', fullName: 'Benjamin Scott' },
+  makeUser('mia.garcia@academy.local', 'Mia Garcia'),
+  makeUser('isaac.rivera@academy.local', 'Isaac Rivera'),
+  makeUser('sloan.kim@academy.local', 'Sloan Kim'),
+  makeUser('nora.mitchell@academy.local', 'Nora Mitchell'),
+  makeUser('parker.jones@academy.local', 'Parker Jones'),
+  makeUser('olive.bennett@academy.local', 'Olive Bennett'),
 ];
 
-const allUsers = [admin, ...instructors, ...students];
+const allUsers = [admin, ...instructors, contentEditor, enrollmentManager, ...students];
 
-const ROLE_NAMES = ['admin', 'instructor', 'student', 'content_editor', 'enrollment_manager'];
+const ROLE_NAMES = ['admin', 'student', 'instructor', 'content_editor', 'enrollment_manager'];
 const roleRows = ROLE_NAMES.map((name) => ({
   id: uuid(),
   name,
@@ -41,84 +39,42 @@ const roleIdByName = roleRows.reduce((acc, role) => {
   return acc;
 }, {});
 
-const buildUserRow = (user) => ({
+const userRows = allUsers.map((user) => ({
   id: user.id,
   email: user.email,
   password_hash: PASSWORD_HASH,
   full_name: user.fullName,
   status: 'active',
+  is_active: true,
+  must_set_password: false,
   created_at: TIMESTAMP,
-});
+}));
 
-const memberships = [
-  { id: uuid(), user_id: admin.id, role: 'admin', status: 'active', joined_at: TIMESTAMP },
+const userRoles = [
+  { user_id: admin.id, role_id: roleIdByName.admin },
   ...instructors.map((user) => ({
-    id: uuid(),
     user_id: user.id,
-    role: 'instructor',
-    status: 'active',
-    joined_at: TIMESTAMP,
+    role_id: roleIdByName.instructor,
   })),
-  ...students.map((user) => ({
-    id: uuid(),
-    user_id: user.id,
-    role: 'student',
-    status: 'active',
-    joined_at: TIMESTAMP,
+  { user_id: contentEditor.id, role_id: roleIdByName.content_editor },
+  { user_id: enrollmentManager.id, role_id: roleIdByName.enrollment_manager },
+  ...students.map((student) => ({
+    user_id: student.id,
+    role_id: roleIdByName.student,
   })),
 ];
-
-const userRoles = memberships
-  .map((membership) => {
-    const roleId = roleIdByName[membership.role];
-    if (!roleId) {
-      return null;
-    }
-    return {
-      user_id: membership.user_id,
-      role_id: roleId,
-    };
-  })
-  .filter(Boolean);
 
 const courseFullStackId = uuid();
 const courseAnalyticsId = uuid();
 
-const moduleFsIntroId = uuid();
-const moduleFsBackendId = uuid();
-const moduleAnalyticsPrepId = uuid();
-const moduleAnalyticsStoryId = uuid();
-
-const lessonFsIntroId = uuid();
-const lessonFsHtmlCssId = uuid();
-const lessonFsNodeId = uuid();
-const lessonFsApiDesignId = uuid();
-const lessonAnalyticsMindsetId = uuid();
-const lessonAnalyticsSqlId = uuid();
-const lessonAnalyticsSheetsId = uuid();
-const lessonAnalyticsStorytellingId = uuid();
-const quizQuestionOneId = uuid();
-const quizQuestionTwoId = uuid();
-const quizQuestionThreeId = uuid();
-
-const assetChecklistId = uuid();
-const assetSqlCheatSheetId = uuid();
-
-const groupFsWeeknightId = uuid();
-const groupFsWeekendId = uuid();
-const groupAnalyticsMorningId = uuid();
-const groupAnalyticsEveningId = uuid();
-
-const usersRows = allUsers.map(buildUserRow);
-
 const courses = [
   {
     id: courseFullStackId,
-    title: 'Full Stack Web Bootcamp',
-    description: 'Immersive bootcamp that covers front-end and back-end fundamentals.',
+    title: 'Full Stack Launchpad',
+    description: 'Modern JavaScript, APIs, and deployment workflows for juniors.',
     level: 'B2',
     status: 'published',
-    owner_user_id: instructors[0].id,
+    owner_user_id: admin.id,
     is_published: true,
     published_at: TIMESTAMP,
     updated_at: TIMESTAMP,
@@ -126,11 +82,11 @@ const courses = [
   },
   {
     id: courseAnalyticsId,
-    title: 'Data Analytics Foundations',
-    description: 'SQL-first analytics with dashboards and storytelling practice.',
+    title: 'Product Analytics Studio',
+    description: 'Hands-on SQL and dashboard storytelling for product teams.',
     level: 'B1',
     status: 'published',
-    owner_user_id: instructors[1].id,
+    owner_user_id: admin.id,
     is_published: true,
     published_at: TIMESTAMP,
     updated_at: TIMESTAMP,
@@ -138,11 +94,35 @@ const courses = [
   },
 ];
 
+const courseUserRoles = [
+  // Course 1 staff
+  { course_id: courseFullStackId, user_id: instructors[0].id, role_id: roleIdByName.instructor },
+  { course_id: courseFullStackId, user_id: contentEditor.id, role_id: roleIdByName.content_editor },
+  {
+    course_id: courseFullStackId,
+    user_id: enrollmentManager.id,
+    role_id: roleIdByName.enrollment_manager,
+  },
+  // Course 2 staff
+  { course_id: courseAnalyticsId, user_id: instructors[1].id, role_id: roleIdByName.instructor },
+  { course_id: courseAnalyticsId, user_id: contentEditor.id, role_id: roleIdByName.content_editor },
+  {
+    course_id: courseAnalyticsId,
+    user_id: enrollmentManager.id,
+    role_id: roleIdByName.enrollment_manager,
+  },
+];
+
+const moduleFsFrontendId = uuid();
+const moduleFsBackendId = uuid();
+const moduleAnalyticsCoreId = uuid();
+const moduleAnalyticsStoryId = uuid();
+
 const modules = [
   {
-    id: moduleFsIntroId,
+    id: moduleFsFrontendId,
     course_id: courseFullStackId,
-    title: 'Web Fundamentals',
+    title: 'Frontend Foundations',
     position: 1,
     order_index: 1,
     is_published: true,
@@ -153,7 +133,7 @@ const modules = [
   {
     id: moduleFsBackendId,
     course_id: courseFullStackId,
-    title: 'Back-end Foundations',
+    title: 'API & Deployment',
     position: 2,
     order_index: 2,
     is_published: true,
@@ -162,9 +142,9 @@ const modules = [
     created_at: TIMESTAMP,
   },
   {
-    id: moduleAnalyticsPrepId,
+    id: moduleAnalyticsCoreId,
     course_id: courseAnalyticsId,
-    title: 'Analytics Preparation',
+    title: 'Analytics Core',
     position: 1,
     order_index: 1,
     is_published: true,
@@ -175,7 +155,7 @@ const modules = [
   {
     id: moduleAnalyticsStoryId,
     course_id: courseAnalyticsId,
-    title: 'Visualization & Storytelling',
+    title: 'Dashboards & Storytelling',
     position: 2,
     order_index: 2,
     is_published: true,
@@ -184,436 +164,383 @@ const modules = [
     created_at: TIMESTAMP,
   },
 ];
+
+const lessonWebBasicsId = uuid();
+const lessonAccessibilityId = uuid();
+const lessonApiDesignId = uuid();
+const lessonDeploymentId = uuid();
+const lessonSqlWarmupId = uuid();
+const lessonDataCleaningId = uuid();
+const lessonDashboardStoryId = uuid();
+const lessonExecReportingId = uuid();
+
+const lessonBody = (text) =>
+  text +
+  ' This lesson includes starter projects, guided steps, and review questions to help students practice in an English-first environment.';
+
+const lessonEntry = ({
+  id,
+  moduleId,
+  title,
+  position,
+  contentType = 'text',
+  videoUrl = null,
+  contentUrl = null,
+  durationMinutes = 30,
+}) => ({
+  id,
+  module_id: moduleId,
+  title,
+  position,
+  order_index: position,
+  content_type: contentType,
+  content_text: lessonBody(title),
+  video_url: videoUrl,
+  content_url: contentUrl,
+  embed_html: null,
+  duration_seconds: durationMinutes * 60,
+  estimated_minutes: durationMinutes,
+  is_published: true,
+  published_at: TIMESTAMP,
+  updated_at: TIMESTAMP,
+  created_at: TIMESTAMP,
+});
 
 const lessons = [
-  {
-    id: lessonFsIntroId,
-    module_id: moduleFsIntroId,
-    title: 'How the Web Works',
+  lessonEntry({
+    id: lessonWebBasicsId,
+    moduleId: moduleFsFrontendId,
+    title: 'Modern Web Requests',
     position: 1,
-    content_type: 'text',
-    content_text:
-      'Trace the full journey of an HTTP request, from DNS lookups to TLS handshakes, and practice using browser DevTools to inspect headers and payloads like an English-speaking engineer.',
-    video_url: 'https://www.youtube.com/watch?v=f02mOEt11OQ',
-    content_url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP',
-    embed_html: null,
-    duration_seconds: 1800,
-    estimated_minutes: 12,
-    is_free_preview: true,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 1,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonFsHtmlCssId,
-    module_id: moduleFsIntroId,
-    title: 'HTML & CSS Essentials',
+    contentUrl: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview',
+  }),
+  lessonEntry({
+    id: lessonAccessibilityId,
+    moduleId: moduleFsFrontendId,
+    title: 'Accessible Components',
     position: 2,
-    content_type: 'video',
-    content_text:
-      'Compose accessible semantic layouts, apply modern Flexbox/Grid utilities, and describe UI behavior clearly to cross-functional teammates.',
-    video_url: 'https://www.youtube.com/watch?v=1Rs2ND1ryYc',
-    content_url: 'https://web.dev/learn/css/',
-    embed_html: null,
-    duration_seconds: 2700,
-    estimated_minutes: 15,
-    is_free_preview: false,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 2,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonFsNodeId,
-    module_id: moduleFsBackendId,
-    title: 'Node.js Fundamentals',
+    videoUrl: 'https://www.youtube.com/watch?v=GAWZ3MGRa44',
+  }),
+  lessonEntry({
+    id: lessonApiDesignId,
+    moduleId: moduleFsBackendId,
+    title: 'Designing Reliable APIs',
     position: 1,
-    content_type: 'text',
-    content_text:
-      'Review the event loop, learn how to organize npm scripts, and explain asynchronous flows with the confident language expected in remote stand-ups.',
-    video_url: null,
-    content_url: 'https://nodejs.org/en/learn',
-    embed_html: null,
-    duration_seconds: 2400,
-    estimated_minutes: 10,
-    is_free_preview: false,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 1,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonFsApiDesignId,
-    module_id: moduleFsBackendId,
-    title: 'Designing REST APIs',
+    contentUrl: 'https://martinfowler.com/articles/richardsonMaturityModel.html',
+  }),
+  lessonEntry({
+    id: lessonDeploymentId,
+    moduleId: moduleFsBackendId,
+    title: 'Deploying Node Services',
     position: 2,
-    content_type: 'link',
-    content_text:
-      'Write clear English descriptions of resources, choose verbs that communicate intent, and document status codes your stakeholders can trust.',
-    video_url: null,
-    content_url: 'https://martinfowler.com/articles/richardsonMaturityModel.html',
-    embed_html: null,
-    duration_seconds: 2100,
-    estimated_minutes: 9,
-    is_free_preview: false,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 2,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonAnalyticsMindsetId,
-    module_id: moduleAnalyticsPrepId,
-    title: 'Analytics Mindset',
+    videoUrl: 'https://www.youtube.com/watch?v=bNLG8GiEYfA',
+  }),
+  lessonEntry({
+    id: lessonSqlWarmupId,
+    moduleId: moduleAnalyticsCoreId,
+    title: 'SQL Warmup',
     position: 1,
-    content_type: 'text',
-    content_text:
-      'Practice framing messy business questions, define KPIs in plain English, and align stakeholders before running a single query.',
-    video_url: null,
-    content_url: 'https://hbr.org/2012/09/a-refresher-on-regression-analysis',
-    embed_html: null,
-    duration_seconds: 1500,
-    estimated_minutes: 8,
-    is_free_preview: true,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 1,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonAnalyticsSqlId,
-    module_id: moduleAnalyticsPrepId,
-    title: 'SQL for Analysts',
+    contentUrl: 'https://mode.com/sql-tutorial/introduction-to-sql/',
+  }),
+  lessonEntry({
+    id: lessonDataCleaningId,
+    moduleId: moduleAnalyticsCoreId,
+    title: 'Cleaning Product Events',
     position: 2,
-    content_type: 'video',
-    content_text:
-      'Narrate your SQL in business-friendly language while writing joins, filters, and aggregations that survive real stakeholder scrutiny.',
-    video_url: 'https://www.youtube.com/watch?v=HXV3zeQKqGY',
-    content_url: 'https://mode.com/sql-tutorial/',
-    embed_html: null,
-    duration_seconds: 2400,
-    estimated_minutes: 14,
-    is_free_preview: false,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 2,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonAnalyticsSheetsId,
-    module_id: moduleAnalyticsStoryId,
-    title: 'Dashboards in Sheets',
+    videoUrl: 'https://www.youtube.com/watch?v=_V8eKsto3Ug',
+  }),
+  lessonEntry({
+    id: lessonDashboardStoryId,
+    moduleId: moduleAnalyticsStoryId,
+    title: 'Dashboard Storytelling',
     position: 1,
-    content_type: 'text',
-    content_text: 'Pivot tables, charts, and automation basics.',
-    video_url: null,
-    content_url: 'https://workspace.google.com/learning-center/products/sheets/',
-    embed_html: null,
-    duration_seconds: 1800,
-    estimated_minutes: 11,
-    is_free_preview: false,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 1,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: lessonAnalyticsStorytellingId,
-    module_id: moduleAnalyticsStoryId,
-    title: 'Data Storytelling',
+    contentUrl: 'https://datastudio.google.com',
+  }),
+  lessonEntry({
+    id: lessonExecReportingId,
+    moduleId: moduleAnalyticsStoryId,
+    title: 'Executive Reporting Rituals',
     position: 2,
-    content_type: 'link',
-    content_text: null,
-    video_url: null,
-    content_url: 'https://www.storytellingwithdata.com/',
-    embed_html: null,
-    duration_seconds: 2100,
-    estimated_minutes: 10,
-    is_free_preview: false,
-    is_published: true,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    order_index: 2,
-    created_at: TIMESTAMP,
-  },
+    videoUrl: 'https://www.youtube.com/watch?v=miEHe-gItcM',
+  }),
 ];
 
-const quizQuestions = [
-  {
-    id: quizQuestionOneId,
-    lesson_id: lessonAnalyticsMindsetId,
-    question_text: 'When presenting a KPI to stakeholders, what should you explain first?',
-    question_type: 'single_choice',
-    order_index: 1,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: quizQuestionTwoId,
-    lesson_id: lessonAnalyticsMindsetId,
-    question_text: 'Which sentence best rewrites a vague request into an actionable analytics task?',
-    question_type: 'single_choice',
-    order_index: 2,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: quizQuestionThreeId,
-    lesson_id: lessonAnalyticsMindsetId,
-    question_text: 'True or False: You should confirm the business problem before writing SQL queries.',
-    question_type: 'true_false',
-    order_index: 3,
-    created_at: TIMESTAMP,
-  },
-];
-
-const quizOptions = [
-  {
-    id: uuid(),
-    question_id: quizQuestionOneId,
-    option_text: 'The business objective the KPI supports.',
-    is_correct: true,
-    order_index: 1,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionOneId,
-    option_text: 'Every SQL join used to calculate it.',
-    is_correct: false,
-    order_index: 2,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionOneId,
-    option_text: 'Your favorite dashboard color palette.',
-    is_correct: false,
-    order_index: 3,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionOneId,
-    option_text: 'The number of slides in your presentation.',
-    is_correct: false,
-    order_index: 4,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionTwoId,
-    option_text: '"Find insights from the data ASAP."',
-    is_correct: false,
-    order_index: 1,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionTwoId,
-    option_text: '"Investigate why churn rose 4% last month in LATAM and propose two hypotheses."',
-    is_correct: true,
-    order_index: 2,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionTwoId,
-    option_text: '"Make a chart that looks modern."',
-    is_correct: false,
-    order_index: 3,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionTwoId,
-    option_text: '"Email leadership once you find something surprising."',
-    is_correct: false,
-    order_index: 4,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionThreeId,
-    option_text: 'True',
-    is_correct: false,
-    order_index: 1,
-  },
-  {
-    id: uuid(),
-    question_id: quizQuestionThreeId,
-    option_text: 'False',
-    is_correct: true,
-    order_index: 2,
-  },
-];
+const assetProjectBriefId = uuid();
+const assetSqlCheatId = uuid();
 
 const assets = [
   {
-    id: assetChecklistId,
-    uploaded_by_user_id: instructors[0].id,
+    id: assetProjectBriefId,
+    uploaded_by_user_id: contentEditor.id,
     storage_provider: 'local',
-    path: 'assets/fs-web-checklist.pdf',
+    path: 'demo-assets/full-stack-project-brief.pdf',
     mime_type: 'application/pdf',
-    size_bytes: 524288,
+    size_bytes: 132400,
     created_at: TIMESTAMP,
   },
   {
-    id: assetSqlCheatSheetId,
+    id: assetSqlCheatId,
     uploaded_by_user_id: instructors[1].id,
     storage_provider: 'local',
-    path: 'assets/sql-cheatsheet.pdf',
+    path: 'demo-assets/sql-reference.pdf',
     mime_type: 'application/pdf',
-    size_bytes: 262144,
+    size_bytes: 88400,
     created_at: TIMESTAMP,
   },
 ];
 
 const lessonAssets = [
-  { lesson_id: lessonFsIntroId, asset_id: assetChecklistId },
-  { lesson_id: lessonAnalyticsSqlId, asset_id: assetSqlCheatSheetId },
+  { lesson_id: lessonApiDesignId, asset_id: assetProjectBriefId },
+  { lesson_id: lessonSqlWarmupId, asset_id: assetSqlCheatId },
 ];
 
 const groups = [
   {
-    id: groupFsWeeknightId,
+    id: uuid(),
     course_id: courseFullStackId,
-    name: 'FS - Weeknight Cohort',
+    name: 'Weeknight Builders',
     status: 'active',
-    schedule_text: 'Mon & Wed 7-9pm',
+    schedule_text: 'Tue/Thu 6-8pm',
     created_at: TIMESTAMP,
   },
   {
-    id: groupFsWeekendId,
+    id: uuid(),
     course_id: courseFullStackId,
-    name: 'FS - Weekend Sprint',
+    name: 'Weekend Sprinters',
     status: 'active',
     schedule_text: 'Sat 10am-2pm',
     created_at: TIMESTAMP,
   },
   {
-    id: groupAnalyticsMorningId,
+    id: uuid(),
     course_id: courseAnalyticsId,
-    name: 'Analytics - Morning Lab',
+    name: 'Morning Analysts',
     status: 'active',
-    schedule_text: 'Tue & Thu 9-11am',
-    created_at: TIMESTAMP,
-  },
-  {
-    id: groupAnalyticsEveningId,
-    course_id: courseAnalyticsId,
-    name: 'Analytics - Evening Cohort',
-    status: 'active',
-    schedule_text: 'Tue & Thu 6-8pm',
+    schedule_text: 'Mon/Wed 9-11am',
     created_at: TIMESTAMP,
   },
 ];
-
-const courseStaffAssignments = [
-  {
-    courseId: courseFullStackId,
-    userId: instructors[0].id,
-    roles: ['instructor', 'content_editor'],
-  },
-  {
-    courseId: courseAnalyticsId,
-    userId: instructors[1].id,
-    roles: ['instructor', 'enrollment_manager'],
-  },
-  {
-    courseId: courseAnalyticsId,
-    userId: instructors[0].id,
-    roles: ['content_editor'],
-  },
-];
-
-const courseUserRoles = courseStaffAssignments.flatMap(({ courseId, userId, roles }) =>
-  roles
-    .map((roleName) => ({
-      course_id: courseId,
-      user_id: userId,
-      role_id: roleIdByName[roleName],
-    }))
-    .filter((entry) => Boolean(entry.role_id)),
-);
 
 const groupTeachers = [
-  { group_id: groupFsWeeknightId, user_id: instructors[0].id, role: 'lead', assigned_at: TIMESTAMP },
-  { group_id: groupFsWeekendId, user_id: instructors[0].id, role: 'assistant', assigned_at: TIMESTAMP },
-  { group_id: groupAnalyticsMorningId, user_id: instructors[1].id, role: 'lead', assigned_at: TIMESTAMP },
-  { group_id: groupAnalyticsEveningId, user_id: instructors[1].id, role: 'assistant', assigned_at: TIMESTAMP },
+  {
+    group_id: groups[0].id,
+    user_id: instructors[0].id,
+    role: 'lead',
+    assigned_at: TIMESTAMP,
+  },
+  {
+    group_id: groups[1].id,
+    user_id: instructors[0].id,
+    role: 'lead',
+    assigned_at: TIMESTAMP,
+  },
+  {
+    group_id: groups[2].id,
+    user_id: instructors[1].id,
+    role: 'lead',
+    assigned_at: TIMESTAMP,
+  },
 ];
 
-const groupStudentAssignments = [
-  { groupId: groupFsWeeknightId, studentIndexes: [0, 1, 2, 3] },
-  { groupId: groupFsWeekendId, studentIndexes: [4, 5, 6, 7, 8] },
-  { groupId: groupAnalyticsMorningId, studentIndexes: [0, 1, 2, 9, 10] },
-  { groupId: groupAnalyticsEveningId, studentIndexes: [8, 11, 12, 13, 14] },
-];
+const enrollments = [
+  { course_id: courseFullStackId, user_id: students[0].id },
+  { course_id: courseFullStackId, user_id: students[1].id },
+  { course_id: courseFullStackId, user_id: students[2].id },
+  { course_id: courseFullStackId, user_id: students[3].id },
+  { course_id: courseAnalyticsId, user_id: students[4].id },
+  { course_id: courseAnalyticsId, user_id: students[5].id },
+].map((row) => ({
+  id: uuid(),
+  ...row,
+  status: 'active',
+  enrolled_at: TIMESTAMP,
+}));
 
-const groupStudents = groupStudentAssignments.flatMap(({ groupId, studentIndexes }) =>
-  studentIndexes.map((index) => ({
-    group_id: groupId,
-    user_id: students[index].id,
-    joined_at: TIMESTAMP,
-    status: 'active',
-  })),
-);
-
-const enrollments = [];
-const enrollInCourse = (courseId, studentIndex) => {
-  enrollments.push({
-    id: uuid(),
-    course_id: courseId,
-    user_id: students[studentIndex].id,
-    status: 'active',
-    enrolled_at: TIMESTAMP,
-  });
-};
-
-[0, 1, 2, 3, 4, 5, 6, 7, 8].forEach((index) => enrollInCourse(courseFullStackId, index));
-[5, 6, 8, 9, 10, 11, 12, 13, 14].forEach((index) => enrollInCourse(courseAnalyticsId, index));
+const groupStudents = [
+  { group_id: groups[0].id, user_id: students[0].id },
+  { group_id: groups[0].id, user_id: students[1].id },
+  { group_id: groups[1].id, user_id: students[2].id },
+  { group_id: groups[1].id, user_id: students[3].id },
+  { group_id: groups[2].id, user_id: students[4].id },
+  { group_id: groups[2].id, user_id: students[5].id },
+].map((row) => ({
+  ...row,
+  joined_at: TIMESTAMP,
+  status: 'active',
+}));
 
 const lessonProgress = [
   {
     user_id: students[0].id,
-    lesson_id: lessonFsIntroId,
+    lesson_id: lessonWebBasicsId,
     status: 'done',
     progress_percent: 100,
-    last_seen_at: TIMESTAMP,
   },
   {
     user_id: students[0].id,
-    lesson_id: lessonFsHtmlCssId,
+    lesson_id: lessonApiDesignId,
     status: 'in_progress',
-    progress_percent: 60,
-    last_seen_at: TIMESTAMP,
+    progress_percent: 55,
   },
   {
-    user_id: students[1].id,
-    lesson_id: lessonFsIntroId,
+    user_id: students[2].id,
+    lesson_id: lessonSqlWarmupId,
     status: 'done',
     progress_percent: 100,
-    last_seen_at: TIMESTAMP,
   },
   {
-    user_id: students[9].id,
-    lesson_id: lessonAnalyticsMindsetId,
+    user_id: students[4].id,
+    lesson_id: lessonDashboardStoryId,
+    status: 'in_progress',
+    progress_percent: 40,
+  },
+  {
+    user_id: students[5].id,
+    lesson_id: lessonDashboardStoryId,
     status: 'done',
     progress_percent: 100,
-    last_seen_at: TIMESTAMP,
+  },
+].map((row) => ({
+  ...row,
+  last_seen_at: TIMESTAMP,
+}));
+
+const quizQuestionWebId = uuid();
+const quizQuestionDeployId = uuid();
+const quizQuestionDashboardId = uuid();
+const quizQuestionKpiId = uuid();
+
+const quizQuestions = [
+  {
+    id: quizQuestionWebId,
+    lesson_id: lessonWebBasicsId,
+    question_text: 'What status code indicates a successful GET request?',
+    question_type: 'single_choice',
+    order_index: 1,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
   },
   {
-    user_id: students[9].id,
-    lesson_id: lessonAnalyticsSqlId,
-    status: 'not_started',
-    progress_percent: null,
-    last_seen_at: TIMESTAMP,
+    id: quizQuestionDeployId,
+    lesson_id: lessonDeploymentId,
+    question_text: 'Which command builds a production Node image?',
+    question_type: 'single_choice',
+    order_index: 2,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
   },
   {
-    user_id: students[12].id,
-    lesson_id: lessonAnalyticsSqlId,
-    status: 'in_progress',
-    progress_percent: 45,
-    last_seen_at: TIMESTAMP,
+    id: quizQuestionDashboardId,
+    lesson_id: lessonDashboardStoryId,
+    question_text: 'Why lead with the key metric on a dashboard?',
+    question_type: 'single_choice',
+    order_index: 1,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: quizQuestionKpiId,
+    lesson_id: lessonDashboardStoryId,
+    question_text: 'Which KPI best tracks activation health?',
+    question_type: 'single_choice',
+    order_index: 2,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+];
+
+const quizOptions = [
+  { question_id: quizQuestionWebId, option_text: '200 OK', is_correct: true, order_index: 1 },
+  { question_id: quizQuestionWebId, option_text: '302 Found', is_correct: false, order_index: 2 },
+  { question_id: quizQuestionWebId, option_text: '404 Not Found', is_correct: false, order_index: 3 },
+  {
+    question_id: quizQuestionDeployId,
+    option_text: 'docker build -t api:prod .',
+    is_correct: true,
+    order_index: 1,
+  },
+  {
+    question_id: quizQuestionDeployId,
+    option_text: 'npm run dev',
+    is_correct: false,
+    order_index: 2,
+  },
+  {
+    question_id: quizQuestionDashboardId,
+    option_text: 'Executives decide quickly when the headline is obvious.',
+    is_correct: true,
+    order_index: 1,
+  },
+  {
+    question_id: quizQuestionDashboardId,
+    option_text: 'It fills empty space at the top of the page.',
+    is_correct: false,
+    order_index: 2,
+  },
+  {
+    question_id: quizQuestionKpiId,
+    option_text: 'New weekly activated accounts',
+    is_correct: true,
+    order_index: 1,
+  },
+  {
+    question_id: quizQuestionKpiId,
+    option_text: 'Page views',
+    is_correct: false,
+    order_index: 2,
+  },
+].map((row) => ({
+  id: uuid(),
+  ...row,
+}));
+
+const quizAttempts = [
+  {
+    user_id: students[0].id,
+    lesson_id: lessonWebBasicsId,
+    score_percent: 100,
+  },
+  {
+    user_id: students[2].id,
+    lesson_id: lessonWebBasicsId,
+    score_percent: 75,
+  },
+  {
+    user_id: students[4].id,
+    lesson_id: lessonDashboardStoryId,
+    score_percent: 80,
+  },
+  {
+    user_id: students[5].id,
+    lesson_id: lessonDashboardStoryId,
+    score_percent: 95,
+  },
+].map((row) => ({
+  id: uuid(),
+  ...row,
+  created_at: TIMESTAMP,
+}));
+
+const announcements = [
+  {
+    id: uuid(),
+    scope: 'course',
+    course_id: courseFullStackId,
+    group_id: null,
+    created_by_user_id: instructors[0].id,
+    title: 'Sprint review on Thursday',
+    body: 'Bring your API demos and highlight metrics. Slides optional.',
+    created_at: TIMESTAMP,
+  },
+  {
+    id: uuid(),
+    scope: 'group',
+    course_id: null,
+    group_id: groups[2].id,
+    created_by_user_id: instructors[1].id,
+    title: 'Dashboard critique',
+    body: 'Share your latest Looker board for async feedback.',
+    created_at: TIMESTAMP,
   },
 ];
 
@@ -622,43 +549,45 @@ exports.seed = async (knex) => {
     await trx.raw(`
       TRUNCATE TABLE
         announcements,
-        course_user_roles,
-        user_roles,
-        roles,
+        lesson_assets,
+        lesson_progress,
         quiz_attempts,
         quiz_options,
         quiz_questions,
-        lesson_assets,
-        assets,
-        lesson_progress,
-        enrollments,
         group_students,
         group_teachers,
+        enrollments,
         groups,
         lessons,
         modules,
         courses,
-        academy_memberships,
+        course_user_roles,
+        user_roles,
+        refresh_tokens,
+        user_invites,
+        assets,
+        roles,
         users
       RESTART IDENTITY CASCADE
     `);
 
     await trx('roles').insert(roleRows);
-    await trx('users').insert(usersRows);
-    await trx('academy_memberships').insert(memberships);
+    await trx('users').insert(userRows);
     await trx('user_roles').insert(userRoles);
     await trx('courses').insert(courses);
     await trx('course_user_roles').insert(courseUserRoles);
     await trx('modules').insert(modules);
     await trx('lessons').insert(lessons);
-    await trx('quiz_questions').insert(quizQuestions);
-    await trx('quiz_options').insert(quizOptions);
     await trx('assets').insert(assets);
     await trx('lesson_assets').insert(lessonAssets);
     await trx('groups').insert(groups);
     await trx('group_teachers').insert(groupTeachers);
-    await trx('group_students').insert(groupStudents);
     await trx('enrollments').insert(enrollments);
+    await trx('group_students').insert(groupStudents);
     await trx('lesson_progress').insert(lessonProgress);
+    await trx('quiz_questions').insert(quizQuestions);
+    await trx('quiz_options').insert(quizOptions);
+    await trx('quiz_attempts').insert(quizAttempts);
+    await trx('announcements').insert(announcements);
   });
 };

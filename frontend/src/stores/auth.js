@@ -1,21 +1,19 @@
 import { defineStore } from 'pinia'
 import api from '../api/axios'
 
-const PRIMARY_ROLE_ORDER = ['admin', 'instructor', 'content_editor', 'enrollment_manager', 'student']
+const STAFF_ROLES = ['admin', 'instructor', 'content_editor', 'enrollment_manager']
 
-const buildRoleList = (roles, fallbackRole) => {
-  const base = Array.isArray(roles) ? roles.filter(Boolean) : []
-  if (fallbackRole) {
-    base.push(fallbackRole)
+const normalizeRoles = (roles) => {
+  if (!Array.isArray(roles)) {
+    return []
   }
-  return [...new Set(base)]
+  return [...new Set(roles.filter(Boolean))]
 }
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     accessToken: null, // MEMORY ONLY
     user: null,
-    role: null,
     globalRoles: [],
     loading: false,
     initialized: false,
@@ -25,16 +23,13 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state) => Boolean(state.accessToken),
     hasRole: (state) => (role) => state.globalRoles.includes(role),
     hasAnyRole: (state) => (roles = []) => roles.some((role) => state.globalRoles.includes(role)),
-    primaryRole: (state) => state.role,
+    isAdmin: (state) => state.globalRoles.includes('admin'),
+    isStaff: (state) => state.globalRoles.some((role) => STAFF_ROLES.includes(role)),
   },
 
   actions: {
-    setRoles(roles = [], fallbackRole = null) {
-      const normalized = buildRoleList(roles, fallbackRole)
-      this.globalRoles = normalized
-      const primary =
-        PRIMARY_ROLE_ORDER.find((role) => normalized.includes(role)) || normalized[0] || null
-      this.role = primary || null
+    setRoles(roles = []) {
+      this.globalRoles = normalizeRoles(roles)
     },
 
     async login(email, password) {
@@ -43,8 +38,8 @@ export const useAuthStore = defineStore('auth', {
         const { data } = await api.post('/auth/login', { email, password })
 
         this.accessToken = data.accessToken
-        this.user = data.user
-        this.setRoles(data.user?.globalRoles || [], data.user?.role ?? null)
+        this.user = data.user || null
+        this.setRoles(data.globalRoles || [])
       } finally {
         this.loading = false
       }
@@ -54,20 +49,23 @@ export const useAuthStore = defineStore('auth', {
       const { data } = await api.post('/auth/refresh')
       this.accessToken = data.accessToken
 
-      // Hydrate user if missing (safe)
-      if (!this.user) {
-        try {
-          const profile = await api.get('/me')
+      try {
+        const profile = await api.get('/me')
+        const payload = profile.data || {}
+        if (payload.user) {
+          this.user = payload.user
+        } else {
           this.user = {
-            id: profile.data.id,
-            email: profile.data.email,
-            fullName: profile.data.fullName,
+            id: payload.id,
+            email: payload.email,
+            fullName: payload.fullName,
+            status: payload.status,
           }
-          this.setRoles(profile.data.globalRoles || [], profile.data.role)
-        } catch (err) {
-          // Profile can be fetched later; token is valid
-          console.warn('Profile fetch failed during refresh')
         }
+        this.setRoles(payload.globalRoles || [])
+      } catch (err) {
+        console.warn('Profile fetch failed during refresh')
+        throw err
       }
     },
 
@@ -79,7 +77,6 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.accessToken = null
         this.user = null
-        this.role = null
         this.globalRoles = []
         this.initialized = true
       }

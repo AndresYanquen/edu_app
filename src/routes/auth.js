@@ -84,11 +84,8 @@ router.post('/login', loginLimiter, async (req, res) => {
           u.password_hash,
           u.full_name,
           u.must_set_password,
-          u.is_active,
-          m.role,
-          m.status AS membership_status
+          u.is_active
         FROM users u
-        JOIN academy_memberships m ON m.user_id = u.id
         WHERE LOWER(u.email) = LOWER($1)
         LIMIT 1
       `,
@@ -98,10 +95,6 @@ router.post('/login', loginLimiter, async (req, res) => {
     const user = rows[0];
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    if (user.membership_status !== 'active') {
-      return res.status(403).json({ error: 'User membership is not active' });
     }
 
     if (!user.is_active) {
@@ -118,13 +111,10 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const globalRoles = await getGlobalRolesForUser(user.id);
-    const normalizedRoles =
-      globalRoles.length || !user.role ? globalRoles : [user.role].filter(Boolean);
 
     const accessToken = createAccessToken({
       id: user.id,
-      role: user.role,
-      globalRoles: normalizedRoles,
+      globalRoles,
     });
     const refreshToken = generateRefreshToken();
     await insertRefreshToken(user.id, refreshToken.hash, refreshToken.expiresAt);
@@ -136,9 +126,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
-        role: user.role,
-        globalRoles: normalizedRoles,
       },
+      globalRoles,
     });
   } catch (err) {
     console.error('Login error', err);
@@ -175,9 +164,8 @@ router.post('/refresh', async (req, res) => {
 
     const userRes = await pool.query(
       `
-        SELECT u.id, u.email, u.full_name, m.role
+        SELECT u.id, u.email, u.full_name, u.is_active, u.must_set_password
         FROM users u
-        JOIN academy_memberships m ON m.user_id = u.id
         WHERE u.id = $1
         LIMIT 1
       `,
@@ -191,6 +179,12 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ error: 'Invalid refresh token' });
     }
 
+    if (!user.is_active || user.must_set_password) {
+      await revokeRefreshTokenById(tokenRow.id);
+      clearRefreshCookie(res);
+      return res.status(403).json({ error: 'User cannot refresh session' });
+    }
+
     await revokeRefreshTokenById(tokenRow.id);
 
     const newRefresh = generateRefreshToken();
@@ -198,13 +192,10 @@ router.post('/refresh', async (req, res) => {
     setRefreshCookie(res, newRefresh.token);
 
     const globalRoles = await getGlobalRolesForUser(user.id);
-    const normalizedRoles =
-      globalRoles.length || !user.role ? globalRoles : [user.role].filter(Boolean);
 
     const accessToken = createAccessToken({
       id: user.id,
-      role: user.role,
-      globalRoles: normalizedRoles,
+      globalRoles,
     });
 
     return res.json({ accessToken });

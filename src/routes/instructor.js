@@ -74,18 +74,23 @@ router.get(
 
     try {
       const { rows } = await pool.query(
-      `
-        SELECT
-          u.id,
-          u.full_name,
-          u.email
-        FROM group_students gs
-        JOIN users u ON u.id = gs.user_id
-        JOIN academy_memberships m ON m.user_id = u.id
-        WHERE gs.group_id = $1
-          AND m.role = 'student'
-        ORDER BY u.full_name
-      `,
+        `
+          SELECT
+            u.id,
+            u.full_name,
+            u.email
+          FROM group_students gs
+          JOIN users u ON u.id = gs.user_id
+          WHERE gs.group_id = $1
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
+          ORDER BY u.full_name
+        `,
         [groupId],
       );
 
@@ -128,15 +133,20 @@ router.get(
       const totalLessons = lessons.length;
 
       const studentsRes = await pool.query(
-      `
-        SELECT u.id, u.full_name
-        FROM group_students gs
-        JOIN users u ON u.id = gs.user_id
-        JOIN academy_memberships m ON m.user_id = u.id
-        WHERE gs.group_id = $1
-          AND m.role = 'student'
-        ORDER BY u.full_name
-      `,
+        `
+          SELECT u.id, u.full_name
+          FROM group_students gs
+          JOIN users u ON u.id = gs.user_id
+          WHERE gs.group_id = $1
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
+          ORDER BY u.full_name
+        `,
         [groupId],
       );
       const students = studentsRes.rows;
@@ -224,8 +234,14 @@ router.get(
           SELECT e.user_id, u.full_name, u.email
           FROM enrollments e
           JOIN users u ON u.id = e.user_id
-          JOIN academy_memberships am ON am.user_id = u.id AND am.role = 'student'
           WHERE e.course_id = $1
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
         ),
         lesson_completion AS (
           SELECT
@@ -304,8 +320,14 @@ router.get(
             u.email
           FROM group_students gs
           JOIN users u ON u.id = gs.user_id
-          JOIN academy_memberships am ON am.user_id = u.id AND am.role = 'student'
           WHERE gs.group_id = $1
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
         ),
         progress AS (
           SELECT
