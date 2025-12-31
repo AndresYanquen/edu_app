@@ -60,12 +60,6 @@
                 <div>
                   <div class="lesson-title">{{ lesson.title }}</div>
                   <small class="badge">{{ lesson.contentType }}</small>
-                  <p
-                    v-if="lesson.contentType === 'live' && lesson.liveStartsAt"
-                    class="live-start-time"
-                  >
-                    {{ t('course.liveLessonStartsAt', { date: formatDateTime(lesson.liveStartsAt) }) }}
-                  </p>
                 </div>
                 <div class="lesson-actions">
                   <Button
@@ -165,13 +159,6 @@ const fetchData = async (id) => {
 };
 
 const reload = () => fetchData(route.params.id);
-
-const formatDateTime = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-};
 
 const openLesson = (lessonId) => {
   const query = isPreview.value ? { preview: '1' } : {};
@@ -325,12 +312,6 @@ const nextLessonText = computed(() =>
 
 .lesson-title {
   font-weight: 500;
-}
-
-.live-start-time {
-  margin-top: 0.25rem;
-  font-size: 0.85rem;
-  color: #2563eb;
 }
 
 .badge {

@@ -394,39 +394,12 @@
         <InputText v-model="lessonForm.title" placeholder="Lesson title" />
       </div>
       <div class="dialog-field">
-        <label>Lesson type</label>
-        <Dropdown
-          v-model="lessonForm.contentType"
-          :options="lessonTypeOptions"
-          optionLabel="label"
-          optionValue="value"
-        />
-      </div>
-      <div class="dialog-field">
         <label>Estimated minutes</label>
         <InputNumber v-model="lessonForm.estimatedMinutes" showButtons />
       </div>
-      <div v-if="lessonForm.contentType !== 'live'" class="dialog-field">
+      <div class="dialog-field">
         <label>Video URL</label>
         <InputText v-model="lessonForm.videoUrl" placeholder="https://..." />
-        <small class="muted">Optional for content lessons</small>
-      </div>
-      <p v-else class="muted">Meeting lessons use live session scheduling. No video URL needed.</p>
-      <div v-if="lessonForm.contentType === 'live'" class="dialog-field">
-        <label>Start date & time</label>
-        <Calendar
-          v-model="lessonForm.liveStartsAt"
-          showTime
-          hourFormat="24"
-          showSeconds
-          :manualInput="false"
-        />
-        <small class="muted">Displayed in your local timezone.</small>
-      </div>
-      <div v-if="lessonForm.contentType === 'live'" class="dialog-field">
-        <label>Meeting link</label>
-        <InputText v-model="lessonForm.meetingUrl" placeholder="https://meet.google.com/..." />
-        <small class="muted">Provide the Google Meet or conferencing link.</small>
       </div>
       <template #footer>
         <Button label="Cancel" class="p-button-text" @click="showLessonDialog = false" />
@@ -604,18 +577,10 @@ const editingModuleId = ref(null);
 const savingModule = ref(false);
 
 const showLessonDialog = ref(false);
-const lessonTypeOptions = [
-  { label: 'Content lesson', value: 'text' },
-  { label: 'Live meeting', value: 'live' },
-];
-
 const lessonForm = ref({
   title: '',
-  contentType: 'text',
   estimatedMinutes: 0,
   videoUrl: '',
-  liveStartsAt: null,
-  meetingUrl: '',
 });
 const savingLesson = ref(false);
 
@@ -652,21 +617,6 @@ const submittingEnrollment = ref(false);
 const removingEnrollmentId = ref(null);
 const updatingGroupId = ref(null);
 const bulkErrors = ref([]);
-
-watch(
-  () => lessonForm.value.contentType,
-  (type) => {
-    if (type === 'live') {
-      lessonForm.value.videoUrl = '';
-      if (!lessonForm.value.meetingUrl) {
-        lessonForm.value.meetingUrl = '';
-      }
-    } else {
-      lessonForm.value.liveStartsAt = null;
-      lessonForm.value.meetingUrl = '';
-    }
-  },
-);
 
 const selectedGroupForTeachers = ref(null);
 const groupTeachers = ref([]);
@@ -1305,14 +1255,7 @@ const reorderModule = async (module, direction) => {
 
 const openLessonDialog = () => {
   if (!selectedModuleId.value) return;
-  lessonForm.value = {
-    title: '',
-    contentType: 'text',
-    estimatedMinutes: 0,
-    videoUrl: '',
-    liveStartsAt: null,
-    meetingUrl: '',
-  };
+  lessonForm.value = { title: '', estimatedMinutes: 0, videoUrl: '' };
   showLessonDialog.value = true;
 };
 
@@ -1329,43 +1272,13 @@ const submitLesson = async () => {
     toast.add({ severity: 'warn', summary: 'Title required', detail: 'Lesson title is required', life: 2500 });
     return;
   }
-  if (lessonForm.value.contentType === 'live' && !lessonForm.value.liveStartsAt) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Start time required',
-      detail: 'Live lessons need a start date and time',
-      life: 2500,
-    });
-    return;
-  }
-  if (lessonForm.value.contentType === 'live' && !lessonForm.value.meetingUrl.trim()) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Meeting link required',
-      detail: 'Provide the meeting link for live lessons',
-      life: 2500,
-    });
-    return;
-  }
   savingLesson.value = true;
   try {
-    const payload = {
+    await createLesson(selectedModuleId.value, {
       title: lessonForm.value.title,
-      contentType: lessonForm.value.contentType,
       estimatedMinutes: lessonForm.value.estimatedMinutes,
-    };
-    const video = lessonForm.value.videoUrl?.trim();
-    if (video) {
-      payload.videoUrl = video;
-    }
-    payload.liveStartsAt = lessonForm.value.liveStartsAt
-      ? new Date(lessonForm.value.liveStartsAt).toISOString()
-      : null;
-    payload.meetingUrl =
-      lessonForm.value.contentType === 'live'
-        ? lessonForm.value.meetingUrl?.trim() || null
-        : null;
-    await createLesson(selectedModuleId.value, payload);
+      videoUrl: lessonForm.value.videoUrl,
+    });
     toast.add({ severity: 'success', summary: 'Lesson created', life: 2000 });
     showLessonDialog.value = false;
     await loadLessons(selectedModuleId.value);

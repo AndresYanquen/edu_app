@@ -13,7 +13,6 @@ const coursesRoutes = require('./routes/courses');
 const progressRoutes = require('./routes/progress');
 const quizzesRoutes = require('./routes/quizzes');
 const instructorRoutes = require('./routes/instructor');
-const liveSessionsRoutes = require('./routes/liveSessions');
 const cmsRoutes = require('./routes/cms');
 const adminRoutes = require('./routes/admin');
 const swaggerDocument = require('./docs/openapi');
@@ -47,7 +46,6 @@ app.use('/admin', adminRoutes);
 app.use(progressRoutes);
 app.use(quizzesRoutes);
 app.use(instructorRoutes);
-app.use(liveSessionsRoutes);
 
 const PORT = process.env.PORT || 3000;
 

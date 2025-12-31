@@ -195,8 +195,6 @@ const moduleCreateSchema = z.object({
   orderIndex: preprocessInt().optional(),
 });
 
-const lessonContentTypeEnum = z.enum(['video', 'text', 'link', 'file', 'embed', 'live']);
-
 const moduleUpdateSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
@@ -206,66 +204,29 @@ const moduleUpdateSchema = z
     message: 'At least one field must be provided',
   });
 
-const optionalVideoSchema = z.union([z.string().url(), z.null()]).optional();
-const optionalMeetingUrlSchema = z.union([z.string().url(), z.null()]).optional();
-const optionalDateTimeSchema = z.union([z.string().datetime(), z.null()]).optional();
-
-const lessonCreateSchema = z
-  .object({
-    title: z
-      .string({ required_error: 'title is required' })
-      .trim()
-      .min(1, 'title is required'),
-    contentType: lessonContentTypeEnum.optional(),
-    contentText: z.string().optional(),
-    contentMarkdown: z.string().optional(),
-    videoUrl: optionalVideoSchema,
-    estimatedMinutes: preprocessInt().optional(),
-    orderIndex: preprocessInt().optional(),
-    liveStartsAt: optionalDateTimeSchema,
-    meetingUrl: optionalMeetingUrlSchema,
-  })
-  .superRefine((data, ctx) => {
-    const type = data.contentType || 'text';
-    if (type === 'live' && !data.liveStartsAt) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['liveStartsAt'],
-        message: 'liveStartsAt is required for live lessons',
-      });
-    }
-    if (type === 'live' && !data.meetingUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['meetingUrl'],
-        message: 'meetingUrl is required for live lessons',
-      });
-    }
-  });
+const lessonCreateSchema = z.object({
+  title: z
+    .string({ required_error: 'title is required' })
+    .trim()
+    .min(1, 'title is required'),
+  contentText: z.string().optional(),
+  contentMarkdown: z.string().optional(),
+  videoUrl: z.string().url().optional(),
+  estimatedMinutes: preprocessInt().optional(),
+  orderIndex: preprocessInt().optional(),
+});
 
 const lessonUpdateSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
-    contentType: lessonContentTypeEnum.optional(),
     contentText: z.string().optional(),
     contentMarkdown: z.string().optional(),
-    videoUrl: optionalVideoSchema,
-    liveStartsAt: optionalDateTimeSchema,
-    meetingUrl: optionalMeetingUrlSchema,
+    videoUrl: z.string().url().optional(),
     estimatedMinutes: preprocessInt().optional(),
     orderIndex: preprocessInt().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided',
-  })
-  .superRefine((data, ctx) => {
-    if (data.contentType === 'live' && !data.meetingUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['meetingUrl'],
-        message: 'meetingUrl is required for live lessons',
-      });
-    }
   });
 
 const formatZodError = (error) =>

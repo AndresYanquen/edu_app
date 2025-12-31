@@ -61,100 +61,6 @@
         <Divider />
 
         <div class="content-area">
-          <Card v-if="isLiveLesson" class="lesson-card">
-            <template #title>{{ t('lesson.live.title') }}</template>
-            <template #content>
-              <template v-if="isPreview">
-                <div v-if="lesson?.liveStartsAt">
-                  <div class="live-status">
-                    <Tag :value="t('lesson.live.lockedTag')" severity="info" />
-                    <small v-if="previewLiveStartCountdown">
-                      {{ t('lesson.live.startsIn', { countdown: previewLiveStartCountdown }) }}
-                    </small>
-                    <small v-else>{{ t('lesson.live.joinReady') }}</small>
-                  </div>
-                  <div class="live-schedule">
-                    <div>
-                      <small>{{ t('lesson.live.startsAt') }}</small>
-                      <strong>{{ formatDateTime(lesson.liveStartsAt) }}</strong>
-                    </div>
-                  </div>
-                </div>
-                <div v-else>
-                  <p class="muted">{{ t('lesson.live.missingStart') }}</p>
-                </div>
-              </template>
-              <template v-else>
-                <div v-if="liveSessionLoading">
-                  <Skeleton height="2rem" class="mb-2" />
-                  <Skeleton height="2rem" />
-                </div>
-                <div v-else-if="liveSessionInfo">
-                  <div class="live-status">
-                    <Tag
-                      :value="meetingLinkUnlocked ? t('lesson.live.unlockedTag') : t('lesson.live.lockedTag')"
-                      :severity="meetingLinkUnlocked ? 'success' : 'info'"
-                    />
-                    <small v-if="!liveSessionInfo.isUnlocked && liveSessionCountdown">
-                      {{ t('lesson.live.unlocksIn', { countdown: liveSessionCountdown }) }}
-                    </small>
-                    <small v-if="liveSessionStartCountdown">
-                      {{ t('lesson.live.startsIn', { countdown: liveSessionStartCountdown }) }}
-                    </small>
-                    <small v-if="!meetingLinkUnlocked && meetingUnlockCountdown">
-                      {{ t('lesson.live.meetingUnlocksIn', { countdown: meetingUnlockCountdown }) }}
-                    </small>
-                    <small v-else>
-                      {{ t('lesson.live.joinReady') }}
-                    </small>
-                  </div>
-
-                  <div class="live-schedule">
-                    <div>
-                      <small>{{ t('lesson.live.startsAt') }}</small>
-                      <strong>{{ liveSessionStartsAtText }}</strong>
-                    </div>
-                    <div v-if="liveSessionEndsAtText">
-                      <small>{{ t('lesson.live.endsAt') }}</small>
-                      <strong>{{ liveSessionEndsAtText }}</strong>
-                    </div>
-                    <div>
-                      <small>{{ t('lesson.live.unlockAt') }}</small>
-                      <strong>{{ liveSessionUnlockAtText }}</strong>
-                    </div>
-                    <div>
-                      <small>{{ t('lesson.live.meetingUnlockAt') }}</small>
-                      <strong>{{ liveMeetingUnlockAtText }}</strong>
-                    </div>
-                  </div>
-
-                  <Button
-                    v-if="meetingLinkReady && liveSessionInfo.meetingUrl"
-                    :label="t('lesson.live.joinButton')"
-                    icon="pi pi-video"
-                    class="mt-3"
-                    @click="openLiveMeeting"
-                  />
-                  <Tag
-                    v-else-if="!meetingLinkUnlocked"
-                    class="mt-3"
-                    severity="warning"
-                    :value="t('lesson.live.waitingUnlock')"
-                  />
-                  <Tag
-                    v-else-if="meetingLinkMissing"
-                    class="mt-3"
-                    severity="danger"
-                    :value="t('lesson.live.missingMeetingLink')"
-                  />
-                </div>
-                <div v-else>
-                  <p class="muted">{{ liveSessionMessage }}</p>
-                </div>
-              </template>
-            </template>
-          </Card>
-
           <Card v-if="hasRichContent || lesson?.contentUrl" class="lesson-card">
             <template #title>{{ t('lesson.sections.text') }}</template>
             <template #content>
@@ -302,7 +208,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
@@ -323,22 +229,11 @@ const moduleInfo = ref(null);
 const lesson = ref(null);
 const assets = ref([]);
 
-const liveSessionInfo = ref(null);
-const liveSessionLoading = ref(false);
-const liveSessionMessage = ref('');
-const liveSessionNow = ref(Date.now());
-let liveSessionPollTimeoutId = null;
-let liveSessionCountdownIntervalId = null;
-
 const richContentSource = computed(() => {
   const source = lesson.value?.contentMarkdown || lesson.value?.contentText || '';
   return source ? source.trim() : '';
 });
 const hasRichContent = computed(() => richContentSource.value.length > 0);
-const isLiveLesson = computed(() => {
-  const type = (lesson.value?.contentType || '').toString().toLowerCase();
-  return type === 'live';
-});
 
 const loading = ref(true);
 const error = ref(false);
@@ -398,8 +293,6 @@ const normalizeLesson = (rawLesson) => ({
   contentText: rawLesson.contentText ?? rawLesson.content_text ?? null,
   contentUrl: rawLesson.contentUrl ?? rawLesson.content_url ?? null,
   videoUrl: rawLesson.videoUrl ?? rawLesson.video_url ?? null,
-  meetingUrl: rawLesson.meetingUrl ?? rawLesson.meeting_url ?? null,
-  liveStartsAt: rawLesson.liveStartsAt ?? rawLesson.live_starts_at ?? null,
   estimatedMinutes: rawLesson.estimatedMinutes ?? rawLesson.estimated_minutes ?? null,
   durationSeconds: rawLesson.durationSeconds ?? rawLesson.duration_seconds ?? null,
   // support both names
@@ -409,7 +302,6 @@ const normalizeLesson = (rawLesson) => ({
 const loadLesson = async () => {
   loading.value = true;
   error.value = false;
-  resetLiveSessionState();
 
   try {
     const courseUrl = isPreview.value
@@ -425,14 +317,12 @@ const loadLesson = async () => {
       lesson.value = null;
       moduleInfo.value = null;
       assets.value = [];
-      resetLiveSessionState();
       return;
     }
 
     moduleInfo.value = found.module;
     lesson.value = normalizeLesson(found.lesson);
     assets.value = lesson.value.assets || [];
-    handleLiveSessionTrigger();
 
     // Load quiz score (sets quizPassed as well)
     await fetchQuizScore();
@@ -441,7 +331,6 @@ const loadLesson = async () => {
   } catch (err) {
     error.value = true;
     errorMessage.value = t('lesson.errors.load');
-    resetLiveSessionState();
     toast.add({
       severity: 'error',
       summary: t('common.notifications.error'),
@@ -496,205 +385,6 @@ const formatDuration = (seconds) => {
   const r = s % 60;
   return `${m}m ${r}s`;
 };
-
-const formatDateTime = (iso) => {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-};
-
-const liveSessionStartsAtText = computed(() => formatDateTime(liveSessionInfo.value?.startsAt));
-const liveSessionEndsAtText = computed(() => formatDateTime(liveSessionInfo.value?.endsAt));
-const liveSessionUnlockAtText = computed(() => formatDateTime(liveSessionInfo.value?.unlockAt));
-const liveMeetingUnlockAtText = computed(() => formatDateTime(liveSessionInfo.value?.meetingUnlockAt));
-const meetingLinkUnlocked = computed(() => {
-  const serverUnlocked = Boolean(liveSessionInfo.value?.meetingUnlocked);
-  if (serverUnlocked) return true;
-  if (!liveSessionInfo.value?.meetingUnlockAt) return false;
-  return liveSessionNow.value >= Date.parse(liveSessionInfo.value.meetingUnlockAt);
-});
-const meetingLinkReady = computed(
-  () => meetingLinkUnlocked.value && Boolean(liveSessionInfo.value?.meetingUrl),
-);
-const meetingLinkMissing = computed(
-  () =>
-    meetingLinkUnlocked.value &&
-    !liveSessionInfo.value?.meetingUrl &&
-    liveSessionInfo.value?.hasMeetingUrl === false,
-);
-const meetingUnlockCountdown = computed(() => {
-  if (!liveSessionInfo.value?.meetingUnlockAt) return '';
-  const unlockTs = Date.parse(liveSessionInfo.value.meetingUnlockAt);
-  if (Number.isNaN(unlockTs)) return '';
-  const diff = unlockTs - liveSessionNow.value;
-  if (diff <= 0) return '';
-  const parts = formatCountdownParts(diff);
-  return t('lesson.live.countdownValueLong', parts);
-});
-const formatCountdownParts = (diffMs) => {
-  const days = Math.floor(diffMs / 86400000);
-  const hours = Math.floor((diffMs % 86400000) / 3600000);
-  const minutes = Math.floor((diffMs % 3600000) / 60000);
-  const seconds = Math.floor((diffMs % 60000) / 1000);
-  return {
-    days: days.toString().padStart(2, '0'),
-    hours: hours.toString().padStart(2, '0'),
-    minutes: minutes.toString().padStart(2, '0'),
-    seconds: seconds.toString().padStart(2, '0'),
-  };
-};
-
-const liveSessionCountdown = computed(() => {
-  if (!liveSessionInfo.value || !liveSessionInfo.value.unlockAt) return '';
-  if (liveSessionInfo.value.isUnlocked) return '';
-  const unlockTs = Date.parse(liveSessionInfo.value.unlockAt);
-  if (Number.isNaN(unlockTs)) return '';
-  const diff = unlockTs - liveSessionNow.value;
-  if (diff <= 0) return '';
-  const parts = formatCountdownParts(diff);
-  return t('lesson.live.countdownValueLong', parts);
-});
-
-const liveSessionStartCountdown = computed(() => {
-  const startsAt = liveSessionInfo.value?.startsAt;
-  if (!startsAt) return '';
-  const startTs = Date.parse(startsAt);
-  if (Number.isNaN(startTs)) return '';
-  const diff = startTs - liveSessionNow.value;
-  if (diff <= 0) return '';
-  const parts = formatCountdownParts(diff);
-  return t('lesson.live.countdownValueLong', parts);
-});
-
-const previewLiveStartCountdown = computed(() => {
-  if (!isPreview.value || !lesson.value?.liveStartsAt) return '';
-  const startTs = Date.parse(lesson.value.liveStartsAt);
-  if (Number.isNaN(startTs)) return '';
-  const diff = startTs - liveSessionNow.value;
-  if (diff <= 0) return '';
-  const parts = formatCountdownParts(diff);
-  return t('lesson.live.countdownValueLong', parts);
-});
-
-const clearLiveSessionPoll = () => {
-  if (liveSessionPollTimeoutId) {
-    clearTimeout(liveSessionPollTimeoutId);
-    liveSessionPollTimeoutId = null;
-  }
-};
-
-const stopCountdownTicker = () => {
-  if (liveSessionCountdownIntervalId) {
-    clearInterval(liveSessionCountdownIntervalId);
-    liveSessionCountdownIntervalId = null;
-  }
-};
-
-const startCountdownTicker = () => {
-  if (liveSessionCountdownIntervalId) return;
-  liveSessionCountdownIntervalId = setInterval(() => {
-    liveSessionNow.value = Date.now();
-  }, 1000);
-};
-
-const scheduleLiveSessionRefresh = (session) => {
-  clearLiveSessionPoll();
-  if (!session) return;
-  const targets = [];
-  if (!session.isUnlocked && session.unlockAt) {
-    const unlockTs = Date.parse(session.unlockAt);
-    if (!Number.isNaN(unlockTs)) targets.push(unlockTs);
-  }
-  if (session.meetingUnlockAt) {
-    const meetingTs = Date.parse(session.meetingUnlockAt);
-    if (!Number.isNaN(meetingTs) && Date.now() < meetingTs) {
-      targets.push(meetingTs);
-    }
-  }
-  if (!targets.length) return;
-  const nextEvent = Math.min(...targets);
-  const diff = nextEvent - Date.now();
-  const refreshMs = Math.max(diff + 1000, 5000);
-  liveSessionPollTimeoutId = setTimeout(() => {
-    fetchLiveSessionStatus();
-  }, refreshMs);
-};
-
-const resetLiveSessionState = () => {
-  clearLiveSessionPoll();
-  stopCountdownTicker();
-  liveSessionInfo.value = null;
-  liveSessionMessage.value = '';
-  liveSessionLoading.value = false;
-};
-
-const fetchLiveSessionStatus = async () => {
-  if (!lessonId.value || isPreview.value) return;
-  liveSessionLoading.value = true;
-  try {
-    const { data } = await api.get(`/lessons/${lessonId.value}/live`);
-    liveSessionInfo.value = data;
-    liveSessionMessage.value = '';
-    scheduleLiveSessionRefresh(data);
-  } catch (err) {
-    const status = err?.response?.status;
-    liveSessionInfo.value = null;
-    clearLiveSessionPoll();
-    stopCountdownTicker();
-    if (status === 404) {
-      liveSessionMessage.value = t('lesson.live.notScheduled');
-    } else if (status === 409) {
-      liveSessionMessage.value = t('lesson.live.noGroup');
-    } else if (status === 403) {
-      liveSessionMessage.value = t('lesson.live.notEnrolled');
-    } else {
-      liveSessionMessage.value = t('lesson.live.loadError');
-    }
-  } finally {
-    liveSessionLoading.value = false;
-  }
-};
-
-const handleLiveSessionTrigger = () => {
-  resetLiveSessionState();
-  if (!isLiveLesson.value) return;
-  if (isPreview.value) {
-    if (lesson.value?.liveStartsAt) {
-      startCountdownTicker();
-    }
-    return;
-  }
-  fetchLiveSessionStatus();
-};
-
-const openLiveMeeting = () => {
-  if (!liveSessionInfo.value?.meetingUrl) return;
-  window.open(liveSessionInfo.value.meetingUrl, '_blank', 'noopener');
-};
-
-watch(
-  () => [
-    liveSessionInfo.value?.isUnlocked,
-    liveSessionInfo.value?.meetingUnlocked,
-    liveSessionInfo.value?.meetingUnlockAt,
-    meetingLinkUnlocked.value,
-  ],
-  () => {
-    if (!liveSessionInfo.value) {
-      stopCountdownTicker();
-      return;
-    }
-    const meetingStillLocked = !meetingLinkUnlocked.value;
-    const shouldTick = !liveSessionInfo.value.isUnlocked || meetingStillLocked;
-    if (shouldTick) {
-      startCountdownTicker();
-    } else {
-      stopCountdownTicker();
-    }
-  },
-  { immediate: true },
-);
 
 // Quiz score fetch (FIX 2: derive quizPassed from best/last)
 const fetchQuizScore = async () => {
@@ -819,11 +509,6 @@ onMounted(() => {
   loadLesson();
 });
 
-onUnmounted(() => {
-  clearLiveSessionPoll();
-  stopCountdownTicker();
-});
-
 watch(
   () => [courseId.value, lessonId.value],
   ([newCourseId, newLessonId], [oldCourseId, oldLessonId]) => {
@@ -866,24 +551,6 @@ watch(
 
 .lesson-card {
   margin-bottom: 0.5rem;
-}
-
-.live-status {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.live-schedule {
-  margin-top: 1rem;
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-
-.live-schedule small {
-  display: block;
-  color: #6b7280;
 }
 
 .lesson-text {
@@ -966,9 +633,5 @@ watch(
 .empty-state {
   color: #6b7280;
   padding: 0.75rem 0;
-}
-
-.mt-3 {
-  margin-top: 0.75rem;
 }
 </style>
