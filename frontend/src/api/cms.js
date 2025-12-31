@@ -46,8 +46,8 @@ export const getCourseGroups = (courseId) =>
   unwrap(api.get(`/cms/courses/${courseId}/groups`));
 export const getAvailableStudents = (courseId) =>
   unwrap(api.get(`/cms/courses/${courseId}/students/available`));
-export const getCourseEnrollments = (courseId) =>
-  unwrap(api.get(`/cms/courses/${courseId}/enrollments`));
+export const getCourseEnrollments = (courseId, params = {}) =>
+  unwrap(api.get(`/cms/courses/${courseId}/enrollments`, { params }));
 export const enrollStudent = (courseId, payload) =>
   unwrap(api.post(`/cms/courses/${courseId}/enroll`, payload));
 export const removeEnrollment = (courseId, studentId) =>

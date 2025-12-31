@@ -145,65 +145,6 @@
         </Card>
       </div>
 
-      <Card v-if="canManageEnrollments" class="enrollments-card">
-        <template #title>
-          <div class="section-header">
-            <h3>Enrollments</h3>
-            <Button label="Enroll student" icon="pi pi-user-plus" @click="openEnrollDialog" />
-          </div>
-        </template>
-        <template #content>
-          <div v-if="loadingEnrollments">
-            <Skeleton height="2.5rem" class="mb-2" />
-            <Skeleton height="2.5rem" class="mb-2" />
-            <Skeleton height="2.5rem" />
-          </div>
-          <div v-else-if="!enrollments.length" class="empty-state">
-            No students enrolled yet.
-          </div>
-          <div v-else>
-            <DataTable :value="enrollments" responsiveLayout="scroll">
-              <Column field="fullName" header="Student" />
-              <Column field="email" header="Email" />
-              <Column header="Group" body-style="min-width:16rem">
-                <template #body="{ data }">
-                  <div class="group-cell">
-                    <Tag
-                      :value="data.groupName || 'No group'"
-                      :severity="data.groupName ? 'info' : 'warning'"
-                      class="group-tag"
-                    />
-                    <Dropdown
-                      :modelValue="data.groupId || null"
-                      :options="groupDropdownOptions"
-                      optionLabel="label"
-                      optionValue="value"
-                      placeholder="Select group"
-                      showClear
-                      class="group-dropdown"
-                      :loading="updatingGroupId === data.studentId"
-                      :disabled="updatingGroupId === data.studentId"
-                      @update:modelValue="(value) => updateStudentGroup(data.studentId, value)"
-                    />
-                  </div>
-                </template>
-              </Column>
-              <Column header="Actions" body-style="min-width:6rem">
-                <template #body="{ data }">
-                  <Button
-                    label="Remove"
-                    icon="pi pi-times"
-                    class="p-button-text p-button-danger"
-                    :loading="removingEnrollmentId === data.studentId"
-                    @click="removeEnrollmentRow(data)"
-                  />
-                </template>
-              </Column>
-            </DataTable>
-          </div>
-        </template>
-      </Card>
-
       <Card v-if="canManageEnrollments" class="group-teachers-card">
         <template #title>
           <div class="section-header">
@@ -260,6 +201,99 @@
           </div>
         </template>
       </Card>
+
+      <Card v-if="canManageEnrollments" class="enrollments-card">
+        <template #title>
+          <div class="section-header">
+            <h3>Enrollments</h3>
+            <Button label="Enroll student" icon="pi pi-user-plus" @click="openEnrollDialog" />
+          </div>
+        </template>
+        <template #content>
+          <div v-if="loadingEnrollments">
+            <Skeleton height="2.5rem" class="mb-2" />
+            <Skeleton height="2.5rem" class="mb-2" />
+            <Skeleton height="2.5rem" />
+          </div>
+          <div v-else>
+            <div class="enrollment-filters">
+              <div class="filter-field">
+                <label>Search</label>
+                <InputText v-model="enrollmentFilter" placeholder="Name or email" />
+              </div>
+              <div class="filter-field">
+                <label>Group</label>
+                <Dropdown
+                  v-model="enrollmentGroupFilter"
+                  :options="enrollmentGroupOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="All groups"
+                  showClear
+                />
+              </div>
+            </div>
+            <div v-if="!enrollmentTotal" class="empty-state">
+              {{
+                enrollmentFilter || enrollmentGroupFilter
+                  ? 'No enrollments match your filters.'
+                  : 'No students enrolled yet.'
+              }}
+            </div>
+            <DataTable
+              v-else
+              :value="enrollments"
+              responsiveLayout="scroll"
+              :paginator="true"
+              :rows="enrollmentRows"
+              :totalRecords="enrollmentTotal"
+              :first="enrollmentPage * enrollmentRows"
+              :rowsPerPageOptions="enrollmentRowsOptions"
+              lazy
+              @page="onEnrollmentPage"
+            >
+              <Column field="fullName" header="Student" />
+              <Column field="email" header="Email" />
+              <Column header="Group" body-style="min-width:16rem">
+                <template #body="{ data }">
+                  <div class="group-cell">
+                    <Tag
+                      :value="data.groupName || 'No group'"
+                      :severity="data.groupName ? 'info' : 'warning'"
+                      class="group-tag"
+                    />
+                    <Dropdown
+                      :modelValue="data.groupId || null"
+                      :options="groupDropdownOptions"
+                      optionLabel="label"
+                      optionValue="value"
+                      placeholder="Select group"
+                      showClear
+                      class="group-dropdown"
+                      :loading="updatingGroupId === data.studentId"
+                      :disabled="updatingGroupId === data.studentId"
+                      @update:modelValue="(value) => updateStudentGroup(data.studentId, value)"
+                    />
+                  </div>
+                </template>
+              </Column>
+              <Column header="Actions" body-style="min-width:6rem">
+                <template #body="{ data }">
+                  <Button
+                    label="Remove"
+                    icon="pi pi-times"
+                    class="p-button-text p-button-danger"
+                    :loading="removingEnrollmentId === data.studentId"
+                    @click="removeEnrollmentRow(data)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+          </div>
+        </template>
+      </Card>
+
+
 
       <Card v-if="isAdmin" class="staff-card">
         <template #title>
@@ -461,31 +495,17 @@
       :style="{ width: '28rem' }"
     >
       <div class="dialog-field">
-        <label>Search instructor</label>
-        <div class="group-teacher-search">
-          <InputText
-            v-model="groupTeacherSearchTerm"
-            placeholder="Name or email"
-            @keyup.enter="searchGroupTeacherCandidates"
-          />
-          <Button
-            icon="pi pi-search"
-            class="p-button-text"
-            :loading="loadingGroupTeacherCandidates"
-            @click="searchGroupTeacherCandidates"
-          />
-        </div>
-      </div>
-      <div class="dialog-field">
         <label>Instructor</label>
         <Dropdown
           v-model="selectedGroupTeacherUserId"
           :options="groupTeacherCandidates"
           optionLabel="label"
           optionValue="value"
-          placeholder="Select instructor"
+          placeholder="Search instructor"
           :loading="loadingGroupTeacherCandidates"
           filter
+          filterPlaceholder="Type to search"
+          @filter="handleGroupTeacherFilter"
         />
       </div>
       <template #footer>
@@ -565,6 +585,13 @@ const lessonForm = ref({
 const savingLesson = ref(false);
 
 const enrollments = ref([]);
+const enrollmentFilter = ref('');
+const enrollmentGroupFilter = ref(null);
+const enrollmentPage = ref(0);
+const enrollmentRows = ref(25);
+const enrollmentTotal = ref(0);
+const ENROLLMENT_SEARCH_DEBOUNCE = 400;
+let enrollmentSearchTimeout;
 const courseGroups = ref([]);
 const loadingEnrollments = ref(true);
 const showEnrollDialog = ref(false);
@@ -601,6 +628,8 @@ const loadingGroupTeacherCandidates = ref(false);
 const groupTeacherSearchTerm = ref('');
 const selectedGroupTeacherUserId = ref(null);
 const assigningGroupTeacher = ref(false);
+const GROUP_TEACHER_SEARCH_DEBOUNCE = 400;
+let groupTeacherFilterTimeout;
 
 const staffAssignments = ref([]);
 const loadingStaff = ref(false);
@@ -631,6 +660,15 @@ const groupDropdownOptions = computed(() => {
   }));
   return [...base, ...groupOptions];
 });
+const enrollmentGroupOptions = computed(() => [
+  { label: 'All groups', value: null },
+  { label: 'No group', value: 'no-group' },
+  ...courseGroups.value.map((group) => ({
+    label: group.scheduleText ? `${group.name} (${group.scheduleText})` : group.name,
+    value: group.id,
+  })),
+]);
+const enrollmentRowsOptions = [10, 25, 50];
 const setPicklistState = (source, target) => {
   picklistModel.value = [source, target];
 };
@@ -714,7 +752,10 @@ const fetchGroupTeacherCandidates = async () => {
       : Array.isArray(response)
       ? response
       : [];
-    groupTeacherCandidates.value = userList.map((user) => ({
+    const assignedIds = new Set(groupTeachers.value.map((teacher) => teacher.id));
+    groupTeacherCandidates.value = userList
+      .filter((user) => !assignedIds.has(user.id))
+      .map((user) => ({
       label: `${user.full_name || user.fullName} (${user.email})`,
       value: user.id,
     }));
@@ -748,11 +789,15 @@ const openGroupTeacherDialog = () => {
   fetchGroupTeacherCandidates();
 };
 
-const searchGroupTeacherCandidates = () => {
-  if (loadingGroupTeacherCandidates.value) {
-    return;
+const handleGroupTeacherFilter = (event) => {
+  const term = event?.value || '';
+  groupTeacherSearchTerm.value = term;
+  if (groupTeacherFilterTimeout) {
+    clearTimeout(groupTeacherFilterTimeout);
   }
-  fetchGroupTeacherCandidates();
+  groupTeacherFilterTimeout = setTimeout(() => {
+    fetchGroupTeacherCandidates();
+  }, GROUP_TEACHER_SEARCH_DEBOUNCE);
 };
 
 const submitGroupTeacherAssignment = async () => {
@@ -871,17 +916,51 @@ const loadLessons = async (moduleId) => {
 const loadEnrollmentData = async () => {
   if (!canManageEnrollments.value) {
     enrollments.value = [];
+    enrollmentTotal.value = 0;
     courseGroups.value = [];
     ensureGroupTeacherSelection();
     return;
   }
   loadingEnrollments.value = true;
   try {
-    const [enrollmentRows, groupRows] = await Promise.all([
-      getCourseEnrollments(courseId),
+    const params = {
+      page: enrollmentPage.value + 1,
+      pageSize: enrollmentRows.value,
+    };
+    if (enrollmentFilter.value.trim()) {
+      params.search = enrollmentFilter.value.trim();
+    }
+    if (enrollmentGroupFilter.value) {
+      params.groupId = enrollmentGroupFilter.value;
+    }
+    const [enrollmentRes, groupRows] = await Promise.all([
+      getCourseEnrollments(courseId, params),
       getCourseGroups(courseId),
     ]);
-    enrollments.value = enrollmentRows;
+    const isLegacyResponse = Array.isArray(enrollmentRes);
+    const totalRecords = isLegacyResponse
+      ? enrollmentRes.length
+      : Number(enrollmentRes?.total ?? 0) || 0;
+    enrollmentTotal.value = totalRecords;
+    const records = isLegacyResponse
+      ? enrollmentRes
+      : Array.isArray(enrollmentRes?.data)
+      ? enrollmentRes.data
+      : [];
+    const maxPage = Math.max(Math.ceil((totalRecords || 0) / enrollmentRows.value) - 1, 0);
+    if (enrollmentPage.value > maxPage) {
+      enrollmentPage.value = maxPage;
+      if (!isLegacyResponse && maxPage + 1 !== params.page) {
+        await loadEnrollmentData();
+        return;
+      }
+    }
+    if (isLegacyResponse) {
+      const start = enrollmentPage.value * enrollmentRows.value;
+      enrollments.value = records.slice(start, start + enrollmentRows.value);
+    } else {
+      enrollments.value = records;
+    }
     courseGroups.value = groupRows;
     ensureGroupTeacherSelection();
   } catch (err) {
@@ -894,6 +973,24 @@ const loadEnrollmentData = async () => {
   } finally {
     loadingEnrollments.value = false;
   }
+};
+
+const clearEnrollmentSearchTimeout = () => {
+  if (enrollmentSearchTimeout) {
+    clearTimeout(enrollmentSearchTimeout);
+    enrollmentSearchTimeout = null;
+  }
+};
+
+const onEnrollmentPage = (event) => {
+  const nextRows = event.rows;
+  const nextPage = Math.floor(event.first / event.rows);
+  if (enrollmentRows.value === nextRows && enrollmentPage.value === nextPage) {
+    return;
+  }
+  enrollmentRows.value = nextRows;
+  enrollmentPage.value = nextPage;
+  loadEnrollmentData();
 };
 
 const fetchStaffCandidates = async (searchTerm = '') => {
@@ -1387,6 +1484,31 @@ watch(picklistFilter, () => {
 });
 
 watch(
+  enrollmentFilter,
+  () => {
+    if (!canManageEnrollments.value) return;
+    enrollmentPage.value = 0;
+    clearEnrollmentSearchTimeout();
+    enrollmentSearchTimeout = setTimeout(() => {
+      loadEnrollmentData();
+      enrollmentSearchTimeout = null;
+    }, ENROLLMENT_SEARCH_DEBOUNCE);
+  },
+  { immediate: false },
+);
+
+watch(
+  enrollmentGroupFilter,
+  () => {
+    if (!canManageEnrollments.value) return;
+    enrollmentPage.value = 0;
+    clearEnrollmentSearchTimeout();
+    loadEnrollmentData();
+  },
+  { immediate: false },
+);
+
+watch(
   selectedGroupForTeachers,
   (groupId, previous) => {
     if (groupId && groupId !== previous && canManageEnrollments.value) {
@@ -1400,14 +1522,19 @@ watch(
 watch(
   canManageEnrollments,
   (allowed) => {
+    clearEnrollmentSearchTimeout();
     if (!allowed) {
       selectedGroupForTeachers.value = null;
       groupTeachers.value = [];
+      enrollmentPage.value = 0;
+      enrollmentTotal.value = 0;
     } else {
+      enrollmentPage.value = 0;
       ensureGroupTeacherSelection();
+      loadEnrollmentData();
     }
   },
-  { immediate: true },
+  { immediate: false },
 );
 
 watch(
@@ -1418,6 +1545,10 @@ watch(
       groupTeacherCandidates.value = [];
       selectedGroupTeacherUserId.value = null;
       assigningGroupTeacher.value = false;
+      if (groupTeacherFilterTimeout) {
+        clearTimeout(groupTeacherFilterTimeout);
+        groupTeacherFilterTimeout = null;
+      }
     }
   },
 );
@@ -1451,6 +1582,10 @@ onBeforeUnmount(() => {
   if (staffFilterTimeout) {
     clearTimeout(staffFilterTimeout);
   }
+  if (groupTeacherFilterTimeout) {
+    clearTimeout(groupTeacherFilterTimeout);
+  }
+  clearEnrollmentSearchTimeout();
 });
 
 const init = async () => {
@@ -1564,6 +1699,21 @@ init();
   margin-top: 1rem;
 }
 
+.enrollment-filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+
+.enrollment-filters .filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 200px;
+}
+
 .group-teachers-card {
   margin-top: 1rem;
 }
@@ -1598,11 +1748,6 @@ init();
   color: #6b7280;
   display: block;
   margin-top: 0.15rem;
-}
-
-.group-teacher-search {
-  display: flex;
-  gap: 0.5rem;
 }
 
 .staff-card {

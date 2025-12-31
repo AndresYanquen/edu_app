@@ -1306,48 +1306,107 @@ router.get(
   requireCourseEnrollmentRole(resolveCourseIdFromParam('courseId')),
   async (req, res) => {
     const courseId = req.courseContext.courseId;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 25, 1), 200);
+    const offset = (page - 1) * pageSize;
+    const searchTerm = (req.query.search || '').trim();
+    const groupFilter = (req.query.groupId || '').trim();
+
+    const whereClauses = [
+      'e.course_id = $1',
+      `EXISTS (
+        SELECT 1
+        FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = u.id
+          AND r.name = 'student'
+      )`,
+    ];
+    const whereValues = [courseId];
+
+    if (searchTerm) {
+      whereValues.push(`%${searchTerm}%`);
+      const placeholder = `$${whereValues.length}`;
+      whereClauses.push(`(u.full_name ILIKE ${placeholder} OR u.email ILIKE ${placeholder})`);
+    }
+
+    if (groupFilter === 'no-group') {
+      whereClauses.push(
+        `NOT EXISTS (
+          SELECT 1
+          FROM group_students gs
+          JOIN groups g ON g.id = gs.group_id
+          WHERE gs.user_id = e.user_id
+            AND g.course_id = e.course_id
+        )`,
+      );
+    } else if (groupFilter) {
+      whereValues.push(groupFilter);
+      const placeholder = `$${whereValues.length}`;
+      whereClauses.push(
+        `EXISTS (
+          SELECT 1
+          FROM group_students gs
+          WHERE gs.user_id = e.user_id
+            AND gs.group_id = ${placeholder}
+        )`,
+      );
+    }
+
+    const whereSql = whereClauses.join('\n              AND ');
 
     try {
-      const { rows } = await pool.query(
-        `
-          SELECT
-            e.user_id AS student_id,
-            u.full_name,
-            u.email,
-            assignment.group_id,
-            assignment.group_name
-          FROM enrollments e
-          JOIN users u ON u.id = e.user_id
-          LEFT JOIN LATERAL (
-            SELECT gs.group_id, g.name AS group_name
-            FROM group_students gs
-            JOIN groups g ON g.id = gs.group_id
-            WHERE gs.user_id = e.user_id
-              AND g.course_id = e.course_id
-            LIMIT 1
-          ) assignment ON true
-          WHERE EXISTS (
-            SELECT 1
-            FROM user_roles ur
-            JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = u.id
-              AND r.name = 'student'
-          )
-            AND e.course_id = $1
-          ORDER BY u.full_name ASC
-        `,
-        [courseId],
-      );
+      const [dataRes, countRes] = await Promise.all([
+        pool.query(
+          `
+            SELECT
+              e.user_id AS student_id,
+              u.full_name,
+              u.email,
+              assignment.group_id,
+              assignment.group_name
+            FROM enrollments e
+            JOIN users u ON u.id = e.user_id
+            LEFT JOIN LATERAL (
+              SELECT gs.group_id, g.name AS group_name
+              FROM group_students gs
+              JOIN groups g ON g.id = gs.group_id
+              WHERE gs.user_id = e.user_id
+                AND g.course_id = e.course_id
+              LIMIT 1
+            ) assignment ON true
+            WHERE ${whereSql}
+            ORDER BY u.full_name ASC
+            LIMIT $${whereValues.length + 1} OFFSET $${whereValues.length + 2}
+          `,
+          [...whereValues, pageSize, offset],
+        ),
+        pool.query(
+          `
+            SELECT COUNT(*)::int AS total
+            FROM enrollments e
+            JOIN users u ON u.id = e.user_id
+            WHERE ${whereSql}
+          `,
+          whereValues,
+        ),
+      ]);
 
-      return res.json(
-        rows.map((row) => ({
+      const rows = dataRes.rows;
+      const total = countRes.rows[0]?.total || 0;
+
+      return res.json({
+        data: rows.map((row) => ({
           studentId: row.student_id,
           fullName: row.full_name,
           email: row.email,
           groupId: row.group_id || null,
           groupName: row.group_name || null,
         })),
-      );
+        page,
+        pageSize,
+        total,
+      });
     } catch (err) {
       console.error('Failed to list enrollments', err);
       return res.status(500).json({ error: 'Failed to list enrollments' });
