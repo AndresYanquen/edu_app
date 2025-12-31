@@ -61,46 +61,25 @@
         <Divider />
 
         <div class="content-area">
-          <Card v-if="lesson?.contentText" class="lesson-card">
+          <Card v-if="hasRichContent || lesson?.contentUrl" class="lesson-card">
             <template #title>{{ t('lesson.sections.text') }}</template>
             <template #content>
-              <p class="lesson-text">{{ lesson.contentText }}</p>
+              <RichContent v-if="hasRichContent" :content="richContentSource" />
+              <p v-else class="lesson-text muted">{{ t('lesson.labels.noContent') }}</p>
               <a v-if="lesson?.contentUrl" :href="lesson.contentUrl" target="_blank" rel="noopener">
                 {{ t('lesson.labels.referenceLink') }}
               </a>
             </template>
           </Card>
 
-          <Card v-else-if="lesson?.contentUrl" class="lesson-card">
-            <template #title>{{ t('lesson.sections.reference') }}</template>
-            <template #content>
-              <a :href="lesson.contentUrl" target="_blank" rel="noopener">{{ lesson.contentUrl }}</a>
-            </template>
-          </Card>
-
           <Card v-if="lesson?.videoUrl" class="lesson-card">
             <template #title>{{ t('lesson.sections.video') }}</template>
             <template #content>
-              <div v-if="isYoutube(lesson.videoUrl)" class="video-embed">
-                <iframe
-                  :src="youtubeEmbed(lesson.videoUrl)"
-                  :title="t('lesson.labels.videoTitle')"
-                  frameborder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowfullscreen
-                ></iframe>
-              </div>
-              <div v-else>
-                <Button
-                  :label="t('lesson.actions.openVideo')"
-                  icon="pi pi-external-link"
-                  @click="openVideo(lesson.videoUrl)"
-                />
-              </div>
+              <RichContent :content="lesson.videoUrl" :renderMarkdown="false" />
             </template>
           </Card>
 
-          <div v-if="!lesson?.contentText && !lesson?.videoUrl" class="empty-state">
+          <div v-if="!hasRichContent && !lesson?.contentUrl && !lesson?.videoUrl" class="empty-state">
             {{ t('lesson.labels.noContent') }}
           </div>
         </div>
@@ -235,6 +214,7 @@ import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
 import api from '../api/axios';
 import PreviewBanner from '../components/PreviewBanner.vue';
+import RichContent from '../components/RichContent.vue';
 import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
@@ -248,6 +228,12 @@ const course = ref(null);
 const moduleInfo = ref(null);
 const lesson = ref(null);
 const assets = ref([]);
+
+const richContentSource = computed(() => {
+  const source = lesson.value?.contentMarkdown || lesson.value?.contentText || '';
+  return source ? source.trim() : '';
+});
+const hasRichContent = computed(() => richContentSource.value.length > 0);
 
 const loading = ref(true);
 const error = ref(false);
@@ -303,6 +289,7 @@ const normalizeLesson = (rawLesson) => ({
   id: rawLesson.id,
   title: rawLesson.title,
   contentType: rawLesson.contentType ?? rawLesson.content_type ?? null,
+  contentMarkdown: rawLesson.contentMarkdown ?? rawLesson.content_markdown ?? null,
   contentText: rawLesson.contentText ?? rawLesson.content_text ?? null,
   contentUrl: rawLesson.contentUrl ?? rawLesson.content_url ?? null,
   videoUrl: rawLesson.videoUrl ?? rawLesson.video_url ?? null,
@@ -397,34 +384,6 @@ const formatDuration = (seconds) => {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}m ${r}s`;
-};
-
-const isYoutube = (url) => {
-  try {
-    const u = new URL(url);
-    return u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be');
-  } catch {
-    return false;
-  }
-};
-
-const youtubeEmbed = (url) => {
-  try {
-    const u = new URL(url);
-    let id = '';
-    if (u.hostname.includes('youtu.be')) {
-      id = u.pathname.replace('/', '');
-    } else {
-      id = u.searchParams.get('v') || '';
-    }
-    return id ? `https://www.youtube.com/embed/${id}` : url;
-  } catch {
-    return url;
-  }
-};
-
-const openVideo = (url) => {
-  window.open(url, '_blank', 'noopener');
 };
 
 // Quiz score fetch (FIX 2: derive quizPassed from best/last)
@@ -597,13 +556,6 @@ watch(
 .lesson-text {
   white-space: pre-wrap;
   line-height: 1.6;
-}
-
-.video-embed iframe {
-  width: 100%;
-  height: 360px;
-  border: 0;
-  border-radius: 10px;
 }
 
 .assets ul {

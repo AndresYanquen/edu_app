@@ -210,6 +210,7 @@ const lessonCreateSchema = z.object({
     .trim()
     .min(1, 'title is required'),
   contentText: z.string().optional(),
+  contentMarkdown: z.string().optional(),
   videoUrl: z.string().url().optional(),
   estimatedMinutes: preprocessInt().optional(),
   orderIndex: preprocessInt().optional(),
@@ -219,6 +220,7 @@ const lessonUpdateSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
     contentText: z.string().optional(),
+    contentMarkdown: z.string().optional(),
     videoUrl: z.string().url().optional(),
     estimatedMinutes: preprocessInt().optional(),
     orderIndex: preprocessInt().optional(),

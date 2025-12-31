@@ -214,6 +214,10 @@ export default {
     emptyTitle: 'No groups assigned',
     emptyDescription: 'You do not have any groups yet.',
     reload: 'Reload',
+    tabs: {
+      progress: 'Progress',
+      content: 'Course content',
+    },
   },
   instructorGroup: {
     titleFallback: 'Group',
@@ -235,5 +239,8 @@ export default {
     searchEmpty: 'No students match your search.',
     noStudents: 'No students assigned to this group yet.',
     reload: 'Reload',
+    courseContentError: 'Failed to load course content.',
+    noModules: 'No modules available for this course.',
+    courseTabHint: 'Select this tab to load the course content.',
   },
 };

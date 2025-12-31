@@ -512,7 +512,7 @@ router.get(
     try {
     const { rows } = await pool.query(
       `
-        SELECT id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+        SELECT id, module_id, title, content_text, content_markdown, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
         FROM lessons
         WHERE module_id = $1
         ORDER BY order_index ASC
@@ -548,16 +548,18 @@ router.post(
 
     const { rows } = await pool.query(
       `
-        INSERT INTO lessons (module_id, title, content_text, video_url, estimated_minutes, position, order_index, is_published)
-        VALUES ($1, $2, $3, $4, $5, $6, $6, false)
-        RETURNING id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+        INSERT INTO lessons (module_id, title, content_text, content_markdown, video_url, estimated_minutes, position, order_index, is_published)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
+        RETURNING id, module_id, title, content_text, content_markdown, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
       `,
       [
         moduleId,
         parsed.data.title,
         parsed.data.contentText || null,
+        parsed.data.contentMarkdown || parsed.data.contentText || null,
         parsed.data.videoUrl || null,
         parsed.data.estimatedMinutes || null,
+        orderIndex,
         orderIndex,
       ],
     );
@@ -589,6 +591,10 @@ router.patch(
       values.push(parsed.data.contentText);
       updates.push(`content_text = $${values.length}`);
     }
+    if (parsed.data.contentMarkdown !== undefined) {
+      values.push(parsed.data.contentMarkdown);
+      updates.push(`content_markdown = $${values.length}`);
+    }
     if (parsed.data.videoUrl !== undefined) {
       values.push(parsed.data.videoUrl);
       updates.push(`video_url = $${values.length}`);
@@ -610,7 +616,7 @@ router.patch(
       UPDATE lessons
       SET ${updates.join(', ')}, updated_at = now()
       WHERE id = $${values.length + 1}
-      RETURNING id, module_id, title, content_text, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+      RETURNING id, module_id, title, content_text, content_markdown, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
     `;
     values.push(lessonId);
 

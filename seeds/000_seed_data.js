@@ -186,6 +186,7 @@ const lessonEntry = ({
   contentType = 'text',
   videoUrl = null,
   contentUrl = null,
+  contentMarkdown = null,
   durationMinutes = 30,
 }) => ({
   id,
@@ -195,6 +196,7 @@ const lessonEntry = ({
   order_index: position,
   content_type: contentType,
   content_text: lessonBody(title),
+  content_markdown: contentMarkdown || null,
   video_url: videoUrl,
   content_url: contentUrl,
   embed_html: null,
@@ -205,6 +207,32 @@ const lessonEntry = ({
   updated_at: TIMESTAMP,
   created_at: TIMESTAMP,
 });
+
+const accessibilityRichContent = [
+  'In this lesson we audit commonly used components and ensure they pass WCAG checks.',
+  '',
+  'Watch the accessible patterns talk:',
+  'https://www.youtube.com/watch?v=GAWZ3MGRa44',
+  '',
+  'Reference board screenshot:',
+  'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=60',
+  '',
+  'Async follow-up demo:',
+  'https://www.loom.com/share/0f3fe5a9bb9f42a59549fd26efabcd12',
+].join('\n');
+
+const deploymentRichContent = [
+  'Review the deployment checklist and follow along with the recorded walkthrough.',
+  '',
+  'Architecture overview:',
+  'https://vimeo.com/76979871',
+  '',
+  'Terminal session recording:',
+  'https://www.loom.com/share/6d9a37a0b4b84d01be13ed51be8c4680',
+  '',
+  'Rolling-update diagram:',
+  'https://images.unsplash.com/photo-1517430816045-df4b7de11d1d?auto=format&fit=crop&w=1200&q=60',
+].join('\n');
 
 const lessons = [
   lessonEntry({
@@ -220,6 +248,7 @@ const lessons = [
     title: 'Accessible Components',
     position: 2,
     videoUrl: 'https://www.youtube.com/watch?v=GAWZ3MGRa44',
+    contentMarkdown: accessibilityRichContent,
   }),
   lessonEntry({
     id: lessonApiDesignId,
@@ -234,6 +263,7 @@ const lessons = [
     title: 'Deploying Node Services',
     position: 2,
     videoUrl: 'https://www.youtube.com/watch?v=bNLG8GiEYfA',
+    contentMarkdown: deploymentRichContent,
   }),
   lessonEntry({
     id: lessonSqlWarmupId,

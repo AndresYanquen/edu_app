@@ -39,11 +39,14 @@
               <div class="dialog-field">
                 <label>Content</label>
                 <textarea
-                  v-model="form.contentText"
+                  v-model="form.contentMarkdown"
                   rows="10"
                   class="p-inputtextarea p-inputtext"
-                  placeholder="Lesson content"
+                  placeholder="Write lesson notes and paste media links"
                 ></textarea>
+                <small class="muted">
+                  Paste YouTube, Vimeo, Loom, or image URLs on their own lines to render rich embeds.
+                </small>
               </div>
               <div class="form-actions">
                 <Button
@@ -57,7 +60,7 @@
             </div>
             <div class="lesson-preview">
               <h4>Preview</h4>
-              <p class="preview-text" v-if="form.contentText">{{ form.contentText }}</p>
+              <RichContent v-if="form.contentMarkdown" :content="form.contentMarkdown" />
               <p v-else class="empty-state">Content will appear here.</p>
               <div v-if="form.videoUrl" class="preview-actions">
                 <Button label="Open video" icon="pi pi-external-link" class="p-button-text" @click="openVideo" />
@@ -249,6 +252,7 @@
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import RichContent from '../components/RichContent.vue';
 import {
   getLessons,
   updateLesson,
@@ -276,7 +280,7 @@ const loading = ref(true);
 const saving = ref(false);
 const form = ref({
   title: '',
-  contentText: '',
+  contentMarkdown: '',
   videoUrl: '',
   estimatedMinutes: 0,
 });
@@ -358,7 +362,7 @@ const loadLesson = async () => {
     if (lesson.value) {
       form.value = {
         title: lesson.value.title,
-        contentText: lesson.value.content_text || '',
+        contentMarkdown: lesson.value.content_markdown || lesson.value.content_text || '',
         videoUrl: lesson.value.video_url || '',
         estimatedMinutes: lesson.value.estimated_minutes || 0,
       };
@@ -408,7 +412,8 @@ const saveLesson = async () => {
   try {
     await updateLesson(lessonId, {
       title: form.value.title,
-      contentText: form.value.contentText,
+      contentText: form.value.contentMarkdown,
+      contentMarkdown: form.value.contentMarkdown,
       videoUrl: form.value.videoUrl,
       estimatedMinutes: form.value.estimatedMinutes,
     });

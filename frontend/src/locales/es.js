@@ -214,6 +214,10 @@ export default {
     emptyTitle: 'Sin grupos asignados',
     emptyDescription: 'Aún no tienes grupos asignados.',
     reload: 'Recargar',
+    tabs: {
+      progress: 'Progreso',
+      content: 'Contenido del curso',
+    },
   },
   instructorGroup: {
     titleFallback: 'Grupo',
@@ -235,5 +239,8 @@ export default {
     searchEmpty: 'Ningún estudiante coincide con tu búsqueda.',
     noStudents: 'Aún no hay estudiantes asignados a este grupo.',
     reload: 'Recargar',
+    courseContentError: 'No se pudo cargar el contenido del curso.',
+    noModules: 'No hay módulos disponibles para este curso.',
+    courseTabHint: 'Abre esta pestaña para cargar el contenido del curso.',
   },
 };
