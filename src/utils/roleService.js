@@ -245,6 +245,23 @@ const removeCourseStaffRole = async (client, courseId, userId, roleName) => {
   return result.rowCount || 0;
 };
 
+const isGroupTeacher = async (userId, groupId, client = pool) => {
+  if (!userId || !groupId) {
+    return false;
+  }
+  const { rows } = await client.query(
+    `
+      SELECT 1
+      FROM group_teachers
+      WHERE group_id = $1
+        AND user_id = $2
+      LIMIT 1
+    `,
+    [groupId, userId],
+  );
+  return rows.length > 0;
+};
+
 module.exports = {
   STAFF_ROLES,
   getGlobalRolesForUser,
@@ -257,4 +274,5 @@ module.exports = {
   listCourseStaff,
   setCourseStaffRoles,
   removeCourseStaffRole,
+  isGroupTeacher,
 };

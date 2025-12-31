@@ -18,6 +18,11 @@
           <Skeleton height="3rem" class="mb-2" />
         </div>
 
+        <div v-else-if="permissionError">
+          <p>{{ permissionMessage }}</p>
+          <Button label="Back" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
+        </div>
+
         <div v-else-if="error">
           <p>Failed to load group.</p>
           <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadData" />
@@ -108,11 +113,14 @@ const group = ref(null);
 const students = ref([]);
 const loading = ref(true);
 const error = ref(false);
+const permissionError = ref(false);
+const permissionMessage = ref('You are not assigned to this group.');
 const filter = ref('');
 
 const loadData = async () => {
   loading.value = true;
   error.value = false;
+  permissionError.value = false;
 
   try {
     const [groupsRes, analyticsRes] = await Promise.all([
@@ -120,13 +128,20 @@ const loadData = async () => {
       api.get(`/groups/${route.params.id}/analytics`),
     ]);
 
-    group.value = groupsRes.data
-      .map((g) => ({
-        id: g.group_id,
-        name: g.group_name,
-        schedule_text: g.schedule_text,
-      }))
-      .find((g) => g.id === route.params.id) || { name: 'Group', schedule_text: '' };
+    const availableGroups = groupsRes.data.map((g) => ({
+      id: g.group_id,
+      name: g.group_name,
+      schedule_text: g.schedule_text,
+    }));
+
+    const matchedGroup = availableGroups.find((g) => g.id === route.params.id);
+    if (!matchedGroup) {
+      permissionError.value = true;
+      permissionMessage.value = 'You are not assigned to this group.';
+      students.value = [];
+      return;
+    }
+    group.value = matchedGroup;
 
     students.value = (analyticsRes.data || []).map((row) => ({
       id: row.studentId,
@@ -138,13 +153,18 @@ const loadData = async () => {
       lastQuizScore: row.lastQuizScore,
     }));
   } catch (err) {
-    error.value = true;
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load group',
-      life: 3000,
-    });
+    if (err.response?.status === 403) {
+      permissionError.value = true;
+      permissionMessage.value = err.response?.data?.error || 'You are not assigned to this group.';
+    } else {
+      error.value = true;
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Failed to load group',
+        life: 3000,
+      });
+    }
   } finally {
     loading.value = false;
   }

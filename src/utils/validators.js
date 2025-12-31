@@ -255,6 +255,13 @@ const assignGroupSchema = z.object({
     .nullable(),
 });
 
+const groupTeacherAssignSchema = z.object({
+  userId: z
+    .string({ required_error: 'userId is required' })
+    .trim()
+    .uuid({ message: 'userId must be a valid UUID' }),
+});
+
 const bulkEnrollSchema = z.object({
   studentIds: z
     .array(
@@ -292,6 +299,7 @@ module.exports = {
   activationSchema,
   enrollStudentSchema,
   assignGroupSchema,
+  groupTeacherAssignSchema,
   bulkEnrollSchema,
   formatZodError,
 };

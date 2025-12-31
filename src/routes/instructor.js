@@ -4,8 +4,8 @@ const auth = require('../middleware/auth');
 const {
   requireGlobalRoleAny,
   requireCourseRoleAny,
+  requireGroupTeacherOrAdmin,
   hasGlobalRole,
-  getCourseIdFromGroup,
 } = require('../middleware/roles');
 
 const router = express.Router();
@@ -45,15 +45,9 @@ router.get('/instructor/groups', async (req, res) => {
             c.title AS course_title
           FROM groups g
           JOIN courses c ON c.id = g.course_id
-          WHERE EXISTS (
-            SELECT 1
-            FROM course_user_roles cur
-            JOIN roles r ON r.id = cur.role_id
-            WHERE cur.course_id = c.id
-              AND cur.user_id = $1
-              AND r.name = 'instructor'
-          )
-          ORDER BY c.title, g.name
+          JOIN group_teachers gt ON gt.group_id = g.id
+          WHERE gt.user_id = $1
+          ORDER BY g.created_at DESC
         `,
         [req.user.id],
       ));
@@ -68,7 +62,7 @@ router.get('/instructor/groups', async (req, res) => {
 
 router.get(
   '/groups/:id/students',
-  requireInstructorCourseRole((req) => getCourseIdFromGroup(req.params.id)),
+  requireGroupTeacherOrAdmin((req) => req.params.id),
   async (req, res) => {
     const groupId = req.params.id;
 
@@ -104,7 +98,7 @@ router.get(
 
 router.get(
   '/groups/:id/progress',
-  requireInstructorCourseRole((req) => getCourseIdFromGroup(req.params.id)),
+  requireGroupTeacherOrAdmin((req) => req.params.id),
   async (req, res) => {
     const groupId = req.params.id;
 
@@ -288,7 +282,7 @@ router.get(
 
 router.get(
   '/groups/:id/analytics',
-  requireInstructorCourseRole((req) => getCourseIdFromGroup(req.params.id)),
+  requireGroupTeacherOrAdmin((req) => req.params.id),
   async (req, res) => {
     const groupId = req.params.id;
     try {

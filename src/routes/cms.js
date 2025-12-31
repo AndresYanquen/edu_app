@@ -20,8 +20,10 @@ const {
   quizOptionUpdateSchema,
   enrollStudentSchema,
   assignGroupSchema,
+  groupTeacherAssignSchema,
   bulkEnrollSchema,
   formatZodError,
+  uuidSchema,
 } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
 
@@ -59,6 +61,10 @@ const resolveCourseIdFromModuleParam = (param) => async (req) =>
   fetchCourseIdByModule(req.params[param]);
 const resolveCourseIdFromLessonParam = (param) => async (req) =>
   fetchCourseIdByLesson(req.params[param]);
+const resolveCourseIdFromGroupParam = (param) => async (req) => {
+  const group = await fetchGroupById(req.params[param]);
+  return group?.course_id || null;
+};
 
 const requireCourseContentRole = (resolver) => requireCourseRoleAny(resolver, CONTENT_ROLES);
 const requireCourseEnrollmentRole = (resolver) =>
@@ -1141,6 +1147,111 @@ router.get(
     } catch (err) {
       console.error('Failed to list course groups', err);
       return res.status(500).json({ error: 'Failed to list groups' });
+    }
+  },
+);
+
+router.get(
+  '/groups/:groupId/teachers',
+  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam('groupId')),
+  async (req, res) => {
+    const groupId = req.params.groupId;
+    try {
+      const group = await fetchGroupById(groupId);
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      const { rows } = await pool.query(
+        `
+          SELECT u.id, u.full_name, u.email
+          FROM group_teachers gt
+          JOIN users u ON u.id = gt.user_id
+          WHERE gt.group_id = $1
+          ORDER BY u.full_name
+        `,
+        [groupId],
+      );
+      return res.json(rows);
+    } catch (err) {
+      console.error('Failed to load group teachers', err);
+      return res.status(500).json({ error: 'Failed to load group teachers' });
+    }
+  },
+);
+
+router.post(
+  '/groups/:groupId/teachers',
+  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam('groupId')),
+  async (req, res) => {
+    const groupId = req.params.groupId;
+    const parsed = groupTeacherAssignSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    try {
+      const group = await fetchGroupById(groupId);
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      await pool.query(
+        `
+          INSERT INTO group_teachers (group_id, user_id)
+          VALUES ($1, $2)
+          ON CONFLICT (group_id, user_id) DO NOTHING
+        `,
+        [groupId, parsed.data.userId],
+      );
+
+      const { rows } = await pool.query(
+        `
+          SELECT u.id, u.full_name, u.email
+          FROM users u
+          WHERE u.id = $1
+          LIMIT 1
+        `,
+        [parsed.data.userId],
+      );
+
+      return res.status(201).json(rows[0] || { id: parsed.data.userId });
+    } catch (err) {
+      console.error('Failed to assign group teacher', err);
+      return res.status(500).json({ error: 'Failed to assign group teacher' });
+    }
+  },
+);
+
+router.delete(
+  '/groups/:groupId/teachers/:userId',
+  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam('groupId')),
+  async (req, res) => {
+    const groupId = req.params.groupId;
+    const { userId } = req.params;
+    const parsed = uuidSchema.safeParse(userId);
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    try {
+      const group = await fetchGroupById(groupId);
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      await pool.query(
+        `
+          DELETE FROM group_teachers
+          WHERE group_id = $1 AND user_id = $2
+        `,
+        [groupId, parsed.data],
+      );
+
+      return res.status(204).send();
+    } catch (err) {
+      console.error('Failed to remove group teacher', err);
+      return res.status(500).json({ error: 'Failed to remove group teacher' });
     }
   },
 );

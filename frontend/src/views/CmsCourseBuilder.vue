@@ -204,6 +204,63 @@
         </template>
       </Card>
 
+      <Card v-if="canManageEnrollments" class="group-teachers-card">
+        <template #title>
+          <div class="section-header">
+            <div>
+              <h3>Group instructors</h3>
+              <small>Assign instructors to a specific group</small>
+            </div>
+            <Button
+              label="Add instructor"
+              icon="pi pi-user-plus"
+              :disabled="!selectedGroupForTeachers"
+              @click="openGroupTeacherDialog"
+            />
+          </div>
+        </template>
+        <template #content>
+          <div class="group-teachers-selector">
+            <label>Select group</label>
+            <Dropdown
+              v-model="selectedGroupForTeachers"
+              :options="groupTeacherOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Select group"
+              :disabled="!courseGroups.length"
+            />
+          </div>
+          <div v-if="!courseGroups.length" class="empty-state">
+            Create a group to assign instructors.
+          </div>
+          <div v-else>
+            <div v-if="loadingGroupTeachers">
+              <Skeleton height="2.5rem" class="mb-2" />
+              <Skeleton height="2.5rem" class="mb-2" />
+            </div>
+            <div v-else-if="!groupTeachers.length" class="empty-state">
+              No instructors assigned yet.
+            </div>
+            <ul v-else class="group-teacher-list">
+              <li v-for="teacher in groupTeachers" :key="teacher.id" class="group-teacher-item">
+                <div>
+                  <strong>{{ teacher.fullName }}</strong>
+                  <small>{{ teacher.email }}</small>
+                </div>
+                <Button
+                  icon="pi pi-times"
+                  class="p-button-text p-button-danger"
+                  :loading="removingGroupTeacherId === teacher.id"
+                  @click="removeGroupInstructor(teacher.id)"
+                  aria-label="Remove instructor"
+                />
+              </li>
+            </ul>
+          </div>
+        </template>
+      </Card>
+
       <Card v-if="isAdmin" class="staff-card">
         <template #title>
           <div class="section-header">
@@ -396,6 +453,51 @@
         <Button label="Enroll" :loading="submittingEnrollment" @click="submitEnrollment" />
       </template>
     </Dialog>
+
+    <Dialog
+      v-model:visible="showGroupTeacherDialog"
+      header="Assign instructor"
+      modal
+      :style="{ width: '28rem' }"
+    >
+      <div class="dialog-field">
+        <label>Search instructor</label>
+        <div class="group-teacher-search">
+          <InputText
+            v-model="groupTeacherSearchTerm"
+            placeholder="Name or email"
+            @keyup.enter="searchGroupTeacherCandidates"
+          />
+          <Button
+            icon="pi pi-search"
+            class="p-button-text"
+            :loading="loadingGroupTeacherCandidates"
+            @click="searchGroupTeacherCandidates"
+          />
+        </div>
+      </div>
+      <div class="dialog-field">
+        <label>Instructor</label>
+        <Dropdown
+          v-model="selectedGroupTeacherUserId"
+          :options="groupTeacherCandidates"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Select instructor"
+          :loading="loadingGroupTeacherCandidates"
+          filter
+        />
+      </div>
+      <template #footer>
+        <Button label="Cancel" class="p-button-text" @click="showGroupTeacherDialog = false" />
+        <Button
+          label="Assign"
+          :disabled="!selectedGroupTeacherUserId"
+          :loading="assigningGroupTeacher"
+          @click="submitGroupTeacherAssignment"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -424,6 +526,9 @@ import {
   removeEnrollment,
   updateEnrollmentGroup,
   bulkEnrollStudents,
+  getGroupTeachers,
+  addGroupTeacher,
+  removeGroupTeacher,
 } from '../api/cms';
 import { listUsers, getCourseStaff, assignCourseStaff, removeCourseStaffRole } from '../api/admin';
 
@@ -486,6 +591,17 @@ const removingEnrollmentId = ref(null);
 const updatingGroupId = ref(null);
 const bulkErrors = ref([]);
 
+const selectedGroupForTeachers = ref(null);
+const groupTeachers = ref([]);
+const loadingGroupTeachers = ref(false);
+const removingGroupTeacherId = ref(null);
+const showGroupTeacherDialog = ref(false);
+const groupTeacherCandidates = ref([]);
+const loadingGroupTeacherCandidates = ref(false);
+const groupTeacherSearchTerm = ref('');
+const selectedGroupTeacherUserId = ref(null);
+const assigningGroupTeacher = ref(false);
+
 const staffAssignments = ref([]);
 const loadingStaff = ref(false);
 const assigningStaff = ref(false);
@@ -519,6 +635,196 @@ const setPicklistState = (source, target) => {
   picklistModel.value = [source, target];
 };
 const selectedStudentCount = computed(() => picklistTarget.value.length);
+
+const groupTeacherOptions = computed(() =>
+  courseGroups.value.map((group) => ({
+    label: group.scheduleText ? `${group.name} (${group.scheduleText})` : group.name,
+    value: group.id,
+  })),
+);
+
+let groupTeachersRequestId = 0;
+const loadGroupTeachers = async (groupId) => {
+  if (!groupId || !canManageEnrollments.value) {
+    groupTeachers.value = [];
+    return;
+  }
+  const requestId = ++groupTeachersRequestId;
+  loadingGroupTeachers.value = true;
+  try {
+    const rows = await getGroupTeachers(groupId);
+    if (requestId !== groupTeachersRequestId) {
+      return;
+    }
+    groupTeachers.value = (rows || []).map((row) => ({
+      id: row.id || row.user_id,
+      fullName: row.fullName || row.full_name || row.name,
+      email: row.email,
+    }));
+  } catch (err) {
+    if (requestId === groupTeachersRequestId) {
+      groupTeachers.value = [];
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Failed to load group instructors',
+        life: 3000,
+      });
+    }
+  } finally {
+    if (requestId === groupTeachersRequestId) {
+      loadingGroupTeachers.value = false;
+    }
+  }
+};
+
+const ensureGroupTeacherSelection = () => {
+  if (!canManageEnrollments.value) {
+    selectedGroupForTeachers.value = null;
+    groupTeachers.value = [];
+    return;
+  }
+  const groups = courseGroups.value;
+  if (!groups.length) {
+    selectedGroupForTeachers.value = null;
+    groupTeachers.value = [];
+    return;
+  }
+  if (
+    !selectedGroupForTeachers.value ||
+    !groups.some((group) => group.id === selectedGroupForTeachers.value)
+  ) {
+    selectedGroupForTeachers.value = groups[0].id;
+  } else {
+    loadGroupTeachers(selectedGroupForTeachers.value);
+  }
+};
+
+const fetchGroupTeacherCandidates = async () => {
+  loadingGroupTeacherCandidates.value = true;
+  try {
+    const params = { page: 1, pageSize: 25, role: 'instructor' };
+    const term = groupTeacherSearchTerm.value.trim();
+    if (term) {
+      params.search = term;
+    }
+    const response = await listUsers(params);
+    const userList = Array.isArray(response?.users)
+      ? response.users
+      : Array.isArray(response)
+      ? response
+      : [];
+    groupTeacherCandidates.value = userList.map((user) => ({
+      label: `${user.full_name || user.fullName} (${user.email})`,
+      value: user.id,
+    }));
+  } catch (err) {
+    groupTeacherCandidates.value = [];
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to search instructors',
+      life: 3000,
+    });
+  } finally {
+    loadingGroupTeacherCandidates.value = false;
+  }
+};
+
+const openGroupTeacherDialog = () => {
+  if (!selectedGroupForTeachers.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Select group',
+      detail: 'Choose a group before assigning instructors',
+      life: 2500,
+    });
+    return;
+  }
+  groupTeacherSearchTerm.value = '';
+  selectedGroupTeacherUserId.value = null;
+  groupTeacherCandidates.value = [];
+  showGroupTeacherDialog.value = true;
+  fetchGroupTeacherCandidates();
+};
+
+const searchGroupTeacherCandidates = () => {
+  if (loadingGroupTeacherCandidates.value) {
+    return;
+  }
+  fetchGroupTeacherCandidates();
+};
+
+const submitGroupTeacherAssignment = async () => {
+  if (!selectedGroupForTeachers.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Select group',
+      detail: 'Choose a group before assigning instructors',
+      life: 2500,
+    });
+    return;
+  }
+  if (!selectedGroupTeacherUserId.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Select instructor',
+      detail: 'Choose an instructor to assign',
+      life: 2500,
+    });
+    return;
+  }
+
+  assigningGroupTeacher.value = true;
+  try {
+    await addGroupTeacher(selectedGroupForTeachers.value, {
+      userId: selectedGroupTeacherUserId.value,
+    });
+    toast.add({
+      severity: 'success',
+      summary: 'Assigned',
+      detail: 'Instructor assigned to group',
+      life: 2000,
+    });
+    showGroupTeacherDialog.value = false;
+    await loadGroupTeachers(selectedGroupForTeachers.value);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to assign instructor',
+      life: 3000,
+    });
+  } finally {
+    assigningGroupTeacher.value = false;
+  }
+};
+
+const removeGroupInstructor = async (userId) => {
+  if (!selectedGroupForTeachers.value) {
+    return;
+  }
+  removingGroupTeacherId.value = userId;
+  try {
+    await removeGroupTeacher(selectedGroupForTeachers.value, userId);
+    toast.add({
+      severity: 'success',
+      summary: 'Removed',
+      detail: 'Instructor removed from group',
+      life: 2000,
+    });
+    await loadGroupTeachers(selectedGroupForTeachers.value);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to remove instructor',
+      life: 3000,
+    });
+  } finally {
+    removingGroupTeacherId.value = null;
+  }
+};
 
 const loadCourse = async () => {
   loadingCourse.value = true;
@@ -566,6 +872,7 @@ const loadEnrollmentData = async () => {
   if (!canManageEnrollments.value) {
     enrollments.value = [];
     courseGroups.value = [];
+    ensureGroupTeacherSelection();
     return;
   }
   loadingEnrollments.value = true;
@@ -576,6 +883,7 @@ const loadEnrollmentData = async () => {
     ]);
     enrollments.value = enrollmentRows;
     courseGroups.value = groupRows;
+    ensureGroupTeacherSelection();
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -1079,6 +1387,42 @@ watch(picklistFilter, () => {
 });
 
 watch(
+  selectedGroupForTeachers,
+  (groupId, previous) => {
+    if (groupId && groupId !== previous && canManageEnrollments.value) {
+      loadGroupTeachers(groupId);
+    } else if (!groupId) {
+      groupTeachers.value = [];
+    }
+  },
+);
+
+watch(
+  canManageEnrollments,
+  (allowed) => {
+    if (!allowed) {
+      selectedGroupForTeachers.value = null;
+      groupTeachers.value = [];
+    } else {
+      ensureGroupTeacherSelection();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  showGroupTeacherDialog,
+  (visible) => {
+    if (!visible) {
+      groupTeacherSearchTerm.value = '';
+      groupTeacherCandidates.value = [];
+      selectedGroupTeacherUserId.value = null;
+      assigningGroupTeacher.value = false;
+    }
+  },
+);
+
+watch(
   showEnrollDialog,
   (visible) => {
     if (!visible) {
@@ -1218,6 +1562,47 @@ init();
 
 .enrollments-card {
   margin-top: 1rem;
+}
+
+.group-teachers-card {
+  margin-top: 1rem;
+}
+
+.group-teachers-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  max-width: 320px;
+}
+
+.group-teacher-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.group-teacher-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+}
+
+.group-teacher-item small {
+  color: #6b7280;
+  display: block;
+  margin-top: 0.15rem;
+}
+
+.group-teacher-search {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .staff-card {

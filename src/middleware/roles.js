@@ -4,6 +4,7 @@ const {
   getCourseIdFromGroup,
   getCourseIdFromModule,
   ensureCourseExists,
+  isGroupTeacher,
 } = require('../utils/roleService');
 
 const extractGlobalRoles = (user) =>
@@ -78,9 +79,50 @@ const requireCourseRoleAny = (courseResolver, allowedRoles = []) => {
   };
 };
 
+const resolveGroupId = async (resolver, req) =>
+  typeof resolver === 'function' ? resolver(req) : resolver;
+
+const requireGroupTeacherOrAdmin = (groupResolver) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const resolved = await resolveGroupId(groupResolver, req);
+      const groupId = typeof resolved === 'string' ? resolved : resolved?.groupId;
+      if (!groupId) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      const courseId = await getCourseIdFromGroup(groupId);
+      if (!courseId) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      if (hasGlobalRole(req.user, 'admin')) {
+        req.groupContext = { ...(req.groupContext || {}), groupId, courseId };
+        return next();
+      }
+
+      const allowed = await isGroupTeacher(req.user.id, groupId);
+      if (!allowed) {
+        return res.status(403).json({ error: 'You are not allowed to perform this action' });
+      }
+
+      req.groupContext = { ...(req.groupContext || {}), groupId, courseId };
+      return next();
+    } catch (err) {
+      console.error('Group role verification failed', err);
+      return res.status(500).json({ error: 'Failed to verify group permissions' });
+    }
+  };
+};
+
 module.exports = {
   requireGlobalRoleAny,
   requireCourseRoleAny,
+  requireGroupTeacherOrAdmin,
   hasCourseRole,
   hasGlobalRole,
   getCourseIdFromLesson,

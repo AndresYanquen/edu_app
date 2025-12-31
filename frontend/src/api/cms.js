@@ -57,6 +57,12 @@ export const updateEnrollmentGroup = (courseId, studentId, payload) =>
 export const bulkEnrollStudents = (courseId, payload) =>
   unwrap(api.post(`/cms/courses/${courseId}/enroll/bulk`, payload));
 
+export const getGroupTeachers = (groupId) => unwrap(api.get(`/cms/groups/${groupId}/teachers`));
+export const addGroupTeacher = (groupId, payload) =>
+  unwrap(api.post(`/cms/groups/${groupId}/teachers`, payload));
+export const removeGroupTeacher = (groupId, userId) =>
+  unwrap(api.delete(`/cms/groups/${groupId}/teachers/${userId}`));
+
 export default {
   listCourses,
   createCourse,
@@ -88,4 +94,7 @@ export default {
   removeEnrollment,
   updateEnrollmentGroup,
   bulkEnrollStudents,
+  getGroupTeachers,
+  addGroupTeacher,
+  removeGroupTeacher,
 };
