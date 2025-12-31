@@ -169,10 +169,9 @@ const toggleIcon = computed(() =>
 
 <style scoped>
 .shell {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   background-color: var(--app-bg);
-  overflow: hidden;
 }
 
 .sidebar {
@@ -353,8 +352,6 @@ const toggleIcon = computed(() =>
 .shell-content {
   flex: 1;
   padding: 2rem;
-  height: 100vh;
   background: var(--app-bg);
-  overflow: auto;
 }
 </style>

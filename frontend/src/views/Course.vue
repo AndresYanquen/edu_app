@@ -188,7 +188,24 @@ const isCourseCompleted = computed(
   () => !!(progress.value && !progress.value.nextLessonId),
 );
 
-const breadcrumbHome = { label: 'Student', to: '/student' };
+const previewQuery = computed(() => {
+  if (!isPreview.value) {
+    return null;
+  }
+  const previewValue = route.query.preview === 'true' ? 'true' : '1';
+  return { preview: previewValue };
+});
+
+const breadcrumbHome = computed(() => ({
+  label: 'Student',
+  command: (event) => {
+    event?.originalEvent?.preventDefault();
+    const query = previewQuery.value;
+    const destination = query ? { path: '/student', query } : { path: '/student' };
+    router.push(destination);
+  },
+}));
+
 const breadcrumbItems = computed(() => [
   {
     label: course.value?.title || 'Course',

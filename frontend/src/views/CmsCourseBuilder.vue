@@ -224,6 +224,7 @@
                 filter
                 :loading="loadingStaffCandidates"
                 @show="ensureStaffCandidates"
+                @filter="handleStaffFilter"
               />
             </div>
             <div class="dialog-field">
@@ -399,7 +400,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useAuthStore } from '../stores/auth';
@@ -502,6 +503,8 @@ const staffRoleLabels = {
 };
 const staffCandidates = ref([]);
 const loadingStaffCandidates = ref(false);
+const STAFF_SEARCH_DEBOUNCE = 400;
+let staffFilterTimeout;
 
 const selectedModule = computed(() => modules.value.find((m) => m.id === selectedModuleId.value));
 const groupDropdownOptions = computed(() => {
@@ -585,13 +588,14 @@ const loadEnrollmentData = async () => {
   }
 };
 
-const ensureStaffCandidates = async () => {
-  if (!isAdmin.value || staffCandidates.value.length || loadingStaffCandidates.value) {
-    return;
-  }
+const fetchStaffCandidates = async (searchTerm = '') => {
   loadingStaffCandidates.value = true;
   try {
-    const response = await listUsers({ page: 1, pageSize: 500 });
+    const params = { page: 1, pageSize: 25 };
+    if (searchTerm.trim()) {
+      params.search = searchTerm.trim();
+    }
+    const response = await listUsers(params);
     const userList = Array.isArray(response?.users)
       ? response.users
       : Array.isArray(response)
@@ -611,6 +615,26 @@ const ensureStaffCandidates = async () => {
   } finally {
     loadingStaffCandidates.value = false;
   }
+};
+
+const ensureStaffCandidates = async () => {
+  if (!isAdmin.value || staffCandidates.value.length || loadingStaffCandidates.value) {
+    return;
+  }
+  await fetchStaffCandidates();
+};
+
+const handleStaffFilter = (event) => {
+  if (!isAdmin.value) {
+    return;
+  }
+  const term = event?.value || '';
+  if (staffFilterTimeout) {
+    clearTimeout(staffFilterTimeout);
+  }
+  staffFilterTimeout = setTimeout(() => {
+    fetchStaffCandidates(term);
+  }, STAFF_SEARCH_DEBOUNCE);
 };
 
 const loadStaffAssignments = async () => {
@@ -1078,6 +1102,12 @@ watch(
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => {
+  if (staffFilterTimeout) {
+    clearTimeout(staffFilterTimeout);
+  }
+});
 
 const init = async () => {
   await loadCourse();
