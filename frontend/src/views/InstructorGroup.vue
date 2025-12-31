@@ -4,10 +4,10 @@
       <template #title>
         <div class="header">
           <div>
-            <h2>{{ group?.name || 'Group' }}</h2>
+            <h2>{{ group?.name || t('instructorGroup.titleFallback') }}</h2>
             <p>{{ group?.schedule_text }}</p>
           </div>
-          <Button label="Back" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
+          <Button :label="t('instructorGroup.back')" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
         </div>
       </template>
 
@@ -20,30 +20,30 @@
 
         <div v-else-if="permissionError">
           <p>{{ permissionMessage }}</p>
-          <Button label="Back" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
+          <Button :label="t('instructorGroup.back')" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
         </div>
 
         <div v-else-if="error">
-          <p>Failed to load group.</p>
-          <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadData" />
+          <p>{{ t('instructorGroup.loadError') }}</p>
+          <Button :label="t('instructorGroup.reload')" icon="pi pi-refresh" class="p-button-text" @click="loadData" />
         </div>
 
         <div v-else>
           <div class="summary">
             <div>
-              <small>Total students</small>
+              <small>{{ t('instructorGroup.totalStudents') }}</small>
               <strong>{{ totalStudents }}</strong>
             </div>
             <div>
-              <small>Average progress</small>
+              <small>{{ t('instructorGroup.averageProgress') }}</small>
               <strong>{{ averagePercent }}%</strong>
             </div>
           </div>
 
           <div class="table-controls">
-            <span class="control-label">Filter</span>
-            <InputText v-model="filter" placeholder="Search students" />
-            <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadData" />
+            <span class="control-label">{{ t('instructorGroup.filterLabel') }}</span>
+            <InputText v-model="filter" :placeholder="t('instructorGroup.filterPlaceholder')" />
+            <Button :label="t('instructorGroup.reload')" icon="pi pi-refresh" class="p-button-text" @click="loadData" />
           </div>
 
           <template v-if="students.length">
@@ -56,9 +56,9 @@
               :sortField="'percent'"
               :sortOrder="-1"
             >
-              <Column field="fullName" header="Student" />
-              <Column field="email" header="Email" />
-              <Column header="Progress">
+              <Column field="fullName" :header="t('instructorGroup.table.student')" />
+              <Column field="email" :header="t('instructorGroup.table.email')" />
+              <Column :header="t('instructorGroup.table.progress')">
                 <template #body="{ data }">
                   <div class="progress-cell">
                     <ProgressBar :value="data.percent" style="width: 160px" />
@@ -66,19 +66,19 @@
                   </div>
                 </template>
               </Column>
-              <Column header="Last activity">
+              <Column :header="t('instructorGroup.table.lastActivity')">
                 <template #body="{ data }">
                   <div class="activity-cell">
                     <Tag
                       v-if="!data.lastSeenAt"
-                      value="Never accessed"
+                      :value="t('instructorGroup.neverAccessed')"
                       severity="warning"
                     />
                     <span v-else>{{ formatLastActivity(data.lastSeenAt) }}</span>
                   </div>
                 </template>
               </Column>
-              <Column header="Best quiz score">
+              <Column :header="t('instructorGroup.table.quizScore')">
                 <template #body="{ data }">
                   <span>{{ formatScore(data.bestQuizScore) }}</span>
                 </template>
@@ -86,12 +86,12 @@
             </DataTable>
 
             <div v-if="!filteredStudents.length" class="empty-state">
-              No students match your search.
+              {{ t('instructorGroup.searchEmpty') }}
             </div>
           </template>
 
           <div v-else class="empty-state">
-            No students assigned to this group yet.
+            {{ t('instructorGroup.noStudents') }}
           </div>
         </div>
       </template>
@@ -103,18 +103,20 @@
 import { computed, ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import { useI18n } from 'vue-i18n';
 import api from '../api/axios';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const { t } = useI18n();
 
 const group = ref(null);
 const students = ref([]);
 const loading = ref(true);
 const error = ref(false);
 const permissionError = ref(false);
-const permissionMessage = ref('You are not assigned to this group.');
+const permissionMessage = ref(t('instructorGroup.permissionMessage'));
 const filter = ref('');
 
 const loadData = async () => {
@@ -137,7 +139,7 @@ const loadData = async () => {
     const matchedGroup = availableGroups.find((g) => g.id === route.params.id);
     if (!matchedGroup) {
       permissionError.value = true;
-      permissionMessage.value = 'You are not assigned to this group.';
+      permissionMessage.value = t('instructorGroup.permissionMessage');
       students.value = [];
       return;
     }
@@ -155,13 +157,13 @@ const loadData = async () => {
   } catch (err) {
     if (err.response?.status === 403) {
       permissionError.value = true;
-      permissionMessage.value = err.response?.data?.error || 'You are not assigned to this group.';
+      permissionMessage.value = err.response?.data?.error || t('instructorGroup.permissionMessage');
     } else {
       error.value = true;
       toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: 'Failed to load group',
+        summary: t('common.notifications.error'),
+        detail: t('instructorGroup.loadError'),
         life: 3000,
       });
     }
@@ -195,7 +197,7 @@ const averagePercent = computed(() => {
 });
 
 const formatLastActivity = (value) => {
-  if (!value) return 'Never accessed';
+  if (!value) return t('instructorGroup.neverAccessed');
   const date = new Date(value);
   return date.toLocaleString();
 };

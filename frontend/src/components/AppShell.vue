@@ -5,14 +5,14 @@
         <div class="sidebar-header">
           <Avatar label="AC" shape="circle" size="large" class="brand-avatar" />
           <div class="brand-copy" v-if="!collapsed">
-            <strong>Academy</strong>
-            <small>Learning</small>
+            <strong>{{ t('common.brandTitle') }}</strong>
+            <small>{{ t('common.brandSubtitle') }}</small>
           </div>
           <Button
             :icon="toggleIcon"
             class="p-button-rounded p-button-text collapse-btn"
             @click="toggleSidebar"
-            aria-label="Toggle sidebar"
+            :aria-label="t('sidebar.toggle')"
           />
         </div>
 
@@ -24,7 +24,7 @@
         </div> -->
 
         <div class="sidebar-section">
-          <small v-if="!collapsed">Workspace</small>
+          <small v-if="!collapsed">{{ t('sidebar.workspace') }}</small>
           <div class="nav-list">
             <Button
               v-for="link in navLinks"
@@ -38,6 +38,14 @@
               :aria-label="link.label"
             />
           </div>
+        </div>
+
+        <div class="language-switch">
+          <i class="pi pi-globe" aria-hidden="true" />
+          <span v-if="!collapsed" class="language-label">
+            {{ t('sidebar.language') }}: <strong>{{ languageLabel }}</strong>
+          </span>
+          <InputSwitch v-model="languageToggle" :aria-label="t('sidebar.language')" />
         </div>
 
         <Divider />
@@ -67,7 +75,7 @@
               v-if="!collapsed"
               icon="pi pi-sign-out"
               class="p-button-rounded p-button-text"
-              label="Logout"
+              :label="t('common.logout')"
               @click="handleLogout"
             />
           </div>
@@ -84,6 +92,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
@@ -91,19 +100,23 @@ const route = useRoute();
 const auth = useAuthStore();
 const collapsed = ref(false);
 
-const studentLinks = [{ label: 'Student Dashboard', to: '/student', icon: 'pi pi-home' }];
+const { t, locale } = useI18n();
 
-const instructorLinks = [
-  { label: 'Instructor Dashboard', to: '/instructor', icon: 'pi pi-users' },
-  { label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' },
-];
+const studentLinks = computed(() => [
+  { label: t('sidebar.studentDashboard'), to: '/student', icon: 'pi pi-home' },
+]);
 
-const adminLinks = [
-  { label: 'Admin Home', to: '/admin', icon: 'pi pi-shield' },
-  { label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' },
-];
+const instructorLinks = computed(() => [
+  { label: t('sidebar.instructorDashboard'), to: '/instructor', icon: 'pi pi-users' },
+  { label: t('sidebar.cms'), to: '/cms/courses', icon: 'pi pi-database' },
+]);
 
-const staffLinks = [{ label: 'CMS', to: '/cms/courses', icon: 'pi pi-database' }];
+const adminLinks = computed(() => [
+  { label: t('sidebar.adminHome'), to: '/admin', icon: 'pi pi-shield' },
+  { label: t('sidebar.cms'), to: '/cms/courses', icon: 'pi pi-database' },
+]);
+
+const staffLinks = computed(() => [{ label: t('sidebar.cms'), to: '/cms/courses', icon: 'pi pi-database' }]);
 
 const navLinks = computed(() => {
   const links = [];
@@ -116,16 +129,16 @@ const navLinks = computed(() => {
   };
 
   if (auth.hasRole && auth.hasRole('admin')) {
-    addLinks(adminLinks);
+    addLinks(adminLinks.value);
   }
   if (auth.hasRole && auth.hasRole('instructor')) {
-    addLinks(instructorLinks);
+    addLinks(instructorLinks.value);
   }
   if (auth.hasAnyRole && auth.hasAnyRole(['content_editor', 'enrollment_manager'])) {
-    addLinks(staffLinks);
+    addLinks(staffLinks.value);
   }
   if (auth.hasRole && auth.hasRole('student')) {
-    addLinks(studentLinks);
+    addLinks(studentLinks.value);
   }
 
   return links;
@@ -148,8 +161,21 @@ const toggleSidebar = () => {
   collapsed.value = !collapsed.value;
 };
 
+const languageToggle = computed({
+  get: () => locale.value === 'es',
+  set: (value) => {
+    const nextLocale = value ? 'es' : 'en';
+    locale.value = nextLocale;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('app:locale', nextLocale);
+    }
+  },
+});
+
+const languageLabel = computed(() => (locale.value === 'es' ? 'ES' : 'EN'));
+
 const roleSummary = computed(() =>
-  auth.globalRoles?.length ? auth.globalRoles.join(', ') : 'No role',
+  auth.globalRoles?.length ? auth.globalRoles.join(', ') : t('sidebar.noRole'),
 );
 
 const initials = computed(() => {
@@ -196,6 +222,18 @@ const toggleIcon = computed(() =>
   width: 100%;
   gap: 1rem;
   height: 100%;
+}
+
+.language-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  color: #475569;
+}
+
+.language-switch .language-label {
+  font-size: 0.85rem;
 }
 
 .sidebar-header {

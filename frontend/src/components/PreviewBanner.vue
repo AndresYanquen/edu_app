@@ -2,19 +2,20 @@
   <div class="preview-banner">
     <div class="preview-text">
       <i class="pi pi-exclamation-triangle"></i>
-      <span>Preview mode — only admins see this banner.</span>
+      <span>{{ t('preview.notice') }}</span>
     </div>
-    <Button label="Exit preview" severity="warning" @click="exitPreview" />
+    <Button :label="t('preview.exit')" severity="warning" @click="exitPreview" />
   </div>
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
 const route = useRoute();
+const { t } = useI18n();
 
 const courseId = computed(() => route.params.courseId || route.params.id || route.query.courseId);
 

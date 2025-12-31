@@ -14,8 +14,18 @@
     <Card v-else-if="error">
       <template #content>
         <p>{{ errorMessage }}</p>
-        <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadLesson" />
-        <Button label="Back to course" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
+        <Button
+          :label="t('lesson.actions.reload')"
+          icon="pi pi-refresh"
+          class="p-button-text"
+          @click="loadLesson"
+        />
+        <Button
+          :label="t('lesson.actions.back')"
+          icon="pi pi-arrow-left"
+          class="p-button-text"
+          @click="goBack"
+        />
       </template>
     </Card>
 
@@ -27,14 +37,19 @@
             <h2>{{ lesson?.title }}</h2>
           </div>
           <div class="actions">
-            <Button label="Back to course" icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
+            <Button
+              :label="t('lesson.actions.back')"
+              icon="pi pi-arrow-left"
+              class="p-button-text"
+              @click="goBack"
+            />
           </div>
         </div>
       </template>
 
       <template #content>
         <div class="meta">
-          <Tag :value="lesson?.contentType || 'lesson'" severity="info" />
+          <Tag :value="lesson?.contentType || t('lesson.labels.defaultContentType')" severity="info" />
           <Tag
             v-if="lesson?.estimatedMinutes"
             :value="`${lesson.estimatedMinutes} min`"
@@ -47,29 +62,29 @@
 
         <div class="content-area">
           <Card v-if="lesson?.contentText" class="lesson-card">
-            <template #title>Lesson text</template>
+            <template #title>{{ t('lesson.sections.text') }}</template>
             <template #content>
               <p class="lesson-text">{{ lesson.contentText }}</p>
               <a v-if="lesson?.contentUrl" :href="lesson.contentUrl" target="_blank" rel="noopener">
-                Reference link
+                {{ t('lesson.labels.referenceLink') }}
               </a>
             </template>
           </Card>
 
           <Card v-else-if="lesson?.contentUrl" class="lesson-card">
-            <template #title>Reference</template>
+            <template #title>{{ t('lesson.sections.reference') }}</template>
             <template #content>
               <a :href="lesson.contentUrl" target="_blank" rel="noopener">{{ lesson.contentUrl }}</a>
             </template>
           </Card>
 
           <Card v-if="lesson?.videoUrl" class="lesson-card">
-            <template #title>Video</template>
+            <template #title>{{ t('lesson.sections.video') }}</template>
             <template #content>
               <div v-if="isYoutube(lesson.videoUrl)" class="video-embed">
                 <iframe
                   :src="youtubeEmbed(lesson.videoUrl)"
-                  title="Lesson video"
+                  :title="t('lesson.labels.videoTitle')"
                   frameborder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowfullscreen
@@ -77,7 +92,7 @@
               </div>
               <div v-else>
                 <Button
-                  label="Open video"
+                  :label="t('lesson.actions.openVideo')"
                   icon="pi pi-external-link"
                   @click="openVideo(lesson.videoUrl)"
                 />
@@ -86,12 +101,12 @@
           </Card>
 
           <div v-if="!lesson?.contentText && !lesson?.videoUrl" class="empty-state">
-            Lesson content coming soon.
+            {{ t('lesson.labels.noContent') }}
           </div>
         </div>
 
         <div v-if="assets.length" class="assets">
-          <h4>Assets</h4>
+          <h4>{{ t('lesson.sections.assets') }}</h4>
           <ul>
             <li v-for="asset in assets" :key="asset.id">
               <i class="pi pi-paperclip"></i>
@@ -104,14 +119,14 @@
 
         <div class="progress-actions">
           <Button
-            label="Mark in progress"
+            :label="t('lesson.actions.markInProgress')"
             icon="pi pi-play"
             class="p-button-outlined"
             :loading="updating === 'progress'"
             @click="updateStatus('in_progress', 35, 'progress')"
           />
           <Button
-            label="Mark done"
+            :label="t('lesson.actions.markDone')"
             icon="pi pi-check"
             :loading="updating === 'done'"
             @click="updateStatus('done', 100, 'done')"
@@ -124,8 +139,8 @@
     <Card v-if="showQuizSection" class="quiz-card">
       <template #title>
         <div class="quiz-header">
-          <span>Lesson Quiz</span>
-          <Tag v-if="quizPassed" value="Passed" severity="success" />
+          <span>{{ t('lesson.sections.quiz') }}</span>
+          <Tag v-if="quizPassed" :value="t('lesson.labels.passed')" severity="success" />
         </div>
       </template>
 
@@ -136,13 +151,18 @@
         </div>
 
         <div v-else-if="quizError">
-          <p>Unable to load quiz.</p>
-          <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="loadQuiz" />
+          <p>{{ t('lesson.errors.quizLoad') }}</p>
+          <Button
+            :label="t('lesson.actions.reload')"
+            icon="pi pi-refresh"
+            class="p-button-text"
+            @click="loadQuiz"
+          />
         </div>
 
         <div v-else-if="quiz && quiz.questions?.length">
           <div v-for="(question, index) in quiz.questions" :key="question.id" class="quiz-question">
-            <h4>Question {{ index + 1 }}</h4>
+            <h4>{{ t('lesson.labels.question', { number: index + 1 }) }}</h4>
             <p>{{ question.questionText }}</p>
 
             <div class="quiz-options">
@@ -161,7 +181,7 @@
 
           <div class="quiz-actions">
             <Button
-              label="Submit quiz"
+              :label="t('lesson.actions.submitQuiz')"
               icon="pi pi-send"
               :loading="quizSubmitting"
               :disabled="quizPassed || !canSubmitQuiz || quizSubmitting"
@@ -171,7 +191,7 @@
         </div>
 
         <div v-else class="empty-state">
-          No quiz available for this lesson.
+          {{ t('lesson.labels.quizUnavailable') }}
         </div>
       </template>
     </Card>
@@ -185,19 +205,22 @@
     </Card>
 
     <Card v-else-if="showQuizResults" class="quiz-results-card">
-      <template #title>Quiz results</template>
+      <template #title>{{ t('lesson.sections.quizResults') }}</template>
       <template #content>
         <div class="quiz-results-grid">
           <div>
-            <small>Last attempt</small>
+            <small>{{ t('lesson.labels.lastAttempt') }}</small>
             <strong>{{ quizScore?.lastScore }}%</strong>
           </div>
           <div>
-            <small>Best score</small>
+            <small>{{ t('lesson.labels.bestScore') }}</small>
             <strong>{{ bestShown }}%</strong>
           </div>
           <div class="quiz-result-tag">
-            <Tag :value="bestShown >= 70 ? 'Passed' : 'Not passed'" :severity="bestShown >= 70 ? 'success' : 'warning'" />
+            <Tag
+              :value="bestShown >= 70 ? t('lesson.labels.passed') : t('lesson.labels.notPassed')"
+              :severity="bestShown >= 70 ? 'success' : 'warning'"
+            />
           </div>
         </div>
       </template>
@@ -209,6 +232,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import { useI18n } from 'vue-i18n';
 import api from '../api/axios';
 import PreviewBanner from '../components/PreviewBanner.vue';
 import { useAuthStore } from '../stores/auth';
@@ -216,6 +240,7 @@ import { useAuthStore } from '../stores/auth';
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const { t } = useI18n();
 
 const auth = useAuthStore();
 
@@ -226,7 +251,7 @@ const assets = ref([]);
 
 const loading = ref(true);
 const error = ref(false);
-const errorMessage = ref('Failed to load lesson.');
+const errorMessage = ref(t('lesson.errors.load'));
 const updating = ref(null);
 
 // Quiz state
@@ -252,11 +277,14 @@ const showPreviewBanner = computed(
 const breadcrumbHome = computed(() => ({
   icon: 'pi pi-home',
   to: '/student',
+  label: t('lesson.breadcrumbs.home'),
 }));
 
 const breadcrumbItems = computed(() => {
-  const items = [{ label: 'Student', to: '/student' }];
-  if (courseId.value) items.push({ label: 'Course', to: `/student/course/${courseId.value}` });
+  const items = [{ label: t('lesson.breadcrumbs.home'), to: '/student' }];
+  if (courseId.value) {
+    items.push({ label: t('lesson.breadcrumbs.course'), to: `/student/course/${courseId.value}` });
+  }
   if (lesson.value?.title) items.push({ label: lesson.value.title });
   return items;
 });
@@ -298,7 +326,7 @@ const loadLesson = async () => {
     const found = locateLesson(data, lessonId.value);
     if (!found) {
       error.value = true;
-      errorMessage.value = 'Lesson not found.';
+      errorMessage.value = t('lesson.errors.notFound');
       lesson.value = null;
       moduleInfo.value = null;
       assets.value = [];
@@ -315,8 +343,13 @@ const loadLesson = async () => {
     await loadQuiz();
   } catch (err) {
     error.value = true;
-    errorMessage.value = 'Failed to load lesson.';
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson', life: 3000 });
+    errorMessage.value = t('lesson.errors.load');
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: t('lesson.errors.load'),
+      life: 3000,
+    });
   } finally {
     loading.value = false;
   }
@@ -328,15 +361,31 @@ const goBack = () => {
 
 const updateStatus = async (status, progressPercent, key) => {
   if (isPreview.value) {
-    toast.add({ severity: 'info', summary: 'Preview mode', detail: 'Progress not available in preview', life: 2500 });
+    toast.add({
+      severity: 'info',
+      summary: t('course.previewToastTitle'),
+      detail: t('course.previewToastMessage'),
+      life: 2500,
+    });
     return;
   }
   updating.value = key;
   try {
     await api.post(`/lessons/${lessonId.value}/progress`, { status, progressPercent });
-    toast.add({ severity: 'success', summary: 'Updated', detail: 'Progress saved', life: 2000 });
+    const detail = status === 'done' ? t('lesson.toasts.done') : t('lesson.toasts.inProgress');
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail,
+      life: 2000,
+    });
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update progress', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: t('lesson.errors.update'),
+      life: 3000,
+    });
   } finally {
     updating.value = null;
   }
@@ -471,8 +520,8 @@ const submitQuiz = async () => {
 
     toast.add({
       severity: data.passed ? 'success' : 'warn',
-      summary: 'Quiz submitted',
-      detail: `Score: ${data.scorePercent}%`,
+      summary: t('lesson.toasts.quizSubmitted'),
+      detail: t('lesson.labels.score', { score: data.scorePercent }),
       life: 3000,
     });
 
@@ -486,7 +535,12 @@ const submitQuiz = async () => {
       // await updateStatus('done', 100, 'done');
     }
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to submit quiz', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: t('lesson.errors.quizSubmit'),
+      life: 3000,
+    });
   } finally {
     quizSubmitting.value = false;
   }

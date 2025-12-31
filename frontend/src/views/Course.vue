@@ -10,8 +10,13 @@
     </Card>
     <Card v-else-if="error">
       <template #content>
-        <p>Could not load course.</p>
-        <Button label="Reload" icon="pi pi-refresh" class="p-button-text" @click="reload" />
+        <p>{{ t('course.errorLoad') }}</p>
+        <Button
+          :label="t('common.reload')"
+          icon="pi pi-refresh"
+          class="p-button-text"
+          @click="reload"
+        />
       </template>
     </Card>
     <Card v-else>
@@ -22,28 +27,30 @@
             <p class="description">{{ course.description }}</p>
           </div>
           <div class="progress">
-            <span>Progress</span>
+            <span>{{ t('course.progressLabel') }}</span>
             <ProgressBar :value="progress?.percent ?? 0" />
-            <small>Completed {{ progress?.completedLessons ?? 0 }} / {{ progress?.totalLessons ?? 0 }}</small>
-            <small v-if="progress?.nextLessonTitle">Next: {{ progress?.nextLessonTitle }}</small>
+            <small>{{ progressSummaryText }}</small>
+            <small v-if="progress?.nextLessonTitle">
+              {{ nextLessonText }}
+            </small>
           </div>
         </div>
       </template>
       <template #content>
         <div class="continue-card">
           <template v-if="!isCourseCompleted">
-            <p>Continue with</p>
+            <p>{{ t('course.continueLabel') }}</p>
             <h4>{{ progress?.nextLessonTitle }}</h4>
             <Button
-              label="Continue"
+              :label="t('course.continueButton')"
               icon="pi pi-arrow-right"
               :disabled="!progress?.nextLessonId"
               @click="openLesson(progress?.nextLessonId)"
             />
           </template>
           <template v-else>
-            <p>Course completed</p>
-            <Tag value="Completed" severity="success" />
+            <p>{{ t('course.courseCompleted') }}</p>
+            <Tag :value="t('course.completedTag')" severity="success" />
           </template>
         </div>
         <div class="modules">
@@ -55,16 +62,25 @@
                   <small class="badge">{{ lesson.contentType }}</small>
                 </div>
                 <div class="lesson-actions">
-                  <Button label="Open" icon="pi pi-external-link" class="p-button-text" @click="openLesson(lesson.id)" />
                   <Button
-                    label="Mark done"
+                    :label="t('course.lessonOpen')"
+                    icon="pi pi-external-link"
+                    class="p-button-text"
+                    @click="openLesson(lesson.id)"
+                  />
+                  <Button
+                    :label="t('course.markDone')"
                     icon="pi pi-check"
                     class="p-button-sm"
                     :disabled="isLessonCompleted(lesson.id) || isPreview"
                     :loading="updatingLesson === lesson.id"
                     @click="markDone(lesson.id)"
                   />
-                  <Tag v-if="isLessonCompleted(lesson.id)" value="Done" severity="success" />
+                  <Tag
+                    v-if="isLessonCompleted(lesson.id)"
+                    :value="t('course.doneTag')"
+                    severity="success"
+                  />
                 </div>
               </li>
             </ul>
@@ -80,6 +96,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useAuthStore } from '../stores/auth';
+import { useI18n } from 'vue-i18n';
 import PreviewBanner from '../components/PreviewBanner.vue';
 import api from '../api/axios';
 
@@ -87,6 +104,7 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
+const { t } = useI18n();
 
 const course = ref(null);
 const progress = ref(null);
@@ -129,7 +147,12 @@ const fetchData = async (id) => {
     await fetchProgress(id);
   } catch (err) {
     error.value = true;
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load course', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: t('course.toastLoadError'),
+      life: 3000,
+    });
   } finally {
     loading.value = false;
   }
@@ -152,7 +175,12 @@ const isLessonCompleted = (lessonId) => completedLessons.value.has(lessonId);
 
 const markDone = async (lessonId) => {
   if (isPreview.value) {
-    toast.add({ severity: 'info', summary: 'Preview mode', detail: 'Progress not available in preview', life: 2500 });
+    toast.add({
+      severity: 'info',
+      summary: t('course.previewToastTitle'),
+      detail: t('course.previewToastMessage'),
+      life: 2500,
+    });
     return;
   }
   updatingLesson.value = lessonId;
@@ -161,11 +189,21 @@ const markDone = async (lessonId) => {
       status: 'done',
       progressPercent: 100,
     });
-    toast.add({ severity: 'success', summary: 'Updated', detail: 'Lesson marked as done', life: 2000 });
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail: t('course.updatedToast'),
+      life: 2000,
+    });
     await fetchProgress(route.params.id);
     markLessonCompleted(lessonId);
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update progress', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: t('course.updateError'),
+      life: 3000,
+    });
   } finally {
     updatingLesson.value = null;
   }
@@ -197,7 +235,7 @@ const previewQuery = computed(() => {
 });
 
 const breadcrumbHome = computed(() => ({
-  label: 'Student',
+  label: t('course.breadcrumbHome'),
   command: (event) => {
     event?.originalEvent?.preventDefault();
     const query = previewQuery.value;
@@ -208,9 +246,20 @@ const breadcrumbHome = computed(() => ({
 
 const breadcrumbItems = computed(() => [
   {
-    label: course.value?.title || 'Course',
+    label: course.value?.title || t('course.breadcrumbFallback'),
   },
 ]);
+
+const progressSummaryText = computed(() =>
+  t('course.progressSummary', {
+    done: progress.value?.completedLessons ?? 0,
+    total: progress.value?.totalLessons ?? 0,
+  }),
+);
+
+const nextLessonText = computed(() =>
+  t('course.nextLesson', { title: progress.value?.nextLessonTitle || '' }),
+);
 </script>
 
 <style scoped>

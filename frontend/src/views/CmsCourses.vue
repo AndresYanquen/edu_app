@@ -4,15 +4,15 @@
       <template #title>
         <div class="cms-header">
           <div>
-            <h2>Courses</h2>
-            <small>Draft and publish academy courses</small>
+            <h2>{{ t('cmsCourses.title') }}</h2>
+            <small>{{ t('cmsCourses.subtitle') }}</small>
           </div>
           <div class="cms-actions">
             <span class="p-input-icon-left">
               <i class="pi pi-search" />
-              <InputText v-model="filter" placeholder="Search courses" />
+              <InputText v-model="filter" :placeholder="t('cmsCourses.searchPlaceholder')" />
             </span>
-            <Button label="Create course" icon="pi pi-plus" @click="openCreateDialog" />
+            <Button :label="t('cmsCourses.createCourse')" icon="pi pi-plus" @click="openCreateDialog" />
           </div>
         </div>
       </template>
@@ -24,37 +24,45 @@
         </div>
         <div v-else>
           <DataTable :value="filteredCourses" responsiveLayout="scroll">
-            <Column field="title" header="Title" />
-            <Column header="Status">
+            <Column field="title" :header="t('cmsCourses.table.title')" />
+            <Column :header="t('cmsCourses.table.status')">
               <template #body="{ data }">
                 <Tag
-                  :value="data.is_published ? 'Published' : 'Draft'"
+                  :value="
+                    data.is_published
+                      ? t('cmsCourses.statusLabel.published')
+                      : t('cmsCourses.statusLabel.draft')
+                  "
                   :severity="data.is_published ? 'success' : 'warning'"
                 />
               </template>
             </Column>
-            <Column header="Updated">
+            <Column :header="t('cmsCourses.table.updated')">
               <template #body="{ data }">
                 {{ formatDate(data.updated_at || data.created_at) }}
               </template>
             </Column>
-            <Column header="Actions">
+            <Column :header="t('cmsCourses.table.actions')">
               <template #body="{ data }">
                 <div class="table-actions">
                   <Button
-                    label="Manage"
+                    :label="t('cmsCourses.table.manage')"
                     icon="pi pi-folder"
                     class="p-button-text"
                     @click="goToBuilder(data.id)"
                   />
                   <Button
-                    label="Edit"
+                    :label="t('cmsCourses.table.edit')"
                     icon="pi pi-pencil"
                     class="p-button-text"
                     @click="openEditDialog(data)"
                   />
                   <Button
-                    :label="data.is_published ? 'Unpublish' : 'Publish'"
+                    :label="
+                      data.is_published
+                        ? t('cmsCourses.table.unpublish')
+                        : t('cmsCourses.table.publish')
+                    "
                     :icon="data.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
                     class="p-button-text"
                     @click="togglePublish(data)"
@@ -64,7 +72,7 @@
             </Column>
           </DataTable>
           <div v-if="!filteredCourses.length" class="empty-state">
-            No courses yet. Click "Create course" to get started.
+            {{ t('cmsCourses.table.empty') }}
           </div>
         </div>
       </template>
@@ -72,31 +80,31 @@
 
     <Dialog
       v-model:visible="showCourseDialog"
-      :header="dialogMode === 'create' ? 'Create course' : 'Edit course'"
+      :header="dialogTitle"
       modal
       :style="{ width: '30rem' }"
     >
       <div class="dialog-field">
-        <label>Title</label>
-        <InputText v-model="courseForm.title" placeholder="Course title" />
+        <label>{{ t('cmsCourses.dialog.titleLabel') }}</label>
+        <InputText v-model="courseForm.title" :placeholder="t('cmsCourses.dialog.titlePlaceholder')" />
       </div>
       <div class="dialog-field">
-        <label>Description</label>
+        <label>{{ t('cmsCourses.dialog.descriptionLabel') }}</label>
         <textarea
           v-model="courseForm.description"
           rows="4"
           class="p-inputtextarea p-inputtext"
-          placeholder="Describe the course"
+          :placeholder="t('cmsCourses.dialog.descriptionPlaceholder')"
         ></textarea>
       </div>
       <div class="dialog-field">
-        <label>Level</label>
-        <InputText v-model="courseForm.level" placeholder="B1, B2..." />
+        <label>{{ t('cmsCourses.dialog.levelLabel') }}</label>
+        <InputText v-model="courseForm.level" :placeholder="t('cmsCourses.dialog.levelPlaceholder')" />
       </div>
       <template #footer>
-        <Button label="Cancel" class="p-button-text" @click="showCourseDialog = false" />
+        <Button :label="t('cmsCourses.dialog.cancel')" class="p-button-text" @click="showCourseDialog = false" />
         <Button
-          :label="dialogMode === 'create' ? 'Create' : 'Save'"
+          :label="dialogMode === 'create' ? t('cmsCourses.dialog.create') : t('cmsCourses.dialog.save')"
           :loading="savingCourse"
           @click="submitCourse"
         />
@@ -109,6 +117,7 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import { useI18n } from 'vue-i18n';
 import {
   listCourses,
   createCourse,
@@ -119,6 +128,7 @@ import {
 
 const router = useRouter();
 const toast = useToast();
+const { t } = useI18n();
 
 const courses = ref([]);
 const loading = ref(true);
@@ -132,13 +142,23 @@ const courseForm = ref({
 });
 const editingId = ref(null);
 const savingCourse = ref(false);
+const dialogTitle = computed(() =>
+  dialogMode.value === 'create'
+    ? t('cmsCourses.dialog.createHeader')
+    : t('cmsCourses.dialog.editHeader'),
+);
 
 const loadCourses = async () => {
   loading.value = true;
   try {
     courses.value = await listCourses();
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load courses', life: 3000 });
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: t('cmsCourses.toasts.loadError'),
+      life: 3000,
+    });
   } finally {
     loading.value = false;
   }
@@ -174,7 +194,12 @@ const openEditDialog = (course) => {
 
 const submitCourse = async () => {
   if (!courseForm.value.title.trim()) {
-    toast.add({ severity: 'warn', summary: 'Title required', detail: 'Course title is required', life: 2500 });
+    toast.add({
+      severity: 'warn',
+      summary: t('common.notifications.warning'),
+      detail: t('cmsCourses.toasts.titleRequired'),
+      life: 2500,
+    });
     return;
   }
 
@@ -182,18 +207,26 @@ const submitCourse = async () => {
   try {
     if (dialogMode.value === 'create') {
       await createCourse(courseForm.value);
-      toast.add({ severity: 'success', summary: 'Course created', life: 2000 });
+      toast.add({
+        severity: 'success',
+        summary: t('cmsCourses.toasts.createSuccess'),
+        life: 2000,
+      });
     } else {
       await updateCourse(editingId.value, courseForm.value);
-      toast.add({ severity: 'success', summary: 'Course updated', life: 2000 });
+      toast.add({
+        severity: 'success',
+        summary: t('cmsCourses.toasts.updateSuccess'),
+        life: 2000,
+      });
     }
     showCourseDialog.value = false;
     await loadCourses();
   } catch (err) {
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to save course',
+      summary: t('common.notifications.error'),
+      detail: err.response?.data?.error || t('cmsCourses.toasts.saveError'),
       life: 3500,
     });
   } finally {
@@ -205,17 +238,25 @@ const togglePublish = async (course) => {
   try {
     if (course.is_published) {
       await unpublishCourse(course.id);
-      toast.add({ severity: 'info', summary: 'Course unpublished', life: 2000 });
+      toast.add({
+        severity: 'info',
+        summary: t('cmsCourses.toasts.unpublishInfo'),
+        life: 2000,
+      });
     } else {
       await publishCourse(course.id);
-      toast.add({ severity: 'success', summary: 'Course published', life: 2000 });
+      toast.add({
+        severity: 'success',
+        summary: t('cmsCourses.toasts.publishSuccess'),
+        life: 2000,
+      });
     }
     await loadCourses();
   } catch (err) {
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to update course',
+      summary: t('common.notifications.error'),
+      detail: err.response?.data?.error || t('cmsCourses.toasts.updateError'),
       life: 3500,
     });
   }

@@ -24,6 +24,7 @@ import Dropdown from 'primevue/dropdown';
 import PickList from 'primevue/picklist';
 import Checkbox from 'primevue/checkbox';
 import MultiSelect from 'primevue/multiselect';
+import InputSwitch from 'primevue/inputswitch';
 
 import 'primevue/resources/themes/aura-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
@@ -36,6 +37,7 @@ import App from './App.vue';
 import router from './router';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from './stores/auth';
+import i18n from './plugins/i18n';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -67,6 +69,7 @@ app.component('Dropdown', Dropdown);
 app.component('PickList', PickList);
 app.component('Checkbox', Checkbox);
 app.component('MultiSelect', MultiSelect);
+app.component('InputSwitch', InputSwitch);
 
 const bootstrap = async () => {
   const auth = useAuthStore();
@@ -74,6 +77,7 @@ const bootstrap = async () => {
 
   app.use(router);
   app.use(PrimeVue, { ripple: true });
+  app.use(i18n);
 
   app.mount('#app');
 };
