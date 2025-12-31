@@ -433,6 +433,10 @@ router.patch(
     return res.status(400).json({ error: formatZodError(parsed.error) });
   }
   try {
+    if (parsed.data.contentType && parsed.data.contentType !== 'live') {
+      parsed.data.liveStartsAt = null;
+      parsed.data.meetingUrl = null;
+    }
     const updates = [];
     const values = [];
     if (parsed.data.title !== undefined) {
@@ -512,7 +516,7 @@ router.get(
     try {
     const { rows } = await pool.query(
       `
-        SELECT id, module_id, title, content_text, content_markdown, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+        SELECT id, module_id, title, content_type, content_text, content_markdown, video_url, meeting_url, live_starts_at, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
         FROM lessons
         WHERE module_id = $1
         ORDER BY order_index ASC
@@ -546,18 +550,28 @@ router.post(
       orderIndex = rows[0].next;
     }
 
+    const contentType = parsed.data.contentType || 'text';
+    const meetingUrl =
+      contentType === 'live' ? parsed.data.meetingUrl : null;
+
+    const liveStartsAtValue =
+      contentType === 'live' && parsed.data.liveStartsAt ? new Date(parsed.data.liveStartsAt) : null;
+
     const { rows } = await pool.query(
       `
-        INSERT INTO lessons (module_id, title, content_text, content_markdown, video_url, estimated_minutes, position, order_index, is_published)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
-        RETURNING id, module_id, title, content_text, content_markdown, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+        INSERT INTO lessons (module_id, title, content_type, content_text, content_markdown, video_url, meeting_url, live_starts_at, estimated_minutes, position, order_index, is_published)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)
+        RETURNING id, module_id, title, content_type, content_text, content_markdown, video_url, meeting_url, live_starts_at, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
       `,
       [
         moduleId,
         parsed.data.title,
+        contentType,
         parsed.data.contentText || null,
         parsed.data.contentMarkdown || parsed.data.contentText || null,
         parsed.data.videoUrl || null,
+        meetingUrl,
+        liveStartsAtValue,
         parsed.data.estimatedMinutes || null,
         orderIndex,
         orderIndex,
@@ -587,6 +601,10 @@ router.patch(
       values.push(parsed.data.title);
       updates.push(`title = $${values.length}`);
     }
+    if (parsed.data.contentType !== undefined) {
+      values.push(parsed.data.contentType);
+      updates.push(`content_type = $${values.length}`);
+    }
     if (parsed.data.contentText !== undefined) {
       values.push(parsed.data.contentText);
       updates.push(`content_text = $${values.length}`);
@@ -598,6 +616,18 @@ router.patch(
     if (parsed.data.videoUrl !== undefined) {
       values.push(parsed.data.videoUrl);
       updates.push(`video_url = $${values.length}`);
+    }
+    if (parsed.data.meetingUrl !== undefined) {
+      values.push(parsed.data.meetingUrl);
+      updates.push(`meeting_url = $${values.length}`);
+    }
+    if (parsed.data.liveStartsAt !== undefined) {
+      const liveStartValue =
+        parsed.data.liveStartsAt && parsed.data.liveStartsAt !== null
+          ? new Date(parsed.data.liveStartsAt)
+          : null;
+      values.push(liveStartValue);
+      updates.push(`live_starts_at = $${values.length}`);
     }
     if (parsed.data.estimatedMinutes !== undefined) {
       values.push(parsed.data.estimatedMinutes);
@@ -616,7 +646,7 @@ router.patch(
       UPDATE lessons
       SET ${updates.join(', ')}, updated_at = now()
       WHERE id = $${values.length + 1}
-      RETURNING id, module_id, title, content_text, content_markdown, video_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+      RETURNING id, module_id, title, content_type, content_text, content_markdown, video_url, meeting_url, live_starts_at, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
     `;
     values.push(lessonId);
 

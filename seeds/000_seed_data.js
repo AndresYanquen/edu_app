@@ -169,6 +169,7 @@ const lessonWebBasicsId = uuid();
 const lessonAccessibilityId = uuid();
 const lessonApiDesignId = uuid();
 const lessonDeploymentId = uuid();
+const lessonLiveWorkshopId = uuid();
 const lessonSqlWarmupId = uuid();
 const lessonDataCleaningId = uuid();
 const lessonDashboardStoryId = uuid();
@@ -177,6 +178,9 @@ const lessonExecReportingId = uuid();
 const lessonBody = (text) =>
   text +
   ' This lesson includes starter projects, guided steps, and review questions to help students practice in an English-first environment.';
+
+const upcomingStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+const upcomingEnd = new Date(upcomingStart.getTime() + 60 * 60 * 1000);
 
 const lessonEntry = ({
   id,
@@ -188,6 +192,8 @@ const lessonEntry = ({
   contentUrl = null,
   contentMarkdown = null,
   durationMinutes = 30,
+  liveStartsAt = null,
+  meetingUrl = null,
 }) => ({
   id,
   module_id: moduleId,
@@ -199,6 +205,8 @@ const lessonEntry = ({
   content_markdown: contentMarkdown || null,
   video_url: videoUrl,
   content_url: contentUrl,
+  live_starts_at: liveStartsAt,
+  meeting_url: meetingUrl,
   embed_html: null,
   duration_seconds: durationMinutes * 60,
   estimated_minutes: durationMinutes,
@@ -264,6 +272,24 @@ const lessons = [
     position: 2,
     videoUrl: 'https://www.youtube.com/watch?v=bNLG8GiEYfA',
     contentMarkdown: deploymentRichContent,
+  }),
+  lessonEntry({
+    id: lessonLiveWorkshopId,
+    moduleId: moduleFsBackendId,
+    title: 'Live Deployment Standup',
+    position: 3,
+    contentType: 'live',
+    contentMarkdown: [
+      'Join this live session to walkthrough blue/green deploys and answer questions before cutover.',
+      '',
+      'Agenda:',
+      '- Review stateful service playbook',
+      '- Observe rolling updates on staging',
+      '- Q&A with SRE',
+    ].join('\n'),
+    durationMinutes: 45,
+    liveStartsAt: upcomingStart.toISOString(),
+    meetingUrl: 'https://meet.google.com/abc-live-workshop',
   }),
   lessonEntry({
     id: lessonSqlWarmupId,
@@ -398,6 +424,20 @@ const groupStudents = [
   joined_at: TIMESTAMP,
   status: 'active',
 }));
+
+const groupLessonSessions = [
+  {
+    id: uuid(),
+    group_id: groups[0].id,
+    lesson_id: lessonLiveWorkshopId,
+    starts_at: upcomingStart.toISOString(),
+    ends_at: upcomingEnd.toISOString(),
+    meeting_url: 'https://meet.google.com/abc-defg-hjk',
+    unlock_offset_minutes: 10,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+];
 
 const lessonProgress = [
   {
@@ -580,6 +620,7 @@ exports.seed = async (knex) => {
       TRUNCATE TABLE
         announcements,
         lesson_assets,
+        group_lesson_sessions,
         lesson_progress,
         quiz_attempts,
         quiz_options,
@@ -611,6 +652,7 @@ exports.seed = async (knex) => {
     await trx('assets').insert(assets);
     await trx('lesson_assets').insert(lessonAssets);
     await trx('groups').insert(groups);
+    await trx('group_lesson_sessions').insert(groupLessonSessions);
     await trx('group_teachers').insert(groupTeachers);
     await trx('enrollments').insert(enrollments);
     await trx('group_students').insert(groupStudents);

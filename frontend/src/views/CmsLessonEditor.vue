@@ -29,13 +29,44 @@
                 <InputText v-model="form.title" placeholder="Lesson title" />
               </div>
               <div class="dialog-field">
+                <label>Lesson type</label>
+                <Dropdown
+                  v-model="form.contentType"
+                  :options="lessonTypeOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                />
+              </div>
+              <div class="dialog-field">
                 <label>Estimated minutes</label>
                 <InputNumber v-model="form.estimatedMinutes" showButtons />
               </div>
-              <div class="dialog-field">
+              <div v-if="form.contentType !== 'live'" class="dialog-field">
                 <label>Video URL</label>
                 <InputText v-model="form.videoUrl" placeholder="https://..." />
+                <small class="muted">Optional for content lessons</small>
               </div>
+              <template v-else>
+                <div class="dialog-field">
+                  <label>Start date & time</label>
+                  <Calendar
+                    v-model="form.liveStartsAt"
+                    showTime
+                    hourFormat="24"
+                    showSeconds
+                    :manualInput="false"
+                  />
+                  <small class="muted">Displayed in your local timezone.</small>
+                </div>
+                <div class="dialog-field">
+                  <label>Meeting link</label>
+                  <InputText v-model="form.meetingUrl" placeholder="https://meet.google.com/..." />
+                  <small class="muted">Students will use this link to join the session.</small>
+                </div>
+              </template>
+              <p v-if="form.contentType === 'live'" class="muted">
+                Meeting lessons rely on live sessions instead of uploaded videos.
+              </p>
               <div class="dialog-field">
                 <label>Content</label>
                 <textarea
@@ -249,7 +280,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RichContent from '../components/RichContent.vue';
@@ -280,9 +311,12 @@ const loading = ref(true);
 const saving = ref(false);
 const form = ref({
   title: '',
+  contentType: 'text',
   contentMarkdown: '',
   videoUrl: '',
   estimatedMinutes: 0,
+  liveStartsAt: null,
+  meetingUrl: '',
 });
 
 const quizQuestions = ref([]);
@@ -297,6 +331,26 @@ const optionDialogVisible = ref(false);
 const optionForm = ref({ optionText: '', isCorrect: false });
 const optionSaving = ref(false);
 const editingOptionId = ref(null);
+
+const lessonTypeOptions = [
+  { label: 'Content lesson', value: 'text' },
+  { label: 'Live meeting', value: 'live' },
+];
+
+watch(
+  () => form.value.contentType,
+  (type) => {
+    if (type === 'live') {
+      form.value.videoUrl = '';
+      if (!form.value.meetingUrl) {
+        form.value.meetingUrl = '';
+      }
+    } else {
+      form.value.liveStartsAt = null;
+      form.value.meetingUrl = '';
+    }
+  },
+);
 
 const questionTypeOptions = [
   { label: 'Single choice', value: 'single_choice' },
@@ -362,9 +416,12 @@ const loadLesson = async () => {
     if (lesson.value) {
       form.value = {
         title: lesson.value.title,
+        contentType: lesson.value.content_type || 'text',
         contentMarkdown: lesson.value.content_markdown || lesson.value.content_text || '',
         videoUrl: lesson.value.video_url || '',
         estimatedMinutes: lesson.value.estimated_minutes || 0,
+        liveStartsAt: lesson.value.live_starts_at ? new Date(lesson.value.live_starts_at) : null,
+        meetingUrl: lesson.value.meeting_url || '',
       };
     }
   } catch (err) {
@@ -408,15 +465,45 @@ const saveLesson = async () => {
     });
     return;
   }
+  if (form.value.contentType === 'live' && !form.value.liveStartsAt) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Start time required',
+      detail: 'Live lessons need a start date and time',
+      life: 2500,
+    });
+    return;
+  }
+  if (form.value.contentType === 'live' && !form.value.meetingUrl.trim()) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Meeting link required',
+      detail: 'Provide the meeting link for live lessons',
+      life: 2500,
+    });
+    return;
+  }
   saving.value = true;
   try {
-    await updateLesson(lessonId, {
+    const payload = {
       title: form.value.title,
+      contentType: form.value.contentType,
       contentText: form.value.contentMarkdown,
       contentMarkdown: form.value.contentMarkdown,
-      videoUrl: form.value.videoUrl,
       estimatedMinutes: form.value.estimatedMinutes,
-    });
+    };
+    const video = form.value.videoUrl?.trim();
+    if (video) {
+      payload.videoUrl = video;
+    } else {
+      payload.videoUrl = null;
+    }
+    payload.liveStartsAt = form.value.liveStartsAt
+      ? new Date(form.value.liveStartsAt).toISOString()
+      : null;
+    payload.meetingUrl =
+      form.value.contentType === 'live' ? form.value.meetingUrl?.trim() || null : null;
+    await updateLesson(lessonId, payload);
     toast.add({ severity: 'success', summary: 'Lesson saved', life: 2000 });
     await loadLesson();
   } catch (err) {

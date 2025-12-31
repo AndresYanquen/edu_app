@@ -37,7 +37,7 @@ exports.up = async (knex) => {
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
     DO $$ BEGIN
-      CREATE TYPE lesson_content_type AS ENUM ('video','text','link','file','embed');
+      CREATE TYPE lesson_content_type AS ENUM ('video','text','link','file','embed','live');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
     DO $$ BEGIN
