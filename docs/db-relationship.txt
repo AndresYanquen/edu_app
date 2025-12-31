@@ -1,0 +1,257 @@
+@startuml
+' =========================
+'  ER Diagram - Postgres Demo (RBAC clean)
+'  academy_memberships REMOVED
+' =========================
+
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam class {
+  BackgroundColor white
+  BorderColor #CBD5E1
+  ArrowColor #94A3B8
+}
+skinparam stereotypeCBackgroundColor #F8FAFC
+
+' ---------- Helpers ----------
+' We model tables as classes with fields and mark PK/FK.
+' Cardinalities reflect FK presence (many-to-one).
+
+' =========================
+'  USERS & RBAC
+' =========================
+class users <<table>> {
+  + id : uuid <<PK>>
+  --
+  email : text
+  full_name : text
+  password_hash : text
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+class roles <<table>> {
+  + id : uuid <<PK>>
+  --
+  name : text <<UNIQUE>>
+}
+
+class user_roles <<table>> {
+  + user_id : uuid <<PK, FK(users.id)>>
+  + role_id : uuid <<PK, FK(roles.id)>>
+}
+
+class course_user_roles <<table>> {
+  + course_id : uuid <<PK, FK(courses.id)>>
+  + user_id   : uuid <<PK, FK(users.id)>>
+  + role_id   : uuid <<PK, FK(roles.id)>>
+}
+
+users "1" <-- "0..*" user_roles : user_id
+roles "1" <-- "0..*" user_roles : role_id
+
+courses "1" <-- "0..*" course_user_roles : course_id
+users   "1" <-- "0..*" course_user_roles : user_id
+roles   "1" <-- "0..*" course_user_roles : role_id
+
+
+' =========================
+'  AUTH / TOKENS
+' =========================
+class refresh_tokens <<table>> {
+  + id : uuid <<PK>>  ' (if exists; otherwise ignore)
+  --
+  user_id : uuid <<FK(users.id)>>
+  token_hash : text
+  expires_at : timestamptz
+  created_at : timestamptz
+}
+
+class user_invites <<table>> {
+  + id : uuid <<PK>>
+  --
+  user_id : uuid <<FK(users.id)>>
+  token_hash : text
+  expires_at : timestamptz
+  used_at : timestamptz?
+  created_at : timestamptz
+}
+
+users "1" <-- "0..*" refresh_tokens : user_id
+users "1" <-- "0..*" user_invites : user_id
+
+
+' =========================
+'  COURSES / CONTENT
+' =========================
+class courses <<table>> {
+  + id : uuid <<PK>>
+  --
+  owner_user_id : uuid <<FK(users.id)>>
+  title : text
+  description : text
+  status : text/enum  ' draft/published
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+class modules <<table>> {
+  + id : uuid <<PK>>
+  --
+  course_id : uuid <<FK(courses.id)>>
+  title : text
+  position : int
+}
+
+class lessons <<table>> {
+  + id : uuid <<PK>>
+  --
+  module_id : uuid <<FK(modules.id)>>
+  title : text
+  content_type : text/enum
+  status : text/enum  ' draft/published
+  position : int
+}
+
+users  "1" <-- "0..*" courses : owner_user_id
+courses "1" <-- "0..*" modules : course_id
+modules "1" <-- "0..*" lessons : module_id
+
+
+' =========================
+'  ASSETS
+' =========================
+class assets <<table>> {
+  + id : uuid <<PK>>
+  --
+  uploaded_by_user_id : uuid <<FK(users.id)>>
+  kind : text/enum
+  url : text
+  created_at : timestamptz
+}
+
+class lesson_assets <<table>> {
+  + lesson_id : uuid <<PK, FK(lessons.id)>>
+  + asset_id  : uuid <<PK, FK(assets.id)>>
+}
+
+users  "1" <-- "0..*" assets : uploaded_by_user_id
+lessons "1" <-- "0..*" lesson_assets : lesson_id
+assets  "1" <-- "0..*" lesson_assets : asset_id
+
+
+' =========================
+'  GROUPS / ENROLLMENTS
+' =========================
+class groups <<table>> {
+  + id : uuid <<PK>>
+  --
+  course_id : uuid <<FK(courses.id)>>
+  name : text
+  schedule_text : text
+  created_at : timestamptz
+}
+
+class enrollments <<table>> {
+  + id : uuid <<PK>> ' (if exists; otherwise composite unique)
+  --
+  course_id : uuid <<FK(courses.id)>>
+  user_id : uuid <<FK(users.id)>>
+  created_at : timestamptz
+  ' UNIQUE(course_id, user_id) recommended
+}
+
+class group_students <<table>> {
+  + group_id : uuid <<PK, FK(groups.id)>>
+  + user_id  : uuid <<PK, FK(users.id)>>
+}
+
+class group_teachers <<table>> {
+  + group_id : uuid <<PK, FK(groups.id)>>
+  + user_id  : uuid <<PK, FK(users.id)>>
+}
+
+courses "1" <-- "0..*" groups : course_id
+courses "1" <-- "0..*" enrollments : course_id
+users   "1" <-- "0..*" enrollments : user_id
+
+groups "1" <-- "0..*" group_students : group_id
+users  "1" <-- "0..*" group_students : user_id
+
+groups "1" <-- "0..*" group_teachers : group_id
+users  "1" <-- "0..*" group_teachers : user_id
+
+
+' =========================
+'  ANNOUNCEMENTS
+' =========================
+class announcements <<table>> {
+  + id : uuid <<PK>> ' (assumed)
+  --
+  created_by_user_id : uuid <<FK(users.id)>>
+  course_id : uuid <<FK(courses.id)>>
+  group_id : uuid <<FK(groups.id)>>
+  title : text
+  body : text
+  created_at : timestamptz
+}
+
+users   "1" <-- "0..*" announcements : created_by_user_id
+courses "1" <-- "0..*" announcements : course_id
+groups  "1" <-- "0..*" announcements : group_id
+
+
+' =========================
+'  PROGRESS
+' =========================
+class lesson_progress <<table>> {
+  + user_id  : uuid <<PK, FK(users.id)>>
+  + lesson_id: uuid <<PK, FK(lessons.id)>>
+  --
+  status : text/enum
+  progress_percent : int?
+  last_seen_at : timestamptz
+}
+
+users   "1" <-- "0..*" lesson_progress : user_id
+lessons "1" <-- "0..*" lesson_progress : lesson_id
+
+
+' =========================
+'  QUIZZES
+' =========================
+class quiz_questions <<table>> {
+  + id : uuid <<PK>>
+  --
+  lesson_id : uuid <<FK(lessons.id)>>
+  question_type : text/enum
+  prompt : text
+  position : int
+}
+
+class quiz_options <<table>> {
+  + id : uuid <<PK>>
+  --
+  question_id : uuid <<FK(quiz_questions.id)>>
+  text : text
+  is_correct : boolean
+  position : int
+}
+
+class quiz_attempts <<table>> {
+  + id : uuid <<PK>>
+  --
+  user_id : uuid <<FK(users.id)>>
+  lesson_id : uuid <<FK(lessons.id)>>
+  score_percent : numeric/int
+  created_at : timestamptz
+}
+
+lessons "1" <-- "0..*" quiz_questions : lesson_id
+quiz_questions "1" <-- "0..*" quiz_options : question_id
+
+users   "1" <-- "0..*" quiz_attempts : user_id
+lessons "1" <-- "0..*" quiz_attempts : lesson_id
+
+@enduml
