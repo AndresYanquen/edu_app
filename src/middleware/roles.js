@@ -13,6 +13,7 @@ const extractGlobalRoles = (user) =>
 const hasGlobalRole = (user, roleName) => extractGlobalRoles(user).includes(roleName);
 
 const requireGlobalRoleAny = (allowedRoles = []) => (req, res, next) => {
+    console.log(req.method, req.path, allowedRoles, req.user?.globalRoles);
   if (!req.user) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -21,7 +22,8 @@ const requireGlobalRoleAny = (allowedRoles = []) => (req, res, next) => {
   if (!userRoles.length) {
     return res.status(401).json({ error: 'Authentication required' });
   }
-
+  console.log('roles seen', userRoles);
+  console.log('allowed roles', allowedRoles);
   const allowed =
     allowedRoles.length === 0 || allowedRoles.some((role) => userRoles.includes(role));
 

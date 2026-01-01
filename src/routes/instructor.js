@@ -96,6 +96,34 @@ router.get(
   },
 );
 
+// Returns instructors/teachers assigned to a group
+router.get(
+  '/groups/:id/teachers',
+  requireGroupTeacherOrAdmin((req) => req.params.id),
+  async (req, res) => {
+    const groupId = req.params.id;
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT
+            u.id,
+            u.full_name,
+            u.email
+          FROM group_teachers gt
+          JOIN users u ON u.id = gt.user_id
+          WHERE gt.group_id = $1
+          ORDER BY u.full_name ASC
+        `,
+        [groupId],
+      );
+      return res.json(rows);
+    } catch (err) {
+      console.error('Failed to load group teachers', err);
+      return res.status(500).json({ error: 'Failed to load group teachers' });
+    }
+  },
+);
+
 router.get(
   '/groups/:id/progress',
   requireGroupTeacherOrAdmin((req) => req.params.id),

@@ -229,6 +229,47 @@ const lessonUpdateSchema = z
     message: 'At least one field must be provided',
   });
 
+const urlString = z.string().url();
+
+const liveSeriesCreateSchema = z.object({
+  moduleId: z.string().uuid().optional().nullable(),
+  classTypeId: z.string({ required_error: 'classTypeId is required' }).uuid({
+    message: 'classTypeId must be a valid UUID',
+  }),
+  hostTeacherId: z.string({ required_error: 'hostTeacherId is required' }).uuid({
+    message: 'hostTeacherId must be a valid UUID',
+  }),
+  title: z
+    .string({ required_error: 'title is required' })
+    .trim()
+    .min(2, 'title must be at least 2 characters'),
+  timezone: z.string({ required_error: 'timezone is required' }).trim().min(1, 'timezone required'),
+  rrule: z.string({ required_error: 'rrule is required' }).trim().min(5, 'rrule is required'),
+  dtstart: z.string({ required_error: 'dtstart is required' }).datetime(),
+  durationMinutes: preprocessInt().refine((value) => value > 0, {
+    message: 'durationMinutes must be greater than 0',
+  }),
+  joinUrl: urlString.optional().nullable(),
+  hostUrl: urlString.optional().nullable(),
+});
+
+const liveSeriesUpdateSchema = z
+  .object({
+    moduleId: z.string().uuid().optional().nullable(),
+    classTypeId: z.string().uuid().optional(),
+    hostTeacherId: z.string().uuid().optional(),
+    title: z.string().trim().min(2).optional(),
+    timezone: z.string().trim().min(1).optional(),
+    rrule: z.string().trim().min(5).optional(),
+    dtstart: z.string().datetime().optional(),
+    durationMinutes: preprocessInt().optional(),
+    joinUrl: urlString.optional().nullable(),
+    hostUrl: urlString.optional().nullable(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
 const formatZodError = (error) =>
   error.errors
     .map((issue) => {
@@ -297,6 +338,8 @@ module.exports = {
   quizQuestionUpdateSchema,
   quizOptionCreateSchema,
   quizOptionUpdateSchema,
+  liveSeriesCreateSchema,
+  liveSeriesUpdateSchema,
   userCreateSchema,
   activationSchema,
   enrollStudentSchema,

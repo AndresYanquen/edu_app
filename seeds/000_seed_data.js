@@ -67,6 +67,37 @@ const userRoles = [
 const courseFullStackId = uuid();
 const courseAnalyticsId = uuid();
 
+const classTypeConversationId = uuid();
+const classTypeWorkshopId = uuid();
+const classTypeGrammarId = uuid();
+
+const classTypes = [
+  {
+    id: classTypeConversationId,
+    code: 'conversation',
+    label: 'Conversation Club',
+    is_active: true,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: classTypeWorkshopId,
+    code: 'workshop',
+    label: 'Skills Workshop',
+    is_active: true,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: classTypeGrammarId,
+    code: 'grammar',
+    label: 'Grammar Lab',
+    is_active: true,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+];
+
 const courses = [
   {
     id: courseFullStackId,
@@ -324,9 +355,13 @@ const lessonAssets = [
   { lesson_id: lessonSqlWarmupId, asset_id: assetSqlCheatId },
 ];
 
+const groupWeeknightId = uuid();
+const groupWeekendId = uuid();
+const groupAnalyticsId = uuid();
+
 const groups = [
   {
-    id: uuid(),
+    id: groupWeeknightId,
     course_id: courseFullStackId,
     name: 'Weeknight Builders',
     status: 'active',
@@ -334,7 +369,7 @@ const groups = [
     created_at: TIMESTAMP,
   },
   {
-    id: uuid(),
+    id: groupWeekendId,
     course_id: courseFullStackId,
     name: 'Weekend Sprinters',
     status: 'active',
@@ -342,7 +377,7 @@ const groups = [
     created_at: TIMESTAMP,
   },
   {
-    id: uuid(),
+    id: groupAnalyticsId,
     course_id: courseAnalyticsId,
     name: 'Morning Analysts',
     status: 'active',
@@ -353,19 +388,19 @@ const groups = [
 
 const groupTeachers = [
   {
-    group_id: groups[0].id,
+    group_id: groupWeeknightId,
     user_id: instructors[0].id,
     role: 'lead',
     assigned_at: TIMESTAMP,
   },
   {
-    group_id: groups[1].id,
+    group_id: groupWeekendId,
     user_id: instructors[0].id,
     role: 'lead',
     assigned_at: TIMESTAMP,
   },
   {
-    group_id: groups[2].id,
+    group_id: groupAnalyticsId,
     user_id: instructors[1].id,
     role: 'lead',
     assigned_at: TIMESTAMP,
@@ -387,17 +422,165 @@ const enrollments = [
 }));
 
 const groupStudents = [
-  { group_id: groups[0].id, user_id: students[0].id },
-  { group_id: groups[0].id, user_id: students[1].id },
-  { group_id: groups[1].id, user_id: students[2].id },
-  { group_id: groups[1].id, user_id: students[3].id },
-  { group_id: groups[2].id, user_id: students[4].id },
-  { group_id: groups[2].id, user_id: students[5].id },
+  { group_id: groupWeeknightId, user_id: students[0].id },
+  { group_id: groupWeeknightId, user_id: students[1].id },
+  { group_id: groupWeekendId, user_id: students[2].id },
+  { group_id: groupWeekendId, user_id: students[3].id },
+  { group_id: groupAnalyticsId, user_id: students[4].id },
+  { group_id: groupAnalyticsId, user_id: students[5].id },
 ].map((row) => ({
   ...row,
   joined_at: TIMESTAMP,
   status: 'active',
 }));
+
+const liveSeriesFrontendConversationId = uuid();
+const liveSeriesAnalyticsWorkshopId = uuid();
+
+const liveSeriesWeekendGrammarId = uuid();
+
+const liveSessionSeries = [
+  {
+    id: liveSeriesFrontendConversationId,
+    group_id: groupWeeknightId,
+    course_id: courseFullStackId,
+    module_id: moduleFsFrontendId,
+    class_type_id: classTypeConversationId,
+    host_teacher_id: instructors[0].id,
+    title: 'Frontend Conversation Practice',
+    timezone: 'America/Bogota',
+    rrule: 'FREQ=WEEKLY;BYDAY=TU',
+    dtstart: '2025-01-14T23:00:00.000Z',
+    duration_minutes: 60,
+    published: true,
+    join_url: 'https://meet.google.com/fs1-live',
+    host_url: null,
+    created_by: instructors[0].id,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: liveSeriesAnalyticsWorkshopId,
+    group_id: groupAnalyticsId,
+    course_id: courseAnalyticsId,
+    module_id: moduleAnalyticsCoreId,
+    class_type_id: classTypeWorkshopId,
+    host_teacher_id: instructors[1].id,
+    title: 'Analytics Workshop Hour',
+    timezone: 'America/Bogota',
+    rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    dtstart: '2025-01-13T14:00:00.000Z',
+    duration_minutes: 45,
+    published: false,
+    join_url: 'https://meet.google.com/an1-live',
+    host_url: null,
+    created_by: instructors[1].id,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: liveSeriesWeekendGrammarId,
+    group_id: groupWeekendId,
+    course_id: courseFullStackId,
+    module_id: moduleFsBackendId,
+    class_type_id: classTypeGrammarId,
+    host_teacher_id: instructors[0].id,
+    title: 'Weekend Grammar Lab',
+    timezone: 'America/Bogota',
+    rrule: 'FREQ=WEEKLY;BYDAY=SA',
+    dtstart: '2025-01-18T15:00:00.000Z',
+    duration_minutes: 50,
+    published: true,
+    join_url: 'https://meet.google.com/fs-weekend',
+    host_url: null,
+    created_by: instructors[0].id,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+];
+
+const liveSessions = [
+  {
+    id: uuid(),
+    series_id: liveSeriesFrontendConversationId,
+    group_id: groupWeeknightId,
+    module_id: moduleFsFrontendId,
+    class_type_id: classTypeConversationId,
+    host_teacher_id: instructors[0].id,
+    starts_at: '2025-01-15T23:00:00.000Z',
+    ends_at: '2025-01-16T00:00:00.000Z',
+    published: true,
+    status: 'scheduled',
+    join_url: 'https://meet.google.com/fs1-live',
+    host_url: null,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: uuid(),
+    series_id: liveSeriesFrontendConversationId,
+    group_id: groupWeeknightId,
+    module_id: moduleFsFrontendId,
+    class_type_id: classTypeConversationId,
+    host_teacher_id: instructors[0].id,
+    starts_at: '2025-01-22T23:00:00.000Z',
+    ends_at: '2025-01-23T00:00:00.000Z',
+    published: true,
+    status: 'scheduled',
+    join_url: 'https://meet.google.com/fs1-live',
+    host_url: null,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: uuid(),
+    series_id: liveSeriesAnalyticsWorkshopId,
+    group_id: groupAnalyticsId,
+    module_id: moduleAnalyticsCoreId,
+    class_type_id: classTypeWorkshopId,
+    host_teacher_id: instructors[1].id,
+    starts_at: '2025-01-13T14:00:00.000Z',
+    ends_at: '2025-01-13T14:45:00.000Z',
+    published: false,
+    status: 'scheduled',
+    join_url: 'https://meet.google.com/an1-live',
+    host_url: null,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: uuid(),
+    series_id: liveSeriesWeekendGrammarId,
+    group_id: groupWeekendId,
+    module_id: moduleFsBackendId,
+    class_type_id: classTypeGrammarId,
+    host_teacher_id: instructors[0].id,
+    starts_at: '2025-01-18T15:00:00.000Z',
+    ends_at: '2025-01-18T15:50:00.000Z',
+    published: true,
+    status: 'scheduled',
+    join_url: 'https://meet.google.com/fs-weekend',
+    host_url: null,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  {
+    id: uuid(),
+    series_id: liveSeriesWeekendGrammarId,
+    group_id: groupWeekendId,
+    module_id: moduleFsBackendId,
+    class_type_id: classTypeGrammarId,
+    host_teacher_id: instructors[0].id,
+    starts_at: '2025-01-25T15:00:00.000Z',
+    ends_at: '2025-01-25T15:50:00.000Z',
+    published: true,
+    status: 'scheduled',
+    join_url: 'https://meet.google.com/fs-weekend',
+    host_url: null,
+    created_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+];
 
 const lessonProgress = [
   {
@@ -566,7 +749,7 @@ const announcements = [
     id: uuid(),
     scope: 'group',
     course_id: null,
-    group_id: groups[2].id,
+    group_id: groupAnalyticsId,
     created_by_user_id: instructors[1].id,
     title: 'Dashboard critique',
     body: 'Share your latest Looker board for async feedback.',
@@ -579,6 +762,8 @@ exports.seed = async (knex) => {
     await trx.raw(`
       TRUNCATE TABLE
         announcements,
+        live_sessions,
+        live_session_series,
         lesson_assets,
         lesson_progress,
         quiz_attempts,
@@ -596,12 +781,14 @@ exports.seed = async (knex) => {
         refresh_tokens,
         user_invites,
         assets,
+        class_types,
         roles,
         users
       RESTART IDENTITY CASCADE
     `);
 
     await trx('roles').insert(roleRows);
+    await trx('class_types').insert(classTypes);
     await trx('users').insert(userRows);
     await trx('user_roles').insert(userRoles);
     await trx('courses').insert(courses);
@@ -612,6 +799,8 @@ exports.seed = async (knex) => {
     await trx('lesson_assets').insert(lessonAssets);
     await trx('groups').insert(groups);
     await trx('group_teachers').insert(groupTeachers);
+    await trx('live_session_series').insert(liveSessionSeries);
+    await trx('live_sessions').insert(liveSessions);
     await trx('enrollments').insert(enrollments);
     await trx('group_students').insert(groupStudents);
     await trx('lesson_progress').insert(lessonProgress);
