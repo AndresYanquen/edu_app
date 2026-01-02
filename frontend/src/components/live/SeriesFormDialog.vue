@@ -74,15 +74,29 @@
           <small class="muted">{{ t('liveSessions.form.timezoneHint') }}</small>
         </div>
       </div>
-      <div class="form-field">
-        <label>{{ t('liveSessions.form.rrule') }}</label>
-        <InputText v-model="form.rrule" :placeholder="t('liveSessions.form.rrulePlaceholder')" />
-        <small class="muted">{{ t('liveSessions.form.rruleHint') }}</small>
+      <div class="form-field recurrence-field">
+        <label>{{ t('liveSessions.form.recurrenceLabel') }}</label>
+        <div class="recurrence-days">
+          <Button
+            v-for="option in weekdayOptions"
+            :key="option.value"
+            :label="option.label"
+            class="day-chip"
+            :class="{ active: recurrence.days.includes(option.value) }"
+            @click="toggleDay(option.value)"
+          />
+        </div>
+        <div class="recurrence-interval">
+          <label>{{ t('liveSessions.form.recurrenceIntervalLabel') }}</label>
+          <InputNumber v-model="recurrence.interval" :min="1" :max="4" :showButtons="true" />
+          <span class="muted">{{ t('liveSessions.form.recurrenceIntervalHint') }}</span>
+        </div>
+        <small class="muted">{{ rrulePreview }}</small>
         <small v-if="errors.rrule" class="field-error">{{ errors.rrule }}</small>
       </div>
-      <div class="form-field">
-        <label>{{ t('liveSessions.form.joinUrl') }}</label>
-        <InputText v-model="form.joinUrl" placeholder="https://meet.google.com/..." />
+    <div class="form-field">
+      <label>{{ t('liveSessions.form.joinUrl') }}</label>
+      <InputText v-model="form.joinUrl" placeholder="https://meet.google.com/..." />
       </div>
       <div class="form-field">
         <label>{{ t('liveSessions.form.hostUrl') }}</label>
@@ -141,8 +155,86 @@ const emit = defineEmits(['update:visible', 'submit']);
 const { t } = useI18n();
 
 const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const weekdayOrder = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 
-const emptyForm = () => ({
+const weekdayOptions = computed(() =>
+  weekdayOrder.map((value) => ({
+    value,
+    label: t(`liveSessions.form.weekdays.${value}`),
+  })),
+);
+
+const recurrence = reactive({
+  interval: 1,
+  days: [],
+});
+
+const parseRecurrence = (value = '') => {
+  const result = { interval: 1, days: [] };
+  if (!value) {
+    return result;
+  }
+  value.split(';').forEach((segment) => {
+    const [key, val] = segment.split('=');
+    if (!key || !val) {
+      return;
+    }
+    if (key === 'INTERVAL') {
+      const interval = parseInt(val, 10);
+      if (!Number.isNaN(interval) && interval > 0) {
+        result.interval = interval;
+      }
+    }
+    if (key === 'BYDAY') {
+      const days = val.split(',').map((day) => day.trim()).filter(Boolean);
+      result.days = days;
+    }
+  });
+  return result;
+};
+
+const applyRecurrenceRrule = (value) => {
+  const parsed = parseRecurrence(value);
+  recurrence.interval = parsed.interval;
+  recurrence.days.splice(0, recurrence.days.length, ...parsed.days);
+};
+
+const buildRecurrenceRrule = () => {
+  if (!recurrence.days.length) {
+    return '';
+  }
+  const parts = ['FREQ=WEEKLY'];
+  if (recurrence.interval && recurrence.interval > 1) {
+    parts.push(`INTERVAL=${recurrence.interval}`);
+  }
+  parts.push(`BYDAY=${recurrence.days.join(',')}`);
+  return parts.join(';');
+};
+
+const toggleDay = (day) => {
+  const index = recurrence.days.indexOf(day);
+  if (index > -1) {
+    recurrence.days.splice(index, 1);
+  } else {
+    recurrence.days.push(day);
+  }
+};
+
+const getWeekdayLabel = (value) =>
+  weekdayOptions.value.find((option) => option.value === value)?.label || value;
+
+const rrulePreview = computed(() => {
+  if (!recurrence.days.length) {
+    return t('liveSessions.form.recurrencePreviewEmpty');
+  }
+  const dayLabels = recurrence.days.map(getWeekdayLabel).join(', ');
+  return t('liveSessions.form.recurrencePreview', {
+    interval: recurrence.interval,
+    days: dayLabels,
+  });
+});
+
+const form = reactive({
   title: '',
   moduleId: null,
   classTypeId: null,
@@ -155,7 +247,6 @@ const emptyForm = () => ({
   hostUrl: '',
 });
 
-const form = reactive(emptyForm());
 const errors = reactive({
   title: '',
   classTypeId: '',
@@ -185,7 +276,21 @@ const teacherOptions = computed(() =>
 );
 
 const fillForm = () => {
-  Object.assign(form, emptyForm());
+  Object.assign(form, {
+    title: '',
+    moduleId: null,
+    classTypeId: null,
+    hostTeacherId: null,
+    dtstart: null,
+    durationMinutes: 30,
+    timezone: defaultTimezone,
+    rrule: '',
+    joinUrl: '',
+    hostUrl: '',
+  });
+  recurrence.interval = 1;
+  recurrence.days.splice(0, recurrence.days.length);
+
   if (props.editing) {
     form.title = props.editing.title || '';
     form.moduleId = props.editing.moduleId || null;
@@ -194,10 +299,13 @@ const fillForm = () => {
     form.dtstart = props.editing.dtstart ? new Date(props.editing.dtstart) : null;
     form.durationMinutes = props.editing.durationMinutes || 30;
     form.timezone = props.editing.timezone || defaultTimezone;
-    form.rrule = props.editing.rrule || '';
     form.joinUrl = props.editing.joinUrl || '';
     form.hostUrl = props.editing.hostUrl || '';
+    applyRecurrenceRrule(props.editing.rrule || '');
+  } else {
+    applyRecurrenceRrule('');
   }
+  form.rrule = buildRecurrenceRrule();
   clearErrors();
 };
 
@@ -230,7 +338,10 @@ const validate = () => {
     errors.durationMinutes = t('liveSessions.validation.duration');
     valid = false;
   }
-  if (!form.rrule.trim()) {
+  if (!recurrence.days.length) {
+    errors.rrule = t('liveSessions.validation.recurrenceDays');
+    valid = false;
+  } else if (!form.rrule.trim()) {
     errors.rrule = t('liveSessions.validation.rrule');
     valid = false;
   }
@@ -274,6 +385,16 @@ watch(
     }
   },
 );
+
+watch(
+  () => [recurrence.interval, recurrence.days.join(',')],
+  () => {
+    const nextRrule = buildRecurrenceRrule();
+    if (form.rrule !== nextRrule) {
+      form.rrule = nextRrule;
+    }
+  },
+);
 </script>
 
 <style scoped>
@@ -310,5 +431,34 @@ watch(
 .field-error {
   color: #dc2626;
   font-size: 0.75rem;
+}
+.recurrence-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.recurrence-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.day-chip {
+  min-width: 2.5rem;
+  border-radius: 999px;
+}
+
+.day-chip.active {
+  background-color: #0ea5e9;
+  color: #ffffff;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.6);
+}
+
+.recurrence-interval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 </style>

@@ -216,6 +216,67 @@
         </template>
       </Card>
 
+      <Card v-if="isAdmin" class="live-sessions-card">
+        <template #title>
+          <div class="section-header">
+            <div>
+              <h3>Live sessions</h3>
+              <small>Manage recurring live meetings for each group</small>
+            </div>
+            <div class="live-session-controls">
+              <label>Select group</label>
+              <Dropdown
+                v-model="liveSessionGroupId"
+                :options="liveSessionGroupOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select group"
+                :disabled="!courseGroups.length"
+              />
+            </div>
+          </div>
+        </template>
+        <template #content>
+          <div v-if="liveSessionLoading" class="live-session-loading">
+            <Skeleton height="2rem" class="mb-2" />
+            <Skeleton height="2rem" class="mb-2" />
+            <Skeleton height="12rem" />
+          </div>
+          <div v-else-if="liveSessionError" class="empty-state">
+            <p>Unable to load live sessions right now.</p>
+            <Button
+              :label="'Reload live sessions'"
+              icon="pi pi-refresh"
+              class="p-button-text"
+              @click="loadLiveSessionData"
+            />
+          </div>
+          <div v-else>
+            <SeriesTable
+              :series="liveSessionSeries"
+              :modules="modules"
+              :loading="liveSessionSeriesLoading"
+              :publishLoadingId="liveSeriesPublishLoadingId"
+              :generatingId="liveSeriesGeneratingId"
+              @create="openLiveSeriesCreate"
+              @edit="openLiveSeriesEdit"
+              @toggle-publish="handleLiveSeriesPublishToggle"
+              @generate="handleLiveSeriesGenerate"
+            />
+            <SessionsTable
+              :sessions="liveSessionSessions"
+              :loading="liveSessionSessionsLoading"
+              :classTypes="liveSessionClassTypes"
+              :modules="modules"
+              :teachers="liveSessionTeachers"
+              :range="liveSessionRange"
+              @refresh="handleLiveSessionsRefresh"
+              @range-change="handleLiveSessionsRangeChange"
+            />
+          </div>
+        </template>
+      </Card>
+
       <Card v-if="canManageEnrollments" class="group-teachers-card">
         <template #title>
           <div class="section-header">
@@ -659,6 +720,15 @@
         />
       </template>
     </Dialog>
+    <SeriesFormDialog
+      v-model:visible="liveSeriesDialogVisible"
+      :loading="savingLiveSeries"
+      :modules="modules"
+      :classTypes="liveSessionClassTypes"
+      :teachers="liveSessionTeachers"
+      :editing="editingLiveSeries"
+      @submit="handleLiveSeriesSubmit"
+    />
   </div>
 </template>
 
@@ -666,6 +736,9 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import SeriesTable from '../components/live/SeriesTable.vue';
+import SessionsTable from '../components/live/SessionsTable.vue';
+import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
 import { useAuthStore } from '../stores/auth';
 import {
   listCourses,
@@ -695,7 +768,23 @@ import {
   addGroupTeacher,
   removeGroupTeacher,
 } from '../api/groups';
-import { listUsers, getCourseStaff, assignCourseStaff, removeCourseStaffRole } from '../api/admin';
+import {
+  listUsers,
+  getCourseStaff,
+  assignCourseStaff,
+  removeCourseStaffRole,
+} from '../api/admin';
+import {
+  getClassTypes as fetchLiveClassTypes,
+  getGroupTeachers as fetchLiveGroupTeachers,
+  listGroupSeries,
+  createSeries,
+  updateSeries,
+  publishSeries,
+  unpublishSeries,
+  generateSeries,
+  listGroupSessions,
+} from '../api/liveSessions';
 
 const route = useRoute();
 const router = useRouter();
@@ -853,10 +942,286 @@ const groupTeacherOptions = computed(() =>
     value: group.id,
   })),
 );
+const liveSessionGroupOptions = computed(() =>
+  courseGroups.value.map((group) => ({
+    label: group.scheduleText ? `${group.name} (${group.scheduleText})` : group.name,
+    value: group.id,
+  })),
+);
+
+const defaultLiveSessionRange = () => {
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() - 7);
+  const toDate = new Date();
+  toDate.setDate(toDate.getDate() + 28);
+  return {
+    from: fromDate.toISOString(),
+    to: toDate.toISOString(),
+  };
+};
+
+const liveSessionGroupId = ref(null);
+const liveSessionClassTypes = ref([]);
+const liveSessionClassTypesLoaded = ref(false);
+const liveSessionTeachers = ref([]);
+const liveSessionSeries = ref([]);
+const liveSessionSeriesLoading = ref(false);
+const liveSessionSessions = ref([]);
+const liveSessionSessionsLoading = ref(false);
+const liveSessionLoading = ref(false);
+const liveSessionError = ref(false);
+const liveSeriesDialogVisible = ref(false);
+const editingLiveSeries = ref(null);
+const savingLiveSeries = ref(false);
+const liveSeriesPublishLoadingId = ref(null);
+const liveSeriesGeneratingId = ref(null);
+const liveSessionRange = ref(defaultLiveSessionRange());
+
+const loadLiveSessionClassTypes = async () => {
+  if (liveSessionClassTypesLoaded.value) {
+    return;
+  }
+  try {
+    const types = await fetchLiveClassTypes();
+    liveSessionClassTypes.value = Array.isArray(types) ? types : [];
+    liveSessionClassTypesLoaded.value = true;
+  } catch (err) {
+    liveSessionClassTypes.value = [];
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load live session class types',
+      life: 3000,
+    });
+    throw err;
+  }
+};
+
+const loadLiveSessionTeachers = async () => {
+  if (!liveSessionGroupId.value) {
+    liveSessionTeachers.value = [];
+    return;
+  }
+  try {
+    const teachers = await fetchLiveGroupTeachers(liveSessionGroupId.value);
+    liveSessionTeachers.value = (teachers || []).map((teacher) => ({
+      id: teacher.id || teacher.user_id,
+      full_name: teacher.full_name || teacher.fullName || teacher.name,
+      email: teacher.email,
+    }));
+  } catch (err) {
+    liveSessionTeachers.value = [];
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load live session instructors',
+      life: 3000,
+    });
+    throw err;
+  }
+};
+
+const loadLiveSessionSeries = async () => {
+  if (!liveSessionGroupId.value) {
+    liveSessionSeries.value = [];
+    return;
+  }
+  liveSessionSeriesLoading.value = true;
+  try {
+    liveSessionSeries.value = await listGroupSeries(liveSessionGroupId.value);
+  } catch (err) {
+    liveSessionSeries.value = [];
+    liveSessionError.value = true;
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load live series',
+      life: 3000,
+    });
+    throw err;
+  } finally {
+    liveSessionSeriesLoading.value = false;
+  }
+};
+
+const loadLiveSessionSessions = async () => {
+  if (!liveSessionGroupId.value) {
+    liveSessionSessions.value = [];
+    return;
+  }
+  liveSessionSessionsLoading.value = true;
+  try {
+    const params = {};
+    if (liveSessionRange.value?.from) {
+      params.from = liveSessionRange.value.from;
+    }
+    if (liveSessionRange.value?.to) {
+      params.to = liveSessionRange.value.to;
+    }
+    liveSessionSessions.value = await listGroupSessions(liveSessionGroupId.value, params);
+  } catch (err) {
+    liveSessionSessions.value = [];
+    liveSessionError.value = true;
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load live sessions',
+      life: 3000,
+    });
+    throw err;
+  } finally {
+    liveSessionSessionsLoading.value = false;
+  }
+};
+
+const loadLiveSessionData = async () => {
+  if (!isAdmin.value || !liveSessionGroupId.value) {
+    return;
+  }
+  liveSessionLoading.value = true;
+  liveSessionError.value = false;
+  try {
+    await Promise.all([
+      loadLiveSessionClassTypes(),
+      loadLiveSessionTeachers(),
+      loadLiveSessionSeries(),
+      loadLiveSessionSessions(),
+    ]);
+  } catch (err) {
+    liveSessionError.value = true;
+  } finally {
+    liveSessionLoading.value = false;
+  }
+};
+
+const ensureLiveSessionGroupSelection = () => {
+  if (!isAdmin.value) {
+    liveSessionGroupId.value = null;
+    return;
+  }
+  if (!courseGroups.value.length) {
+    liveSessionGroupId.value = null;
+    return;
+  }
+  if (
+    !liveSessionGroupId.value ||
+    !courseGroups.value.some((group) => group.id === liveSessionGroupId.value)
+  ) {
+    liveSessionGroupId.value = courseGroups.value[0].id;
+  }
+};
+
+const openLiveSeriesCreate = () => {
+  editingLiveSeries.value = null;
+  liveSeriesDialogVisible.value = true;
+};
+
+const openLiveSeriesEdit = (series) => {
+  editingLiveSeries.value = series || null;
+  liveSeriesDialogVisible.value = true;
+};
+
+const handleLiveSeriesSubmit = async (payload) => {
+  if (!liveSessionGroupId.value) return;
+  savingLiveSeries.value = true;
+  try {
+    if (editingLiveSeries.value) {
+      await updateSeries(editingLiveSeries.value.id, payload);
+      toast.add({
+        severity: 'success',
+        summary: 'Series updated',
+        detail: 'Live series updated',
+        life: 2500,
+      });
+    } else {
+      await createSeries(liveSessionGroupId.value, payload);
+      toast.add({
+        severity: 'success',
+        summary: 'Series created',
+        detail: 'Live series created',
+        life: 2500,
+      });
+    }
+    liveSeriesDialogVisible.value = false;
+    editingLiveSeries.value = null;
+    await loadLiveSessionSeries();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err?.response?.data?.error || 'Failed to save live series',
+      life: 3000,
+    });
+  } finally {
+    savingLiveSeries.value = false;
+  }
+};
+
+const handleLiveSeriesPublishToggle = async ({ series, value }) => {
+  if (!series) return;
+  liveSeriesPublishLoadingId.value = series.id;
+  try {
+    if (value) {
+      await publishSeries(series.id);
+      toast.add({ severity: 'success', summary: 'Series published', life: 2500 });
+    } else {
+      await unpublishSeries(series.id);
+      toast.add({ severity: 'info', summary: 'Series unpublished', life: 2000 });
+    }
+    await loadLiveSessionSeries();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err?.response?.data?.error || 'Failed to update live series',
+      life: 3000,
+    });
+  } finally {
+    liveSeriesPublishLoadingId.value = null;
+  }
+};
+
+const handleLiveSeriesGenerate = async (series) => {
+  if (!series) return;
+  liveSeriesGeneratingId.value = series.id;
+  try {
+    const result = await generateSeries(series.id, { weeks: 8 });
+    toast.add({
+      severity: 'success',
+      summary: 'Sessions generated',
+      detail: `${result?.created || 0} session(s) created`,
+      life: 3000,
+    });
+    await loadLiveSessionSessions();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err?.response?.data?.error || 'Failed to generate sessions',
+      life: 3000,
+    });
+  } finally {
+    liveSeriesGeneratingId.value = null;
+  }
+};
+
+const handleLiveSessionsRangeChange = (range) => {
+  if (!range?.from || !range?.to) {
+    liveSessionRange.value = defaultLiveSessionRange();
+  } else {
+    liveSessionRange.value = range;
+  }
+  loadLiveSessionSessions();
+};
+
+const handleLiveSessionsRefresh = () => {
+  loadLiveSessionSessions();
+};
 
 const updateGroupList = (groups) => {
   courseGroups.value = groups || [];
   ensureGroupTeacherSelection();
+  ensureLiveSessionGroupSelection();
 };
 
 const refreshGroupList = async () => {
@@ -1032,6 +1397,9 @@ const submitGroupTeacherAssignment = async () => {
     });
     showGroupTeacherDialog.value = false;
     await loadGroupTeachers(selectedGroupForTeachers.value);
+    if (selectedGroupForTeachers.value === liveSessionGroupId.value) {
+      await loadLiveSessionTeachers();
+    }
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -1058,6 +1426,9 @@ const removeGroupInstructor = async (userId) => {
       life: 2000,
     });
     await loadGroupTeachers(selectedGroupForTeachers.value);
+    if (selectedGroupForTeachers.value === liveSessionGroupId.value) {
+      await loadLiveSessionTeachers();
+    }
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -1867,13 +2238,37 @@ watch(
 );
 
 watch(
+  () => liveSessionGroupId.value,
+  (groupId) => {
+    if (groupId) {
+      liveSessionRange.value = defaultLiveSessionRange();
+      loadLiveSessionData();
+    } else {
+      liveSessionSeries.value = [];
+      liveSessionSessions.value = [];
+      liveSessionTeachers.value = [];
+    }
+  },
+);
+
+watch(
   isAdmin,
   (value) => {
     if (value) {
       loadStaffAssignments();
       ensureStaffCandidates();
+      ensureLiveSessionGroupSelection();
+      if (liveSessionGroupId.value) {
+        loadLiveSessionData();
+      }
     } else {
       staffAssignments.value = [];
+      liveSessionGroupId.value = null;
+      liveSessionSeries.value = [];
+      liveSessionSessions.value = [];
+      liveSessionTeachers.value = [];
+      liveSessionError.value = false;
+      liveSessionLoading.value = false;
     }
   },
   { immediate: true },
@@ -2159,6 +2554,23 @@ init();
   font-size: 0.9rem;
 }
 
+.live-sessions-card {
+  margin-top: 1rem;
+}
+
+.live-session-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.live-session-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .enroll-dialog .p-dialog-content {
   display: flex;
   flex-direction: column;
@@ -2190,12 +2602,6 @@ init();
   display: none;
 }
 
-@media (max-width: 900px) {
-  .builder-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
 .enroll-picklist.p-picklist {
   display: flex;
   gap: 1rem;
@@ -2215,3 +2621,10 @@ init();
   width: 2.5rem;
   height: 2.5rem;
 }
+
+@media (max-width: 900px) {
+  .builder-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
