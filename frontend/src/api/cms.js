@@ -1,4 +1,5 @@
 import api from './axios';
+import * as groupsApi from './groups';
 
 const unwrap = (promise) => promise.then((res) => res.data);
 
@@ -42,8 +43,7 @@ export const updateQuizOption = (optionId, payload) =>
 export const deleteQuizOption = (optionId) =>
   unwrap(api.delete(`/cms/quiz/options/${optionId}`));
 
-export const getCourseGroups = (courseId) =>
-  unwrap(api.get(`/cms/courses/${courseId}/groups`));
+export const getCourseGroups = groupsApi.listCourseGroups;
 export const getAvailableStudents = (courseId) =>
   unwrap(api.get(`/cms/courses/${courseId}/students/available`));
 export const getCourseEnrollments = (courseId, params = {}) =>
@@ -57,11 +57,9 @@ export const updateEnrollmentGroup = (courseId, studentId, payload) =>
 export const bulkEnrollStudents = (courseId, payload) =>
   unwrap(api.post(`/cms/courses/${courseId}/enroll/bulk`, payload));
 
-export const getGroupTeachers = (groupId) => unwrap(api.get(`/cms/groups/${groupId}/teachers`));
-export const addGroupTeacher = (groupId, payload) =>
-  unwrap(api.post(`/cms/groups/${groupId}/teachers`, payload));
-export const removeGroupTeacher = (groupId, userId) =>
-  unwrap(api.delete(`/cms/groups/${groupId}/teachers/${userId}`));
+export const getGroupTeachers = groupsApi.getGroupTeachers;
+export const addGroupTeacher = groupsApi.addGroupTeacher;
+export const removeGroupTeacher = groupsApi.removeGroupTeacher;
 
 export default {
   listCourses,

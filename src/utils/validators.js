@@ -321,6 +321,43 @@ const bulkEnrollSchema = z.object({
     .nullable(),
 });
 
+const dateString = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/i, 'Must be a valid YYYY-MM-DD date')
+  .optional()
+  .nullable();
+
+const groupStatusEnum = z.enum(['active', 'archived']);
+
+const groupCreateSchema = z.object({
+  name: z.string({ required_error: 'name is required' }).trim().min(1, 'name is required'),
+  code: z.string().trim().min(1).optional().nullable(),
+  timezone: z.string().trim().min(1).optional(),
+  startDate: dateString,
+  endDate: dateString,
+  capacity: z.number().int().min(1).optional().nullable(),
+  status: groupStatusEnum.optional(),
+  isActive: z.boolean().optional(),
+  scheduleText: z.string().trim().min(1).optional().nullable(),
+});
+
+const groupUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    code: z.string().trim().min(1).optional().nullable(),
+    timezone: z.string().trim().min(1).optional(),
+    startDate: dateString,
+    endDate: dateString,
+    capacity: z.number().int().min(1).optional().nullable(),
+    status: groupStatusEnum.optional(),
+    isActive: z.boolean().optional(),
+    scheduleText: z.string().trim().min(1).optional().nullable(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
 module.exports = {
   loginSchema,
   lessonProgressSchema,
@@ -345,6 +382,8 @@ module.exports = {
   enrollStudentSchema,
   assignGroupSchema,
   groupTeacherAssignSchema,
+  groupCreateSchema,
+  groupUpdateSchema,
   bulkEnrollSchema,
   formatZodError,
 };

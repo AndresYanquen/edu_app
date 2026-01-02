@@ -5,6 +5,7 @@ const {
   requireGlobalRoleAny,
   requireCourseRoleAny,
   hasGlobalRole,
+  hasCourseRole,
 } = require('../middleware/roles');
 const {
   courseCreateSchema,
@@ -21,6 +22,8 @@ const {
   enrollStudentSchema,
   assignGroupSchema,
   groupTeacherAssignSchema,
+  groupCreateSchema,
+  groupUpdateSchema,
   bulkEnrollSchema,
   formatZodError,
   uuidSchema,
@@ -89,6 +92,26 @@ const removeStudentFromCourseGroups = (client, courseId, studentId) =>
     `,
     [courseId, studentId],
   );
+
+const toDateString = (value) => (value ? value.toISOString().split('T')[0] : null);
+const toTimestampString = (value) => (value ? value.toISOString() : null);
+
+const mapGroupRow = (row) => ({
+  id: row.id,
+  courseId: row.course_id,
+  name: row.name,
+  code: row.code,
+  timezone: row.timezone,
+  startDate: toDateString(row.start_date),
+  endDate: toDateString(row.end_date),
+  capacity: row.capacity,
+  status: row.status,
+  isActive: row.is_active,
+  scheduleText: row.schedule_text || null,
+  createdAt: toTimestampString(row.created_at),
+  updatedAt: toTimestampString(row.updated_at),
+  teachersCount: Number(row.teachers_count || 0),
+});
 
 
 const mapQuizRowsToQuestions = (rows) => {
@@ -1135,24 +1158,149 @@ router.get(
     try {
       const { rows } = await pool.query(
         `
-          SELECT id, name, schedule_text
-          FROM groups
-          WHERE course_id = $1
-          ORDER BY name ASC
+          SELECT
+            g.*,
+            (
+              SELECT COUNT(*)
+              FROM group_teachers gt
+              WHERE gt.group_id = g.id
+            ) AS teachers_count
+          FROM groups g
+          WHERE g.course_id = $1
+          ORDER BY g.name ASC
         `,
         [courseId],
       );
 
-      return res.json(
-        rows.map((row) => ({
-          id: row.id,
-          name: row.name,
-          scheduleText: row.schedule_text,
-        })),
-      );
+      return res.json(rows.map(mapGroupRow));
     } catch (err) {
       console.error('Failed to list course groups', err);
       return res.status(500).json({ error: 'Failed to list groups' });
+    }
+  },
+);
+
+router.post(
+  '/courses/:courseId/groups',
+  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    const parsed = groupCreateSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    try {
+      const payload = parsed.data;
+      const timezone = payload.timezone || 'America/Bogota';
+      const { rows } = await pool.query(
+        `
+          INSERT INTO groups (
+            course_id,
+            name,
+            code,
+            timezone,
+            start_date,
+            end_date,
+            capacity,
+            status,
+            is_active,
+            schedule_text
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING groups.*, (
+            SELECT COUNT(*) FROM group_teachers gt WHERE gt.group_id = groups.id
+          ) AS teachers_count
+        `,
+        [
+          courseId,
+          payload.name,
+          payload.code || null,
+          timezone,
+          payload.startDate || null,
+          payload.endDate || null,
+          payload.capacity || null,
+          payload.status || 'active',
+          payload.isActive ?? true,
+          payload.scheduleText || null,
+        ],
+      );
+
+      return res.status(201).json(mapGroupRow(rows[0]));
+    } catch (err) {
+      if (err.code === '23505' && err.constraint === 'idx_groups_course_code_unique') {
+        return res
+          .status(400)
+          .json({ error: 'A group with that code already exists for this course' });
+      }
+      console.error('Failed to create course group', err);
+      return res.status(500).json({ error: 'Failed to create group' });
+    }
+  },
+);
+
+router.patch(
+  '/groups/:groupId',
+  requireCourseContentRole(resolveCourseIdFromGroupParam('groupId')),
+  async (req, res) => {
+    const groupId = req.params.groupId;
+    const parsed = groupUpdateSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    const assignments = [];
+    const values = [];
+    const assignField = (column, key, transform = (value) => value) => {
+      if (Object.prototype.hasOwnProperty.call(parsed.data, key)) {
+        values.push(transform(parsed.data[key]));
+        assignments.push(`${column} = $${values.length}`);
+      }
+    };
+
+    assignField('name', 'name');
+    assignField('code', 'code', (value) => value || null);
+    assignField('timezone', 'timezone');
+    assignField('start_date', 'startDate', (value) => value || null);
+    assignField('end_date', 'endDate', (value) => value || null);
+    assignField('capacity', 'capacity', (value) => (value === null ? null : value));
+    assignField('status', 'status');
+    assignField('is_active', 'isActive');
+    assignField('schedule_text', 'scheduleText', (value) => value || null);
+
+    if (!assignments.length) {
+      return res.status(400).json({ error: 'At least one field must be updated' });
+    }
+
+    assignments.push('updated_at = now()');
+    values.push(groupId);
+
+    try {
+      const { rows } = await pool.query(
+        `
+          UPDATE groups
+          SET ${assignments.join(', ')}
+          WHERE id = $${values.length}
+          RETURNING groups.*, (
+            SELECT COUNT(*) FROM group_teachers gt WHERE gt.group_id = groups.id
+          ) AS teachers_count
+        `,
+        values,
+      );
+
+      if (!rows.length) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      return res.json(mapGroupRow(rows[0]));
+    } catch (err) {
+      if (err.code === '23505' && err.constraint === 'idx_groups_course_code_unique') {
+        return res
+          .status(400)
+          .json({ error: 'A group with that code already exists for this course' });
+      }
+      console.error('Failed to update group', err);
+      return res.status(500).json({ error: 'Failed to update group' });
     }
   },
 );
@@ -1200,6 +1348,11 @@ router.post(
       const group = await fetchGroupById(groupId);
       if (!group) {
         return res.status(404).json({ error: 'Group not found' });
+      }
+      const courseId = req.courseContext?.courseId;
+      const isInstructor = await hasCourseRole(parsed.data.userId, courseId, ['instructor']);
+      if (!isInstructor) {
+        return res.status(400).json({ error: 'User must be an instructor for this course' });
       }
 
       await pool.query(

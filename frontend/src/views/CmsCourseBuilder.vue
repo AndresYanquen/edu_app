@@ -145,6 +145,77 @@
         </Card>
       </div>
 
+      <Card v-if="canManageEnrollments" class="groups-card">
+        <template #title>
+          <div class="section-header">
+            <div>
+              <h3>Groups</h3>
+              <small>Manage cohorts and staff assignments</small>
+            </div>
+            <Button label="Create group" icon="pi pi-plus" @click="openGroupDialog()" />
+          </div>
+        </template>
+        <template #content>
+          <div v-if="loadingGroups">
+            <Skeleton height="2rem" class="mb-2" />
+            <Skeleton height="2rem" class="mb-2" />
+          </div>
+          <div v-else-if="!courseGroups.length" class="empty-state">
+            No groups yet.
+          </div>
+          <DataTable
+            v-else
+            :value="courseGroups"
+            responsiveLayout="scroll"
+            dataKey="id"
+            :paginator="courseGroups.length > 8"
+            :rows="8"
+          >
+            <Column field="code" header="Code" />
+            <Column field="name" header="Name" />
+            <Column field="startDate" header="Start date" />
+            <Column field="endDate" header="End date" />
+            <Column header="Capacity">
+              <template #body="{ data }">
+                {{ data.capacity ?? '-' }}
+              </template>
+            </Column>
+            <Column header="Status">
+              <template #body="{ data }">
+                <Tag
+                  :value="data.status"
+                  :severity="data.status === 'active' ? 'success' : 'warning'"
+                />
+              </template>
+            </Column>
+            <Column header="Teachers">
+              <template #body="{ data }">
+                <Tag
+                  :value="`${data.teachersCount} instructor${data.teachersCount === 1 ? '' : 's'}`"
+                  severity="info"
+                />
+              </template>
+            </Column>
+            <Column header="Actions" body-style="min-width: 12rem">
+              <template #body="{ data }">
+                <Button
+                  icon="pi pi-pencil"
+                  class="p-button-text"
+                  @click="openGroupDialog(data)"
+                  aria-label="Edit group"
+                />
+                <Button
+                  icon="pi pi-users"
+                  class="p-button-text"
+                  @click="openGroupTeacherDialog(data.id)"
+                  aria-label="Manage teachers"
+                />
+              </template>
+            </Column>
+          </DataTable>
+        </template>
+      </Card>
+
       <Card v-if="canManageEnrollments" class="group-teachers-card">
         <template #title>
           <div class="section-header">
@@ -489,6 +560,76 @@
     </Dialog>
 
     <Dialog
+      v-model:visible="showGroupDialog"
+      :header="groupDialogTitle"
+      modal
+      :style="{ width: '30rem' }"
+    >
+      <div class="dialog-field">
+        <label>Code</label>
+        <InputText v-model="groupForm.code" placeholder="Optional code" />
+      </div>
+      <div class="dialog-field">
+        <label>Name</label>
+        <InputText v-model="groupForm.name" placeholder="Group name" />
+      </div>
+      <div class="dialog-field">
+        <label>Schedule</label>
+        <InputText v-model="groupForm.scheduleText" placeholder="Example: Tue/Thu 8pm" />
+      </div>
+      <div class="dialog-field">
+        <label>Timezone</label>
+        <Dropdown
+          v-model="groupForm.timezone"
+          :options="timezoneOptions"
+          optionLabel="label"
+          optionValue="value"
+        />
+      </div>
+      <div class="dialog-field dialog-row">
+        <div class="dialog-field-half">
+          <label>Start date</label>
+          <Calendar
+            v-model="groupForm.startDate"
+            dateFormat="yy-mm-dd"
+            showButtonBar
+            showIcon
+          />
+        </div>
+        <div class="dialog-field-half">
+          <label>End date</label>
+          <Calendar
+            v-model="groupForm.endDate"
+            dateFormat="yy-mm-dd"
+            showButtonBar
+            showIcon
+          />
+        </div>
+      </div>
+      <div class="dialog-field">
+        <label>Capacity</label>
+        <InputNumber v-model="groupForm.capacity" :showButtons="true" :min="1" />
+      </div>
+      <div class="dialog-field">
+        <label>Status</label>
+        <Dropdown
+          v-model="groupForm.status"
+          :options="groupStatusOptions"
+          optionLabel="label"
+          optionValue="value"
+        />
+      </div>
+      <div class="dialog-field dialog-switch">
+        <label>Active</label>
+        <InputSwitch v-model="groupForm.isActive" />
+      </div>
+      <template #footer>
+        <Button label="Cancel" class="p-button-text" @click="closeGroupDialog" />
+        <Button label="Save" :loading="savingGroup" @click="submitGroupForm" />
+      </template>
+    </Dialog>
+
+    <Dialog
       v-model:visible="showGroupTeacherDialog"
       header="Assign instructor"
       modal
@@ -540,16 +681,20 @@ import {
   updateLesson,
   publishLesson,
   unpublishLesson,
-  getCourseGroups,
   getAvailableStudents,
   getCourseEnrollments,
   removeEnrollment,
   updateEnrollmentGroup,
   bulkEnrollStudents,
+} from '../api/cms';
+import {
+  listCourseGroups,
+  createCourseGroup,
+  updateGroup,
   getGroupTeachers,
   addGroupTeacher,
   removeGroupTeacher,
-} from '../api/cms';
+} from '../api/groups';
 import { listUsers, getCourseStaff, assignCourseStaff, removeCourseStaffRole } from '../api/admin';
 
 const route = useRoute();
@@ -593,7 +738,22 @@ const enrollmentTotal = ref(0);
 const ENROLLMENT_SEARCH_DEBOUNCE = 400;
 let enrollmentSearchTimeout;
 const courseGroups = ref([]);
+const showGroupDialog = ref(false);
+const editingGroupId = ref(null);
+const savingGroup = ref(false);
+const groupForm = ref({
+  name: '',
+  code: '',
+  timezone: 'America/Bogota',
+  startDate: null,
+  endDate: null,
+  capacity: null,
+  status: 'active',
+  isActive: true,
+  scheduleText: '',
+});
 const loadingEnrollments = ref(true);
+const loadingGroups = ref(false);
 const showEnrollDialog = ref(false);
 const availableStudents = ref([]);
 const loadingAvailableStudents = ref(false);
@@ -646,6 +806,16 @@ const staffRoleLabels = {
   content_editor: 'Content editor',
   enrollment_manager: 'Enrollment manager',
 };
+const timezoneOptions = [
+  { label: 'America/Bogota', value: 'America/Bogota' },
+  { label: 'America/New_York', value: 'America/New_York' },
+  { label: 'America/Los_Angeles', value: 'America/Los_Angeles' },
+  { label: 'UTC', value: 'UTC' },
+];
+const groupStatusOptions = [
+  { label: 'Active', value: 'active' },
+  { label: 'Archived', value: 'archived' },
+];
 const staffCandidates = ref([]);
 const loadingStaffCandidates = ref(false);
 const STAFF_SEARCH_DEBOUNCE = 400;
@@ -669,6 +839,9 @@ const enrollmentGroupOptions = computed(() => [
   })),
 ]);
 const enrollmentRowsOptions = [10, 25, 50];
+const groupDialogTitle = computed(() =>
+  editingGroupId.value ? 'Edit group' : 'Create group'
+);
 const setPicklistState = (source, target) => {
   picklistModel.value = [source, target];
 };
@@ -680,6 +853,29 @@ const groupTeacherOptions = computed(() =>
     value: group.id,
   })),
 );
+
+const updateGroupList = (groups) => {
+  courseGroups.value = groups || [];
+  ensureGroupTeacherSelection();
+};
+
+const refreshGroupList = async () => {
+  loadingGroups.value = true;
+  try {
+    const groups = await listCourseGroups(courseId);
+    updateGroupList(groups);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load groups',
+      life: 3000,
+    });
+  }
+  finally {
+    loadingGroups.value = false;
+  }
+};
 
 let groupTeachersRequestId = 0;
 const loadGroupTeachers = async (groupId) => {
@@ -772,7 +968,10 @@ const fetchGroupTeacherCandidates = async () => {
   }
 };
 
-const openGroupTeacherDialog = () => {
+const openGroupTeacherDialog = (groupId = null) => {
+  if (groupId && typeof groupId === 'string') {
+    selectedGroupForTeachers.value = groupId;
+  }
   if (!selectedGroupForTeachers.value) {
     toast.add({
       severity: 'warn',
@@ -871,6 +1070,107 @@ const removeGroupInstructor = async (userId) => {
   }
 };
 
+const normalizeDateValue = (value) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().split('T')[0];
+  }
+  if (typeof value === 'string') {
+    return value || null;
+  }
+  return null;
+};
+
+const defaultGroupForm = () => ({
+  name: '',
+  code: '',
+  timezone: 'America/Bogota',
+  startDate: null,
+  endDate: null,
+  capacity: null,
+  status: 'active',
+  isActive: true,
+  scheduleText: '',
+});
+
+const openGroupDialog = (group = null) => {
+  editingGroupId.value = group?.id || null;
+  groupForm.value = {
+    name: group?.name || '',
+    code: group?.code || '',
+    timezone: group?.timezone || 'America/Bogota',
+    startDate: group?.startDate ? new Date(group.startDate) : null,
+    endDate: group?.endDate ? new Date(group.endDate) : null,
+    capacity: typeof group?.capacity === 'number' ? group.capacity : null,
+    status: group?.status || 'active',
+    isActive: group?.isActive !== undefined ? group.isActive : true,
+    scheduleText: group?.scheduleText || '',
+  };
+  showGroupDialog.value = true;
+};
+
+const closeGroupDialog = () => {
+  showGroupDialog.value = false;
+  editingGroupId.value = null;
+  groupForm.value = defaultGroupForm();
+};
+
+const submitGroupForm = async () => {
+  const trimmedName = (groupForm.value.name || '').trim();
+  if (!trimmedName) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing information',
+      detail: 'Group name is required',
+      life: 2500,
+    });
+    return;
+  }
+
+  savingGroup.value = true;
+  try {
+    const payload = {
+      name: trimmedName,
+      code: (groupForm.value.code || '').trim() || null,
+      timezone: groupForm.value.timezone || 'America/Bogota',
+      startDate: normalizeDateValue(groupForm.value.startDate),
+      endDate: normalizeDateValue(groupForm.value.endDate),
+      capacity: groupForm.value.capacity ?? null,
+      status: groupForm.value.status || 'active',
+      isActive: groupForm.value.isActive,
+      scheduleText: (groupForm.value.scheduleText || '').trim() || null,
+    };
+
+    if (editingGroupId.value) {
+      await updateGroup(editingGroupId.value, payload);
+      toast.add({
+        severity: 'success',
+        summary: 'Group updated',
+        detail: 'Group details saved',
+        life: 2500,
+      });
+    } else {
+      await createCourseGroup(courseId, payload);
+      toast.add({
+        severity: 'success',
+        summary: 'Group created',
+        detail: 'Group added successfully',
+        life: 2500,
+      });
+    }
+    closeGroupDialog();
+    await refreshGroupList();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err?.response?.data?.error || 'Failed to save group',
+      life: 3000,
+    });
+  } finally {
+    savingGroup.value = false;
+  }
+};
+
 const loadCourse = async () => {
   loadingCourse.value = true;
   try {
@@ -922,6 +1222,7 @@ const loadEnrollmentData = async () => {
     return;
   }
   loadingEnrollments.value = true;
+  loadingGroups.value = true;
   try {
     const params = {
       page: enrollmentPage.value + 1,
@@ -935,7 +1236,7 @@ const loadEnrollmentData = async () => {
     }
     const [enrollmentRes, groupRows] = await Promise.all([
       getCourseEnrollments(courseId, params),
-      getCourseGroups(courseId),
+      listCourseGroups(courseId),
     ]);
     const isLegacyResponse = Array.isArray(enrollmentRes);
     const totalRecords = isLegacyResponse
@@ -961,8 +1262,7 @@ const loadEnrollmentData = async () => {
     } else {
       enrollments.value = records;
     }
-    courseGroups.value = groupRows;
-    ensureGroupTeacherSelection();
+    updateGroupList(groupRows);
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -972,6 +1272,7 @@ const loadEnrollmentData = async () => {
     });
   } finally {
     loadingEnrollments.value = false;
+    loadingGroups.value = false;
   }
 };
 
@@ -1691,6 +1992,21 @@ init();
   margin-bottom: 1rem;
 }
 
+.dialog-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.dialog-field-half {
+  flex: 1;
+}
+
+.dialog-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .loading-panel {
   padding: 1rem;
 }
@@ -1715,6 +2031,10 @@ init();
 }
 
 .group-teachers-card {
+  margin-top: 1rem;
+}
+
+.groups-card {
   margin-top: 1rem;
 }
 

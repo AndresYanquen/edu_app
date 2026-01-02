@@ -604,13 +604,13 @@ router.get('/me/live-sessions', async (req, res) => {
         LEFT JOIN users u ON u.id = ls.host_teacher_id
         WHERE gs.user_id = $1
           AND ls.published = true
-          AND ls.starts_at BETWEEN $2 AND $3
-          ${courseIdFilter ? `AND c.id = $4` : ''}
+          AND ls.starts_at >= $2
+          ${courseIdFilter ? `AND c.id = $3` : ''}
         ORDER BY ls.starts_at ASC
       `,
       courseIdFilter
-        ? [req.user.id, range.from, range.to, courseIdFilter]
-        : [req.user.id, range.from, range.to],
+        ? [req.user.id, range.from, courseIdFilter]
+        : [req.user.id, range.from],
     );
 
     const sessions = rows.map((row) => ({
