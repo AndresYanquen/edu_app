@@ -37,55 +37,117 @@
         </div>
       </template>
       <template #content>
-        <div class="continue-card">
-          <template v-if="!isCourseCompleted">
-            <p>{{ t('course.continueLabel') }}</p>
-            <h4>{{ progress?.nextLessonTitle }}</h4>
-            <Button
-              :label="t('course.continueButton')"
-              icon="pi pi-arrow-right"
-              :disabled="!progress?.nextLessonId"
-              @click="openLesson(progress?.nextLessonId)"
-            />
-          </template>
-          <template v-else>
-            <p>{{ t('course.courseCompleted') }}</p>
-            <Tag :value="t('course.completedTag')" severity="success" />
-          </template>
-        </div>
-        <div class="modules">
-          <Panel v-for="module in course.modules" :key="module.id" :header="module.title">
-            <ul class="lessons">
-              <li v-for="lesson in module.lessons" :key="lesson.id">
-                <div>
-                  <div class="lesson-title">{{ lesson.title }}</div>
-                  <small class="badge">{{ lesson.contentType }}</small>
+        <TabView class="course-tabs">
+          <TabPanel :header="t('course.tabs.lessons')">
+            <div class="continue-card">
+              <template v-if="!isCourseCompleted">
+                <p>{{ t('course.continueLabel') }}</p>
+                <h4>{{ progress?.nextLessonTitle }}</h4>
+                <Button
+                  :label="t('course.continueButton')"
+                  icon="pi pi-arrow-right"
+                  :disabled="!progress?.nextLessonId"
+                  @click="openLesson(progress?.nextLessonId)"
+                />
+              </template>
+              <template v-else>
+                <p>{{ t('course.courseCompleted') }}</p>
+                <Tag :value="t('course.completedTag')" severity="success" />
+              </template>
+            </div>
+            <div class="modules">
+              <Panel v-for="module in course.modules" :key="module.id" :header="module.title">
+                <ul class="lessons">
+                  <li v-for="lesson in module.lessons" :key="lesson.id">
+                    <div>
+                      <div class="lesson-title">{{ lesson.title }}</div>
+                      <small class="badge">{{ lesson.contentType }}</small>
+                    </div>
+                    <div class="lesson-actions">
+                      <Button
+                        :label="t('course.lessonOpen')"
+                        icon="pi pi-external-link"
+                        class="p-button-text"
+                        @click="openLesson(lesson.id)"
+                      />
+                      <Button
+                        :label="t('course.markDone')"
+                        icon="pi pi-check"
+                        class="p-button-sm"
+                        :disabled="isLessonCompleted(lesson.id) || isPreview"
+                        :loading="updatingLesson === lesson.id"
+                        @click="markDone(lesson.id)"
+                      />
+                      <Tag
+                        v-if="isLessonCompleted(lesson.id)"
+                        :value="t('course.doneTag')"
+                        severity="success"
+                      />
+                    </div>
+                  </li>
+                </ul>
+              </Panel>
+            </div>
+          </TabPanel>
+
+          <TabPanel :header="t('course.tabs.liveSessions')">
+            <div class="live-sessions-tab">
+              <div v-if="liveSessionsLoading" class="live-tab-skeleton">
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" />
+              </div>
+              <div v-else-if="liveSessionsError" class="live-tab-error">
+                <p>{{ t('course.liveSessions.error') }}</p>
+                <Button
+                  :label="t('common.reload')"
+                  icon="pi pi-refresh"
+                  class="p-button-text"
+                  @click="loadLiveSessions(course.id)"
+                />
+              </div>
+              <div v-else-if="!liveSessions.length">
+                <p class="muted-text">{{ t('course.liveSessions.empty') }}</p>
+              </div>
+              <div v-else class="session-list">
+                <div
+                  v-for="session in liveSessions"
+                  :key="session.id"
+                  class="session-row"
+                >
+                  <div class="session-time">
+                    <strong>{{ formatSessionDate(session.startsAt) }}</strong>
+                    <small>{{ formatSessionRange(session.startsAt, session.endsAt) }}</small>
+                  </div>
+                  <div class="session-details">
+                    <div class="session-title">{{ session.title }}</div>
+                    <div class="session-meta">
+                      <Tag
+                        :value="session.classTypeName || t('course.liveSessions.unknownType')"
+                        severity="info"
+                      />
+                      <span v-if="session.hostTeacherName">{{ session.hostTeacherName }}</span>
+                      <Divider
+                        v-if="session.hostTeacherName && session.groupName"
+                        layout="vertical"
+                      />
+                      <span v-if="session.groupName">{{ session.groupName }}</span>
+                    </div>
+                  </div>
+                  <div class="session-action">
+                    <Button
+                      :label="t('course.liveSessions.join')"
+                      icon="pi pi-external-link"
+                      class="p-button-text"
+                      :disabled="!session.joinUrl"
+                      @click="joinSession(session.joinUrl)"
+                    />
+                  </div>
                 </div>
-                <div class="lesson-actions">
-                  <Button
-                    :label="t('course.lessonOpen')"
-                    icon="pi pi-external-link"
-                    class="p-button-text"
-                    @click="openLesson(lesson.id)"
-                  />
-                  <Button
-                    :label="t('course.markDone')"
-                    icon="pi pi-check"
-                    class="p-button-sm"
-                    :disabled="isLessonCompleted(lesson.id) || isPreview"
-                    :loading="updatingLesson === lesson.id"
-                    @click="markDone(lesson.id)"
-                  />
-                  <Tag
-                    v-if="isLessonCompleted(lesson.id)"
-                    :value="t('course.doneTag')"
-                    severity="success"
-                  />
-                </div>
-              </li>
-            </ul>
-          </Panel>
-        </div>
+              </div>
+            </div>
+          </TabPanel>
+        </TabView>
       </template>
     </Card>
   </div>
@@ -97,8 +159,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useAuthStore } from '../stores/auth';
 import { useI18n } from 'vue-i18n';
+import TabPanel from 'primevue/tabpanel';
+import TabView from 'primevue/tabview';
 import PreviewBanner from '../components/PreviewBanner.vue';
 import api from '../api/axios';
+import { mySessions } from '../api/liveSessions';
 
 const route = useRoute();
 const router = useRouter();
@@ -118,6 +183,9 @@ const isPreview = computed(
 const showPreviewBanner = computed(
   () => isPreview.value && auth.hasAnyRole(['admin', 'instructor', 'content_editor']),
 );
+const liveSessions = ref([]);
+const liveSessionsLoading = ref(false);
+const liveSessionsError = ref(false);
 
 const defaultProgress = {
   percent: 0,
@@ -136,6 +204,57 @@ const fetchProgress = async (id) => {
   progress.value = data;
 };
 
+const loadLiveSessions = async (courseId) => {
+  if (!courseId) {
+    return;
+  }
+  liveSessionsLoading.value = true;
+  liveSessionsError.value = false;
+  liveSessions.value = [];
+  try {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const endOfRange = new Date(startOfToday);
+    endOfRange.setDate(endOfRange.getDate() + 14);
+    endOfRange.setHours(23, 59, 59, 999);
+
+    const data = await mySessions({
+      from: startOfToday.toISOString(),
+      to: endOfRange.toISOString(),
+      courseId,
+    });
+
+    const sanitized = Array.isArray(data)
+      ? data
+          .map((item) => ({
+            id: item.id,
+            title: item.title,
+            startsAt: item.startsAt || item.starts_at,
+            endsAt: item.endsAt || item.ends_at,
+            classTypeName: item.classTypeName || item.class_type_name || '',
+            hostTeacherName:
+              item.hostTeacherName || item.host_teacher_name || '',
+            groupName: item.groupName || item.group_name || '',
+            joinUrl: item.joinUrl || item.join_url || '',
+          }))
+          .sort(
+            (a, b) =>
+              new Date(a.startsAt || 0).getTime() - new Date(b.startsAt || 0).getTime(),
+          )
+          .slice(0, 5)
+      : [];
+
+    liveSessions.value = sanitized;
+  } catch (err) {
+    liveSessionsError.value = true;
+    liveSessions.value = [];
+  } finally {
+    liveSessionsLoading.value = false;
+  }
+};
+
 const fetchData = async (id) => {
   loading.value = true;
   error.value = false;
@@ -143,6 +262,7 @@ const fetchData = async (id) => {
     const url = isPreview.value ? `/courses/${id}?preview=1` : `/courses/${id}`;
     const courseRes = await api.get(url);
     course.value = courseRes.data;
+    loadLiveSessions(id);
     completedLessons.value = new Set();
     await fetchProgress(id);
   } catch (err) {
@@ -207,6 +327,38 @@ const markDone = async (lessonId) => {
   } finally {
     updatingLesson.value = null;
   }
+};
+
+const formatSessionDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const formatSessionRange = (start, end) => {
+  if (!start) return '';
+  const startDate = new Date(start);
+  const endDate = end ? new Date(end) : null;
+  const startTime = startDate.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const endTime = endDate
+    ? endDate.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+  return endTime ? `${startTime} — ${endTime}` : startTime;
+};
+
+const joinSession = (url) => {
+  if (!url) return;
+  window.open(url, '_blank', 'noopener');
 };
 
 onMounted(() => {
@@ -322,5 +474,88 @@ const nextLessonText = computed(() =>
 
 .mb-2 {
   margin-bottom: 0.75rem;
+}
+
+.course-tabs {
+  margin-top: 1rem;
+}
+
+.live-sessions-tab {
+  min-height: 200px;
+}
+
+.live-tab-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.live-tab-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.session-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.session-row:last-child {
+  border-bottom: none;
+}
+
+.session-time {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.session-time strong {
+  color: #111827;
+  font-size: 1rem;
+}
+
+.session-details {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.session-title {
+  font-weight: 600;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  color: #4b5563;
+}
+
+.session-action {
+  display: flex;
+  align-items: center;
+}
+
+.muted-text {
+  color: #6b7280;
+  margin: 0;
 }
 </style>

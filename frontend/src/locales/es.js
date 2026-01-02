@@ -78,13 +78,6 @@ export default {
     emptyTitle: 'Sin cursos',
     emptyDescription: 'No estás inscrito en ningún curso.',
     toastError: 'Error al cargar cursos',
-    liveSessions: {
-      title: 'Próximas sesiones en vivo',
-      empty: 'No hay sesiones en vivo próximas',
-      join: 'Unirse',
-      error: 'No se pudieron cargar las sesiones en vivo.',
-      unknownType: 'Sesión',
-    },
     status: {
       published: 'Publicado',
       draft: 'Borrador',
@@ -98,6 +91,16 @@ export default {
     errorLoad: 'No se pudo cargar el curso',
     toastLoadError: 'No se pudo cargar el curso',
     progressLabel: 'Progreso',
+    tabs: {
+      lessons: 'Lecciones',
+      liveSessions: 'Sesiones en vivo',
+    },
+    liveSessions: {
+      empty: 'No hay sesiones en vivo programadas para este curso.',
+      error: 'No se pudieron cargar las sesiones en vivo.',
+      join: 'Unirse',
+      unknownType: 'Sesión',
+    },
     progressSummary: 'Completado {done} / {total}',
     nextLesson: 'Siguiente: {title}',
     continueLabel: 'Continuar con',

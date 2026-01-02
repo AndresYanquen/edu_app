@@ -78,13 +78,6 @@ export default {
     emptyTitle: 'No courses yet',
     emptyDescription: 'You are not enrolled in any courses.',
     toastError: 'Failed to load courses',
-    liveSessions: {
-      title: 'Upcoming Live Sessions',
-      empty: 'No upcoming live sessions',
-      join: 'Join',
-      error: 'Failed to load live sessions.',
-      unknownType: 'Session',
-    },
     status: {
       published: 'Published',
       draft: 'Draft',
@@ -98,6 +91,16 @@ export default {
     errorLoad: 'Failed to load course',
     toastLoadError: 'Failed to load course',
     progressLabel: 'Progress',
+    tabs: {
+      lessons: 'Lessons',
+      liveSessions: 'Live sessions',
+    },
+    liveSessions: {
+      empty: 'No upcoming live sessions for this course.',
+      error: 'Failed to load the live sessions.',
+      join: 'Join',
+      unknownType: 'Session',
+    },
     progressSummary: 'Completed {done} / {total}',
     nextLesson: 'Next: {title}',
     continueLabel: 'Continue with',

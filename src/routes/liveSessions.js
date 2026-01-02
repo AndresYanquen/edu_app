@@ -8,6 +8,7 @@ const {
   liveSeriesCreateSchema,
   liveSeriesUpdateSchema,
   formatZodError,
+  uuidSchema,
 } = require('../utils/validators');
 
 const router = express.Router();
@@ -80,6 +81,7 @@ const mapSessionRow = (row) => ({
   hostUrl: row.host_url || null,
   createdAt: row.created_at ? row.created_at.toISOString() : null,
   updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
+  courseId: row.course_id || null,
 });
 
 const loadGroup = async (groupId) => {
@@ -575,6 +577,15 @@ router.get('/me/live-sessions', async (req, res) => {
       return res.status(400).json({ error: err.message });
     }
 
+    let courseIdFilter = null;
+    if (req.query.courseId) {
+      const parsedCourseId = uuidSchema.safeParse(req.query.courseId);
+      if (!parsedCourseId.success) {
+        return res.status(400).json({ error: 'courseId must be a valid UUID' });
+      }
+      courseIdFilter = parsedCourseId.data;
+    }
+
     const { rows } = await pool.query(
       `
         SELECT
@@ -583,6 +594,7 @@ router.get('/me/live-sessions', async (req, res) => {
           ct.code AS class_type_code,
           u.full_name AS host_teacher_name,
           g.name AS group_name,
+          c.id AS course_id,
           c.title AS course_title
         FROM group_students gs
         JOIN live_sessions ls ON ls.group_id = gs.group_id
@@ -593,15 +605,19 @@ router.get('/me/live-sessions', async (req, res) => {
         WHERE gs.user_id = $1
           AND ls.published = true
           AND ls.starts_at BETWEEN $2 AND $3
+          ${courseIdFilter ? `AND c.id = $4` : ''}
         ORDER BY ls.starts_at ASC
       `,
-      [req.user.id, range.from, range.to],
+      courseIdFilter
+        ? [req.user.id, range.from, range.to, courseIdFilter]
+        : [req.user.id, range.from, range.to],
     );
 
     const sessions = rows.map((row) => ({
       ...mapSessionRow(row),
       groupName: row.group_name,
       courseTitle: row.course_title,
+      courseId: row.course_id,
     }));
 
     return res.json(sessions);

@@ -10,7 +10,8 @@ const {
 
 const router = express.Router();
 
-router.use(auth, requireGlobalRoleAny(['instructor', 'admin']));
+const instructorScopedPaths = ['/instructor', '/groups'];
+router.use(instructorScopedPaths, auth, requireGlobalRoleAny(['instructor', 'admin']));
 
 const resolveCourseIdFromParam = (param) => (req) => req.params[param];
 const requireInstructorCourseRole = (resolver) =>
