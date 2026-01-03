@@ -1,22 +1,42 @@
 :root {
-  --brand-primary: #2563eb;
-  --brand-primary-hover: #1d4ed8;
-  --brand-primary-soft: #dbeafe;
+  /* Duolingo-ish: verde principal + acento cálido */
+  --brand-primary: #22c55e;        /* green */
+  --brand-primary-hover: #16a34a;
+  --brand-primary-soft: #dcfce7;
 
+  /* Estados */
   --brand-success: #16a34a;
   --brand-success-soft: #dcfce7;
 
-  --brand-warning: #f59e0b;
+  --brand-warning: #f59e0b;        /* amber */
   --brand-warning-soft: #fef3c7;
 
-  --brand-danger: #dc2626;
+  --brand-danger: #ef4444;         /* red */
   --brand-danger-soft: #fee2e2;
 
-  --app-bg: #f8fafc;
-  --app-surface: #ffffff;
-  --app-border: #e5e7eb;
+  /* Acento “feliz” para highlights (chips, dots, progress extra) */
+  --brand-accent: #fbbf24;         /* warm yellow */
+  --brand-accent-soft: #fffbeb;
 
+  /* Fondos y superficies (más “cremosos”) */
+  --app-bg: #f6fbf7;               /* verde muy suave */
+  --app-surface: #ffffff;
+  --app-surface-2: #fbfffc;
+  --app-border: #e7f3ea;
+
+  /* Texto */
   --text-primary: #0f172a;
-  --text-secondary: #475569;
+  --text-secondary: #334155;
   --text-muted: #64748b;
+
+  /* Forma y profundidad */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 12px 24px rgba(15, 23, 42, 0.10);
+
+  /* Focus ring amigable */
+  --focus-ring: 0 0 0 4px rgba(34, 197, 94, 0.18);
 }

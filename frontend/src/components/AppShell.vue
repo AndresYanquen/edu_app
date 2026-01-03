@@ -98,7 +98,7 @@ import { useAuthStore } from '../stores/auth';
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
-const collapsed = ref(false);
+const collapsed = ref(true);
 
 const { t, locale } = useI18n();
 

@@ -38,7 +38,9 @@
         <Card class="modules-card">
           <template #title>
             <div class="section-header">
-              <h3>Modules</h3>
+              <div>
+                <div class="section-title">Modules</div>
+              </div>
               <Button label="Add module" icon="pi pi-plus" @click="openModuleDialog()" />
             </div>
           </template>
@@ -52,11 +54,12 @@
               <div
                 v-for="(module, index) in modules"
                 :key="module.id"
-                :class="['module-item', { active: module.id === selectedModuleId }]"
+                class="list-item module-item"
+                :class="{ 'is-active': module.id === selectedModuleId }"
                 @click="selectModule(module.id)"
               >
                 <div class="module-info">
-                  <strong>{{ module.title }}</strong>
+                  <div class="item-title">{{ module.title }}</div>
                   <Tag
                     :value="module.is_published ? 'Published' : 'Draft'"
                     :severity="module.is_published ? 'success' : 'warning'"
@@ -91,8 +94,8 @@
           <template #title>
             <div class="section-header">
               <div>
-                <h3>Lessons</h3>
-                <small v-if="selectedModule">{{ selectedModule.title }}</small>
+                <div class="section-title">Lessons</div>
+                <small v-if="selectedModule" class="muted">{{ selectedModule.title }}</small>
               </div>
               <Button
                 label="Add lesson"
@@ -110,10 +113,10 @@
             </div>
             <div v-else-if="!lessons.length" class="empty-state">No lessons yet.</div>
             <div v-else class="lesson-list">
-              <div v-for="(lesson, index) in lessons" :key="lesson.id" class="lesson-item">
+              <div v-for="(lesson, index) in lessons" :key="lesson.id" class="list-item lesson-item">
                 <div>
-                  <strong>{{ lesson.title }}</strong>
-                  <p class="lesson-meta">{{ lesson.estimated_minutes || 0 }} min</p>
+                  <strong class="item-title">{{ lesson.title }}</strong>
+                  <p class="lesson-meta muted">{{ lesson.estimated_minutes || 0 }} min</p>
                 </div>
                 <div class="module-actions">
                   <Tag
@@ -149,8 +152,8 @@
         <template #title>
           <div class="section-header">
             <div>
-              <h3>Groups</h3>
-              <small>Manage cohorts and staff assignments</small>
+              <div class="section-title">Groups</div>
+              <small class="muted">Manage cohorts and staff assignments</small>
             </div>
             <Button label="Create group" icon="pi pi-plus" @click="openGroupDialog()" />
           </div>
@@ -220,8 +223,8 @@
         <template #title>
           <div class="section-header">
             <div>
-              <h3>Live sessions</h3>
-              <small>Manage recurring live meetings for each group</small>
+              <div class="section-title">Live sessions</div>
+              <small class="muted">Manage recurring live meetings for each group</small>
             </div>
             <div class="live-session-controls">
               <label>Select group</label>
@@ -2382,18 +2385,7 @@ init();
 
 .module-item,
 .lesson-item {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 0.75rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-}
-
-.module-item.active {
-  border-color: #2563eb;
-  background: #eff6ff;
+  gap: 0.6rem;
 }
 
 .module-info {
