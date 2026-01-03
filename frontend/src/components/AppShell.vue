@@ -197,7 +197,11 @@ const toggleIcon = computed(() =>
 .shell {
   min-height: 100vh;
   display: flex;
-  background-color: var(--app-bg);
+  font-family: 'Poppins', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(600px 300px at 20% 20%, rgba(251, 191, 36, 0.2), transparent 60%),
+    radial-gradient(600px 300px at 80% 30%, rgba(34, 197, 94, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--app-bg) 0%, #ffffff 100%);
 }
 
 .sidebar {
