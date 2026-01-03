@@ -28,6 +28,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
+app.set('trust proxy', 1);
+
 
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(':method :url :status :response-time ms'));
