@@ -83,6 +83,15 @@
               :loading="generatingId === data.id"
               @click="emit('generate', data)"
             />
+            <Button
+              icon="pi pi-trash"
+              class="p-button-text"
+              severity="danger"
+              :label="t('liveSessions.actions.deleteSeries')"
+              :loading="deletingId === data.id"
+              :disabled="deletingId === data.id"
+              @click="emit('deleteSeries', data)"
+            />
           </div>
         </template>
       </Column>
@@ -115,9 +124,13 @@ const props = defineProps({
     type: String,
     default: null,
   },
+  deletingId: {
+    type: String,
+    default: null,
+  },
 });
 
-const emit = defineEmits(['create', 'edit', 'toggle-publish', 'generate']);
+const emit = defineEmits(['create', 'edit', 'toggle-publish', 'generate', 'deleteSeries']);
 const { t } = useI18n();
 
 const moduleLookup = computed(() => {

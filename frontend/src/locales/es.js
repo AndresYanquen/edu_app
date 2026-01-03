@@ -265,9 +265,11 @@ export default {
     actions: {
       newSeries: 'Nueva serie',
       generate: 'Generar',
+      deleteSeries: 'Eliminar',
       join: 'Unirse',
       reloadTab: 'Recargar datos',
     },
+    confirmDeleteSeries: '¿Estás seguro de eliminar esta serie? Se quitarán las sesiones generadas.',
     columns: {
       title: 'Título',
       classType: 'Tipo',
@@ -363,6 +365,8 @@ export default {
       publishFailed: 'No se pudo actualizar el estado.',
       sessionsGenerated: 'Se generaron {count} sesiones.',
       generateFailed: 'No se pudieron generar las sesiones.',
+      seriesDeleted: 'Serie eliminada',
+      deleteFailed: 'No se pudo eliminar la serie.',
     },
   },
 };

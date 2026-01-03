@@ -179,10 +179,12 @@
               :loading="seriesLoading"
               :publishLoadingId="publishLoadingId"
               :generatingId="generatingSeriesId"
+              :deletingId="deletingSeriesId"
               @create="openCreateSeries"
               @edit="openEditSeries"
               @toggle-publish="handlePublishToggle"
               @generate="handleGenerateSeries"
+              @delete-series="handleDeleteSeries"
             />
             <SessionsTable
               :sessions="liveSessions"
@@ -231,6 +233,7 @@ import {
   publishSeries,
   unpublishSeries,
   generateSeries,
+  deleteSeries,
   listGroupSessions,
 } from '../api/liveSessions';
 
@@ -265,6 +268,7 @@ const editingSeries = ref(null);
 const savingSeries = ref(false);
 const publishLoadingId = ref(null);
 const generatingSeriesId = ref(null);
+const deletingSeriesId = ref(null);
 const defaultSessionRange = () => {
   const from = new Date();
   from.setDate(from.getDate() - 7);
@@ -288,6 +292,7 @@ const resetLiveTabState = () => {
   editingSeries.value = null;
   publishLoadingId.value = null;
   generatingSeriesId.value = null;
+  deletingSeriesId.value = null;
   sessionRange.value = defaultSessionRange();
 };
 
@@ -648,6 +653,36 @@ const handleGenerateSeries = async (series) => {
     });
   } finally {
     generatingSeriesId.value = null;
+  }
+};
+
+const handleDeleteSeries = async (series) => {
+  if (!series) return;
+  const confirmed = window.confirm(t('liveSessions.confirmDeleteSeries'));
+  if (!confirmed) {
+    return;
+  }
+  deletingSeriesId.value = series.id;
+  try {
+    await deleteSeries(series.id);
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail: t('liveSessions.toasts.seriesDeleted'),
+      life: 3500,
+    });
+    await loadSeries();
+    await loadSessions();
+  } catch (err) {
+    console.error('Failed to delete live session series', err);
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: err.response?.data?.error || t('liveSessions.toasts.deleteFailed'),
+      life: 3500,
+    });
+  } finally {
+    deletingSeriesId.value = null;
   }
 };
 

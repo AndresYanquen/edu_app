@@ -118,6 +118,9 @@
                   <div class="session-time">
                     <strong>{{ formatSessionDate(session.startsAt) }}</strong>
                     <small>{{ formatSessionRange(session.startsAt, session.endsAt) }}</small>
+                    <small class="muted countdown-text" v-if="formatCountdown(session.startsAt)">
+                      {{ formatCountdown(session.startsAt) }}
+                    </small>
                   </div>
                   <div class="session-details">
                     <div class="session-title">{{ session.title }}</div>
@@ -139,7 +142,7 @@
                       :label="t('course.liveSessions.join')"
                       icon="pi pi-external-link"
                       class="p-button-text"
-                      :disabled="!session.joinUrl"
+                      :disabled="!isSessionJoinable(session)"
                       @click="joinSession(session.joinUrl)"
                     />
                   </div>
@@ -154,7 +157,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useAuthStore } from '../stores/auth';
@@ -186,6 +189,15 @@ const showPreviewBanner = computed(
 const liveSessions = ref([]);
 const liveSessionsLoading = ref(false);
 const liveSessionsError = ref(false);
+const now = ref(new Date());
+let countdownIntervalId = null;
+const refreshNow = () => {
+  now.value = new Date();
+};
+const startCountdownTimer = () => {
+  refreshNow();
+  countdownIntervalId = setInterval(refreshNow, 60 * 1000);
+};
 
 const defaultProgress = {
   percent: 0,
@@ -212,17 +224,17 @@ const loadLiveSessions = async (courseId) => {
   liveSessionsError.value = false;
   liveSessions.value = [];
   try {
-    const now = new Date();
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - 7);
+    windowStart.setHours(0, 0, 0, 0);
 
-    const endOfRange = new Date(startOfToday);
-    endOfRange.setDate(endOfRange.getDate() + 14);
-    endOfRange.setHours(23, 59, 59, 999);
+    const windowEnd = new Date(windowStart);
+    windowEnd.setDate(windowEnd.getDate() + 35);
+    windowEnd.setHours(23, 59, 59, 999);
 
     const data = await mySessions({
-      from: startOfToday.toISOString(),
-      to: endOfRange.toISOString(),
+      from: windowStart.toISOString(),
+      to: windowEnd.toISOString(),
       courseId,
     });
 
@@ -242,8 +254,7 @@ const loadLiveSessions = async (courseId) => {
           .sort(
             (a, b) =>
               new Date(a.startsAt || 0).getTime() - new Date(b.startsAt || 0).getTime(),
-          )
-          .slice(0, 5)
+      )
       : [];
 
     liveSessions.value = sanitized;
@@ -356,6 +367,33 @@ const formatSessionRange = (start, end) => {
   return endTime ? `${startTime} — ${endTime}` : startTime;
 };
 
+const formatCountdown = (value) => {
+  if (!value) return '';
+  const diff = new Date(value).getTime() - now.value.getTime();
+  if (Number.isNaN(diff) || diff <= 0) {
+    return '';
+  }
+  const days = Math.floor(diff / 86_400_000);
+  const hours = Math.floor((diff % 86_400_000) / 3_600_000);
+  const minutes = Math.ceil((diff % 3_600_000) / 60_000);
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}m`);
+  if (!parts.length) {
+    parts.push('moments');
+  }
+  return `Starts in ${parts.join(' ')}`;
+};
+
+const isSessionJoinable = (session) => {
+  if (!session?.joinUrl || !session.startsAt) {
+    return false;
+  }
+  const diff = new Date(session.startsAt).getTime() - now.value.getTime();
+  return diff <= 5 * 60 * 1000;
+};
+
 const joinSession = (url) => {
   if (!url) return;
   window.open(url, '_blank', 'noopener');
@@ -363,6 +401,13 @@ const joinSession = (url) => {
 
 onMounted(() => {
   fetchData(route.params.id);
+  startCountdownTimer();
+});
+
+onBeforeUnmount(() => {
+  if (countdownIntervalId) {
+    clearInterval(countdownIntervalId);
+  }
 });
 
 watch(

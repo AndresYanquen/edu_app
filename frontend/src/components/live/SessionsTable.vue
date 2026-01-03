@@ -76,16 +76,19 @@
       responsiveLayout="scroll"
       :emptyMessage="t('liveSessions.sessionsEmpty')"
     >
-      <Column :header="t('liveSessions.sessionColumns.startsAt')" style="min-width: 14rem">
-        <template #body="{ data }">
-          <div class="schedule-cell">
-            <strong>{{ formatDate(data.startsAt) }}</strong>
-            <small v-if="data.endsAt" class="muted">
-              {{ t('liveSessions.sessionColumns.endsAt', { time: formatTime(data.endsAt) }) }}
-            </small>
-          </div>
-        </template>
-      </Column>
+    <Column :header="t('liveSessions.sessionColumns.startsAt')" style="min-width: 14rem">
+      <template #body="{ data }">
+        <div class="schedule-cell">
+          <strong>{{ formatDate(data.startsAt) }}</strong>
+          <small class="muted" v-if="data.startsAt">
+            {{ formatWeekday(data.startsAt) }}
+          </small>
+          <small v-if="data.endsAt" class="muted">
+            {{ t('liveSessions.sessionColumns.endsAt', { time: formatTime(data.endsAt) }) }}
+          </small>
+        </div>
+      </template>
+    </Column>
       <Column field="title" :header="t('liveSessions.sessionColumns.title')" style="min-width: 14rem" />
       <Column :header="t('liveSessions.sessionColumns.type')" style="width: 10rem">
         <template #body="{ data }">
@@ -150,7 +153,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['refresh', 'range-change']);
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const rangeValue = ref([]);
 const filterClassType = ref(null);
@@ -217,6 +220,17 @@ const applyRange = () => {
     from: from.toISOString(),
     to: to.toISOString(),
   });
+};
+
+const formatWeekday = (value) => {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleDateString(locale.value || undefined, {
+      weekday: 'long',
+    });
+  } catch (_) {
+    return '';
+  }
 };
 
 const formatDate = (value) => {

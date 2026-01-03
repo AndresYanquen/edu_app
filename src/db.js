@@ -7,8 +7,13 @@ if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL must be set in the environment');
 }
 
+const connectionString = process.env.DATABASE_URL;
+const dbUrl = new URL(connectionString);
+console.log(
+  `Connecting to PostgreSQL ${dbUrl.hostname}:${dbUrl.port}${dbUrl.pathname}`,
+);
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
 });
 
 pool.on('error', (err) => {

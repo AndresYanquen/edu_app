@@ -265,9 +265,12 @@ export default {
     actions: {
       newSeries: 'New series',
       generate: 'Generate',
+      deleteSeries: 'Delete',
       join: 'Join',
       reloadTab: 'Reload data',
     },
+    confirmDeleteSeries:
+      'Are you sure you want to delete this series? Generated sessions will be removed.',
     columns: {
       title: 'Title',
       classType: 'Type',
@@ -363,6 +366,8 @@ export default {
       publishFailed: 'Failed to update publish state.',
       sessionsGenerated: 'Generated {count} sessions.',
       generateFailed: 'Failed to generate sessions.',
+      seriesDeleted: 'Series deleted',
+      deleteFailed: 'Failed to delete series.',
     },
   },
 };

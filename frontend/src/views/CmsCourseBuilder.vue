@@ -258,10 +258,12 @@
               :loading="liveSessionSeriesLoading"
               :publishLoadingId="liveSeriesPublishLoadingId"
               :generatingId="liveSeriesGeneratingId"
+              :deletingId="liveSeriesDeletingId"
               @create="openLiveSeriesCreate"
               @edit="openLiveSeriesEdit"
               @toggle-publish="handleLiveSeriesPublishToggle"
               @generate="handleLiveSeriesGenerate"
+              @delete-series="handleLiveSeriesDelete"
             />
             <SessionsTable
               :sessions="liveSessionSessions"
@@ -783,6 +785,7 @@ import {
   publishSeries,
   unpublishSeries,
   generateSeries,
+  deleteSeries,
   listGroupSessions,
 } from '../api/liveSessions';
 
@@ -975,6 +978,7 @@ const editingLiveSeries = ref(null);
 const savingLiveSeries = ref(false);
 const liveSeriesPublishLoadingId = ref(null);
 const liveSeriesGeneratingId = ref(null);
+const liveSeriesDeletingId = ref(null);
 const liveSessionRange = ref(defaultLiveSessionRange());
 
 const loadLiveSessionClassTypes = async () => {
@@ -1202,6 +1206,36 @@ const handleLiveSeriesGenerate = async (series) => {
     });
   } finally {
     liveSeriesGeneratingId.value = null;
+  }
+};
+
+const handleLiveSeriesDelete = async (series) => {
+  if (!series) return;
+  const confirmed = window.confirm(
+    'Are you sure you want to delete this series? Generated sessions will be removed.',
+  );
+  if (!confirmed) {
+    return;
+  }
+  liveSeriesDeletingId.value = series.id;
+  try {
+    await deleteSeries(series.id);
+    toast.add({
+      severity: 'success',
+      summary: 'Series deleted',
+      detail: 'Live series removed',
+      life: 2500,
+    });
+    await Promise.all([loadLiveSessionSeries(), loadLiveSessionSessions()]);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err?.response?.data?.error || 'Failed to delete live series',
+      life: 3000,
+    });
+  } finally {
+    liveSeriesDeletingId.value = null;
   }
 };
 

@@ -17,6 +17,8 @@ export const unpublishSeries = (seriesId) =>
   unwrap(api.post(`/live-series/${seriesId}/unpublish`));
 export const generateSeries = (seriesId, payload = {}) =>
   unwrap(api.post(`/live-series/${seriesId}/generate`, payload));
+export const deleteSeries = (seriesId) =>
+  unwrap(api.delete(`/live-series/${seriesId}`));
 export const listGroupSessions = (groupId, params = {}) =>
   unwrap(api.get(`/groups/${groupId}/live-sessions`, { params }));
 export const listMyLiveSessions = (params = {}) =>
@@ -32,6 +34,7 @@ export default {
   publishSeries,
   unpublishSeries,
   generateSeries,
+  deleteSeries,
   listGroupSessions,
   listMyLiveSessions,
   mySessions,

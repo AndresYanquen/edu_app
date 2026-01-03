@@ -398,6 +398,21 @@ router.post('/live-series/:id/unpublish', async (req, res) => {
   }
 });
 
+// Deletes a live session series and its generated sessions
+router.delete('/live-series/:id', async (req, res) => {
+  try {
+    const lookup = await ensureSeriesAccess(req, res, req.params.id);
+    if (!lookup) {
+      return;
+    }
+    await pool.query('DELETE FROM live_session_series WHERE id = $1', [lookup.series.id]);
+    return res.status(204).end();
+  } catch (err) {
+    console.error('Failed to delete live session series', err);
+    return res.status(500).json({ error: 'Failed to delete live session series' });
+  }
+});
+
 const parseWindow = (body = {}) => {
   const from = body.from ? new Date(body.from) : new Date();
   const weeksInput = Number(body.weeks);
