@@ -10,6 +10,60 @@ const normalizeRoles = (roles) => {
   return [...new Set(roles.filter(Boolean))]
 }
 
+const ME_CACHE_KEY = 'academy:me'
+const ME_CACHE_TTL_MS = Number(import.meta.env.VITE_ME_CACHE_TTL_MS) || 30 * 1000
+
+const getStorage = () => {
+  if (typeof window === 'undefined') return null
+  return window.localStorage
+}
+
+const readCachedProfile = () => {
+  const storage = getStorage()
+  if (!storage) return null
+
+  try {
+    const raw = storage.getItem(ME_CACHE_KEY)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw)
+    if (!parsed.expiresAt || parsed.expiresAt < Date.now()) {
+      storage.removeItem(ME_CACHE_KEY)
+      return null
+    }
+
+    return parsed.payload
+  } catch (err) {
+    console.warn('Failed to read cached profile', err)
+    return null
+  }
+}
+
+const writeCachedProfile = (payload = {}) => {
+  const storage = getStorage()
+  if (!storage) return
+
+  try {
+    storage.setItem(
+      ME_CACHE_KEY,
+      JSON.stringify({
+        payload,
+        expiresAt: Date.now() + ME_CACHE_TTL_MS,
+      }),
+    )
+  } catch (err) {
+    console.warn('Failed to cache profile payload', err)
+  }
+}
+
+const clearCachedProfile = () => {
+  const storage = getStorage()
+  if (!storage) return
+  storage.removeItem(ME_CACHE_KEY)
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     accessToken: null, // MEMORY ONLY
@@ -40,6 +94,10 @@ export const useAuthStore = defineStore('auth', {
         this.accessToken = data.accessToken
         this.user = data.user || null
         this.setRoles(data.globalRoles || [])
+        writeCachedProfile({
+          user: this.user,
+          globalRoles: data.globalRoles || [],
+        })
       } finally {
         this.loading = false
       }
@@ -48,6 +106,13 @@ export const useAuthStore = defineStore('auth', {
     async refresh() {
       const { data } = await api.post('/auth/refresh')
       this.accessToken = data.accessToken
+
+      const cached = readCachedProfile()
+      if (cached) {
+        this.user = cached.user || null
+        this.setRoles(cached.globalRoles || [])
+        return
+      }
 
       try {
         const profile = await api.get('/me')
@@ -63,6 +128,10 @@ export const useAuthStore = defineStore('auth', {
           }
         }
         this.setRoles(payload.globalRoles || [])
+        writeCachedProfile({
+          user: this.user,
+          globalRoles: payload.globalRoles || [],
+        })
       } catch (err) {
         console.warn('Profile fetch failed during refresh')
         throw err
@@ -78,6 +147,7 @@ export const useAuthStore = defineStore('auth', {
         this.accessToken = null
         this.user = null
         this.globalRoles = []
+        clearCachedProfile()
         this.initialized = true
       }
     },

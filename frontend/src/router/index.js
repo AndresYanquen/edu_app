@@ -1,17 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { watch } from 'vue';
-import Login from '../views/Login.vue';
-import StudentDashboard from '../views/StudentDashboard.vue';
-import Course from '../views/Course.vue';
-import InstructorDashboard from '../views/InstructorDashboard.vue';
-import InstructorGroup from '../views/InstructorGroup.vue';
-import Lesson from '../views/Lesson.vue';
-import AdminHome from '../views/AdminHome.vue';
-import CmsCourses from '../views/CmsCourses.vue';
-import CmsCourseBuilder from '../views/CmsCourseBuilder.vue';
-import CmsLessonEditor from '../views/CmsLessonEditor.vue';
-import ActivateAccount from '../views/ActivateAccount.vue';
 import { useAuthStore } from '../stores/auth';
+
+const Login = () => import('../views/Login.vue');
+const StudentDashboard = () => import('../views/StudentDashboard.vue');
+const Course = () => import('../views/Course.vue');
+const InstructorDashboard = () => import('../views/InstructorDashboard.vue');
+const InstructorGroup = () => import('../views/InstructorGroup.vue');
+const Lesson = () => import('../views/Lesson.vue');
+const AdminHome = () => import('../views/AdminHome.vue');
+const CmsCourses = () => import('../views/CmsCourses.vue');
+const CmsCourseBuilder = () => import('../views/CmsCourseBuilder.vue');
+const CmsLessonEditor = () => import('../views/CmsLessonEditor.vue');
+const ActivateAccount = () => import('../views/ActivateAccount.vue');
 
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true } },

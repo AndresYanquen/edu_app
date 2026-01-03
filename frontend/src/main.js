@@ -76,12 +76,12 @@ app.component('Calendar', Calendar);
 const bootstrap = async () => {
   const auth = useAuthStore();
   await auth.bootstrap();
-
-  app.use(router);
-  app.use(PrimeVue, { ripple: true });
-  app.use(i18n);
-
-  app.mount('#app');
 };
 
 bootstrap();
+
+app.use(router);
+app.use(PrimeVue, { ripple: true });
+app.use(i18n);
+
+app.mount('#app');
