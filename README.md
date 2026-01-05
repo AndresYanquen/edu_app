@@ -29,3 +29,6 @@ Minimal single-academy backend built with Node.js, Express, PostgreSQL, and Knex
 
 ## Authentication
 `POST /auth/login` returns a short-lived access token (store in memory) and sets an httpOnly `refresh_token` cookie. Use `Authorization: Bearer <accessToken>` for protected calls, `POST /auth/refresh` to rotate tokens, and `POST /auth/logout` to revoke + clear the cookie.
+
+### Cross-origin sessions
+When your frontend runs on a different origin than the API (for example, the Vite dev server on `http://localhost:5173`), browsers only send the `refresh_token` cookie if it is marked as `SameSite=None` and, when the client is served via HTTPS, as `Secure`. The server now defaults to those values, sends the cookie for every path under `/`, and enables `Secure` automatically whenever `FRONTEND_ORIGIN` starts with `https` or when `NODE_ENV` is `production`. If you override `COOKIE_SAMESITE`/`COOKIE_SECURE`, keep them aligned with your deployment so the refresh endpoint can rotate cookies and the session keeps running.
