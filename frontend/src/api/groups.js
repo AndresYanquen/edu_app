@@ -11,6 +11,7 @@ export const addGroupTeacher = (groupId, payload) =>
   unwrap(api.post(`/cms/groups/${groupId}/teachers`, payload));
 export const removeGroupTeacher = (groupId, userId) =>
   unwrap(api.delete(`/cms/groups/${groupId}/teachers/${userId}`));
+export const deleteGroup = (groupId) => unwrap(api.delete(`/cms/groups/${groupId}`));
 
 export default {
   listCourseGroups,
@@ -19,4 +20,5 @@ export default {
   getGroupTeachers,
   addGroupTeacher,
   removeGroupTeacher,
+  deleteGroup,
 };

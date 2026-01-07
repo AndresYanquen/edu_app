@@ -67,6 +67,20 @@ const userRoles = [
 const courseFullStackId = uuid();
 const courseAnalyticsId = uuid();
 
+const courseLevelCodes = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+const courseLevels = courseLevelCodes.map((code) => ({
+  id: uuid(),
+  code,
+  label: code,
+  is_active: true,
+  created_at: TIMESTAMP,
+  updated_at: TIMESTAMP,
+}));
+const levelIdByCode = courseLevels.reduce((acc, level) => {
+  acc[level.code] = level.id;
+  return acc;
+}, {});
+
 const classTypeConversationId = uuid();
 const classTypeWorkshopId = uuid();
 const classTypeGrammarId = uuid();
@@ -103,7 +117,7 @@ const courses = [
     id: courseFullStackId,
     title: 'Full Stack Launchpad',
     description: 'Modern JavaScript, APIs, and deployment workflows for juniors.',
-    level: 'B2',
+    level_id: levelIdByCode.B2,
     status: 'published',
     owner_user_id: admin.id,
     is_published: true,
@@ -115,7 +129,7 @@ const courses = [
     id: courseAnalyticsId,
     title: 'Product Analytics Studio',
     description: 'Hands-on SQL and dashboard storytelling for product teams.',
-    level: 'B1',
+    level_id: levelIdByCode.B1,
     status: 'published',
     owner_user_id: admin.id,
     is_published: true,
@@ -803,6 +817,7 @@ exports.seed = async (knex) => {
         user_invites,
         assets,
         class_types,
+        course_levels,
         roles,
         users
       RESTART IDENTITY CASCADE
@@ -810,6 +825,7 @@ exports.seed = async (knex) => {
 
     await trx('roles').insert(roleRows);
     await trx('class_types').insert(classTypes);
+    await trx('course_levels').insert(courseLevels);
     await trx('users').insert(userRows);
     await trx('user_roles').insert(userRoles);
     await trx('courses').insert(courses);

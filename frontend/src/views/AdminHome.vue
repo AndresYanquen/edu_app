@@ -261,6 +261,103 @@
       </template>
     </Card>
 
+    <Card class="mt-card levels-card">
+      <template #title>
+        <div class="section-header">
+          <div>
+            <h3>Course levels</h3>
+            <small>Codes that courses may reference</small>
+          </div>
+          <Button label="Create level" icon="pi pi-plus" @click="openLevelDialog" />
+        </div>
+      </template>
+      <template #content>
+        <div v-if="loadingLevels">
+          <Skeleton height="2rem" class="mb-2" />
+          <Skeleton height="2rem" class="mb-2" />
+        </div>
+        <div v-else-if="!courseLevels.length" class="empty-state">
+          No course levels defined yet.
+        </div>
+        <div v-else>
+          <DataTable :value="courseLevels" responsiveLayout="scroll">
+            <Column field="code" header="Code" />
+            <Column field="label" header="Label" />
+            <Column header="Status" style="width: 10rem">
+              <template #body="{ data }">
+                <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'warning'" />
+              </template>
+            </Column>
+            <Column field="created_at" header="Created" bodyStyle="width: 14rem">
+              <template #body="{ data }">
+                {{ formatDate(data.created_at) }}
+              </template>
+            </Column>
+            <Column header="Actions" bodyStyle="width: 10rem">
+              <template #body="{ data }">
+                <Button
+                  icon="pi pi-trash"
+                  class="p-button-text p-button-danger"
+                  severity="danger"
+                  size="small"
+                  :loading="deletingLevelId === data.id"
+                  :disabled="deletingLevelId === data.id"
+                  @click="openDeleteLevelDialog(data)"
+                  aria-label="Delete level"
+                />
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+      </template>
+    </Card>
+
+    <Dialog v-model:visible="showLevelDialog" header="Create course level" modal :style="{ width: '32rem' }">
+      <div class="form-grid">
+        <div class="dialog-field">
+          <label>Code</label>
+          <InputText v-model="levelForm.code" placeholder="A1" />
+        </div>
+        <div class="dialog-field">
+          <label>Label</label>
+          <InputText v-model="levelForm.label" placeholder="Beginner" />
+        </div>
+        <div class="dialog-field dialog-switch">
+          <label>Active</label>
+          <InputSwitch v-model="levelForm.isActive" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" class="p-button-text" :disabled="savingLevel" @click="closeLevelDialog" />
+        <Button label="Save" :loading="savingLevel" severity="success" @click="submitLevelForm" />
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="confirmDeleteLevelVisible"
+      header="Confirm deletion"
+      modal
+      :style="{ width: '28rem' }"
+      :closable="!confirmDeleteLevelLoading"
+    >
+      <p class="confirm-message">{{ confirmDeleteLevelMessage }}</p>
+      <template #footer>
+        <Button
+          label="Cancel"
+          class="p-button-text"
+          :disabled="confirmDeleteLevelLoading"
+          @click="closeDeleteLevelDialog"
+        />
+        <Button
+          label="Delete"
+          severity="danger"
+          :loading="confirmDeleteLevelLoading"
+          :disabled="confirmDeleteLevelLoading"
+          @click="confirmDeleteLevel"
+        />
+      </template>
+    </Dialog>
+
     <Dialog v-model:visible="linkDialogVisible" header="Activation link" modal :style="{ width: '32rem' }">
       <p>Share this link with the user so they can set their password.</p>
       <div class="link-box">
@@ -284,6 +381,9 @@ import {
   deactivateUser,
   activateUser,
   bulkInviteUsers,
+  listCourseLevels,
+  createCourseLevel,
+  deleteCourseLevel,
 } from '../api/admin';
 
 const toast = useToast();
@@ -332,6 +432,15 @@ const page = ref(0);
 const rows = ref(20);
 const rowsPerPageOptions = [10, 20, 50];
 const totalUsers = ref(0);
+const courseLevels = ref([]);
+const loadingLevels = ref(false);
+const levelForm = ref({ code: '', label: '', isActive: true });
+const showLevelDialog = ref(false);
+const savingLevel = ref(false);
+const deletingLevelId = ref(null);
+const confirmDeleteLevelVisible = ref(false);
+const confirmDeleteLevelId = ref(null);
+const confirmDeleteLevelLoading = ref(false);
 
 const courseOptions = computed(() =>
   courses.value.map((course) => ({ label: course.title, value: course.id })),
@@ -349,6 +458,14 @@ const bulkFileName = computed(() => bulkFile.value?.name || '');
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 const userRoles = (user) =>
   Array.isArray(user.global_roles) ? user.global_roles.filter(Boolean) : [];
+
+const confirmDeleteLevelMessage = computed(() => {
+  const level = courseLevels.value.find((entry) => entry.id === confirmDeleteLevelId.value);
+  if (!level) {
+    return 'Are you sure you want to delete this level?';
+  }
+  return `Delete level "${level.code}"? Courses that already use it will break.`;
+});
 
 const buildUserQuery = () => {
   const params = {
@@ -501,6 +618,119 @@ const loadGroups = async () => {
   }
 };
 
+const loadCourseLevels = async () => {
+  loadingLevels.value = true;
+  try {
+    courseLevels.value = await listCourseLevels();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err.response?.data?.error || 'Failed to load course levels',
+      life: 3500,
+    });
+  } finally {
+    loadingLevels.value = false;
+  }
+};
+
+const resetLevelForm = () => {
+  levelForm.value = { code: '', label: '', isActive: true };
+};
+
+const openLevelDialog = () => {
+  resetLevelForm();
+  showLevelDialog.value = true;
+};
+
+const closeLevelDialog = () => {
+  showLevelDialog.value = false;
+  savingLevel.value = false;
+  resetLevelForm();
+};
+
+const submitLevelForm = async () => {
+  const code = (levelForm.value.code || '').trim();
+  const label = (levelForm.value.label || '').trim();
+  if (!code || !label) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing fields',
+      detail: 'Code and label are required',
+      life: 2500,
+    });
+    return;
+  }
+  savingLevel.value = true;
+  try {
+    await createCourseLevel({
+      code,
+      label,
+      is_active: levelForm.value.isActive,
+    });
+    toast.add({
+      severity: 'success',
+      summary: 'Level created',
+      detail: `${code} is now available`,
+      life: 2500,
+    });
+    await loadCourseLevels();
+    closeLevelDialog();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err.response?.data?.error || 'Failed to create level',
+      life: 3500,
+    });
+  } finally {
+    savingLevel.value = false;
+  }
+};
+
+const openDeleteLevelDialog = (level) => {
+  confirmDeleteLevelId.value = level.id;
+  confirmDeleteLevelVisible.value = true;
+};
+
+const closeDeleteLevelDialog = () => {
+  confirmDeleteLevelVisible.value = false;
+  confirmDeleteLevelLoading.value = false;
+  confirmDeleteLevelId.value = null;
+};
+
+const confirmDeleteLevel = async () => {
+  const levelId = confirmDeleteLevelId.value;
+  if (!levelId) {
+    closeDeleteLevelDialog();
+    return;
+  }
+  confirmDeleteLevelLoading.value = true;
+  deletingLevelId.value = levelId;
+  try {
+    await deleteCourseLevel(levelId);
+    toast.add({
+      severity: 'success',
+      summary: 'Level deleted',
+      life: 2500,
+    });
+    courseLevels.value = courseLevels.value.filter((level) => level.id !== levelId);
+    closeDeleteLevelDialog();
+  } catch (err) {
+    const message =
+      err.response?.data?.error || 'Failed to delete level';
+    toast.add({
+      severity: 'error',
+      summary: 'Deletion failed',
+      detail: message,
+      life: 3500,
+    });
+  } finally {
+    confirmDeleteLevelLoading.value = false;
+    deletingLevelId.value = null;
+  }
+};
+
 const handleBulkFile = (event) => {
   const file = event.target.files?.[0];
   bulkFile.value = file || null;
@@ -645,6 +875,11 @@ const downloadBulkResults = () => {
   URL.revokeObjectURL(url);
 };
 
+const formatDate = (value) => {
+  if (!value) return '—';
+  return new Date(value).toLocaleString();
+};
+
 watch(
   () => bulkDefaults.value.courseId,
   () => {
@@ -671,6 +906,7 @@ onMounted(() => {
   loadUsers();
   loadCourses();
   loadGroups();
+  loadCourseLevels();
 });
 </script>
 
@@ -790,5 +1026,15 @@ onMounted(() => {
 }
 .mt-2 {
   margin-top: 1rem;
+}
+.levels-card {
+  margin-top: 1rem;
+}
+.levels-card .empty-state {
+  padding: 1rem 0;
+}
+.confirm-message {
+  margin: 0 0 1rem;
+  line-height: 1.4;
 }
 </style>

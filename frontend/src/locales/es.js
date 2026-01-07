@@ -198,6 +198,7 @@ export default {
     },
     toasts: {
       loadError: 'Error al cargar cursos',
+      levelsLoadError: 'No se pudieron cargar los niveles del curso',
       titleRequired: 'El título es obligatorio',
       createSuccess: 'Curso creado',
       updateSuccess: 'Curso actualizado',
@@ -205,6 +206,8 @@ export default {
       publishSuccess: 'Curso publicado',
       unpublishInfo: 'Curso retirado',
       updateError: 'Error al actualizar el curso',
+      deleteSuccess: 'Curso eliminado',
+      deleteError: 'No se pudo eliminar el curso',
     },
   },
   instructor: {

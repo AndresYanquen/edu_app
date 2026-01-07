@@ -198,6 +198,7 @@ export default {
     },
     toasts: {
       loadError: 'Failed to load courses',
+      levelsLoadError: 'Failed to load course levels',
       titleRequired: 'Course title is required',
       createSuccess: 'Course created',
       updateSuccess: 'Course updated',
@@ -205,6 +206,8 @@ export default {
       publishSuccess: 'Course published',
       unpublishInfo: 'Course unpublished',
       updateError: 'Failed to update course',
+      deleteSuccess: 'Course deleted',
+      deleteError: 'Failed to delete course',
     },
   },
   instructor: {

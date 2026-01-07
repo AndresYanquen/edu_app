@@ -28,11 +28,10 @@ const setRefreshCookie = (res, token) => {
 };
 
 const clearRefreshCookie = (res) => {
+  res.clearCookie('refresh_token', refreshCookieOptions);
   res.clearCookie('refresh_token', {
-    path: refreshCookieOptions.path,
-    sameSite: refreshCookieOptions.sameSite,
-    secure: refreshCookieOptions.secure,
-    httpOnly: refreshCookieOptions.httpOnly,
+    ...refreshCookieOptions,
+    path: '/auth',
   });
 };
 

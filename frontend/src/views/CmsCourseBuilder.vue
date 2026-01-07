@@ -1,5 +1,29 @@
 <template>
   <div class="page cms-page">
+    <Dialog
+      v-model:visible="confirmDialogVisible"
+      header="Confirm deletion"
+      modal
+      :style="{ width: '28rem' }"
+      :closable="!confirmDialogLoading"
+    >
+      <p class="confirm-message" v-if="confirmDialogMessage">{{ confirmDialogMessage }}</p>
+      <template #footer>
+        <Button
+          label="Cancel"
+          class="p-button-text"
+          :disabled="confirmDialogLoading"
+          @click="closeConfirmDialog"
+        />
+        <Button
+          :label="confirmDialogActionLabel"
+          severity="danger"
+          :loading="confirmDialogLoading"
+          :disabled="confirmDialogLoading"
+          @click="confirmDeletion"
+        />
+      </template>
+    </Dialog>
     <div v-if="loadingCourse" class="loading-panel">
       <Skeleton height="3rem" class="mb-2" />
       <Skeleton height="40vh" />
@@ -73,6 +97,15 @@
                     @click="toggleModulePublish(module)"
                   />
                   <Button
+                    icon="pi pi-trash"
+                    class="p-button-text p-button-danger"
+                    severity="danger"
+                    :loading="deletingModuleId === module.id"
+                    :disabled="deletingModuleId === module.id"
+                    @click.stop="openDeleteModuleDialog(module)"
+                    aria-label="Delete module"
+                  />
+                  <Button
                     icon="pi pi-arrow-up"
                     class="p-button-text"
                     :disabled="index === 0"
@@ -128,6 +161,15 @@
                     :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
                     class="p-button-text"
                     @click="toggleLessonPublish(lesson)"
+                  />
+                  <Button
+                    icon="pi pi-trash"
+                    class="p-button-text p-button-danger"
+                    severity="danger"
+                    :loading="deletingLessonId === lesson.id"
+                    :disabled="deletingLessonId === lesson.id"
+                    @click.stop="openDeleteLessonDialog(lesson)"
+                    aria-label="Delete lesson"
                   />
                   <Button
                     icon="pi pi-arrow-up"
@@ -212,6 +254,15 @@
                   class="p-button-text"
                   @click="openGroupTeacherDialog(data.id)"
                   aria-label="Manage teachers"
+                />
+                <Button
+                  icon="pi pi-trash"
+                  class="p-button-text p-button-danger"
+                  severity="danger"
+                  :loading="deletingGroupId === data.id"
+                  :disabled="deletingGroupId === data.id"
+                  @click.stop="openDeleteGroupDialog(data)"
+                  aria-label="Delete group"
                 />
               </template>
             </Column>
@@ -754,11 +805,13 @@ import {
   updateModule,
   publishModule,
   unpublishModule,
+  deleteModule,
   getLessons,
   createLesson,
   updateLesson,
   publishLesson,
   unpublishLesson,
+  deleteLesson,
   getAvailableStudents,
   getCourseEnrollments,
   removeEnrollment,
@@ -772,6 +825,7 @@ import {
   getGroupTeachers,
   addGroupTeacher,
   removeGroupTeacher,
+  deleteGroup,
 } from '../api/groups';
 import {
   listUsers,
@@ -823,6 +877,131 @@ const lessonForm = ref({
   videoUrl: '',
 });
 const savingLesson = ref(false);
+const deletingModuleId = ref(null);
+const deletingLessonId = ref(null);
+const deletingGroupId = ref(null);
+const confirmDialogVisible = ref(false);
+const confirmDialogLoading = ref(false);
+const confirmDialogPayload = ref({
+  type: null,
+  id: null,
+  title: '',
+  isPublished: false,
+});
+const resetConfirmPayload = () => {
+  confirmDialogPayload.value = {
+    type: null,
+    id: null,
+    title: '',
+    isPublished: false,
+  };
+};
+const closeConfirmDialog = () => {
+  confirmDialogVisible.value = false;
+  confirmDialogLoading.value = false;
+  resetConfirmPayload();
+};
+const openConfirmDialog = ({ type, id, title = '', isPublished = false }) => {
+  confirmDialogPayload.value = {
+    type: type || null,
+    id: id || null,
+    title: title || '',
+    isPublished: Boolean(isPublished),
+  };
+  confirmDialogVisible.value = true;
+};
+const openDeleteModuleDialog = (module) => {
+  if (!module?.id) return;
+  openConfirmDialog({
+    type: 'module',
+    id: module.id,
+    title: module.title,
+    isPublished: module.is_published,
+  });
+};
+const openDeleteLessonDialog = (lesson) => {
+  if (!lesson?.id) return;
+  openConfirmDialog({
+    type: 'lesson',
+    id: lesson.id,
+    title: lesson.title,
+    isPublished: lesson.is_published,
+  });
+};
+const openDeleteGroupDialog = (group) => {
+  if (!group?.id) return;
+  openConfirmDialog({
+    type: 'group',
+    id: group.id,
+    title: group.name,
+  });
+};
+const confirmDeletion = async () => {
+  const payload = confirmDialogPayload.value;
+  if (!payload.type || !payload.id) {
+    closeConfirmDialog();
+    return;
+  }
+  confirmDialogLoading.value = true;
+  try {
+    switch (payload.type) {
+      case 'module':
+        deletingModuleId.value = payload.id;
+        await deleteModule(payload.id);
+        toast.add({
+          severity: 'success',
+          summary: 'Module deleted',
+          detail: 'Module removed',
+          life: 2500,
+        });
+        await loadModules();
+        closeConfirmDialog();
+        break;
+      case 'lesson':
+        deletingLessonId.value = payload.id;
+        await deleteLesson(payload.id);
+        toast.add({
+          severity: 'success',
+          summary: 'Lesson deleted',
+          detail: 'Lesson removed',
+          life: 2500,
+        });
+        if (selectedModuleId.value) {
+          await loadLessons(selectedModuleId.value);
+        } else {
+          lessons.value = [];
+        }
+        closeConfirmDialog();
+        break;
+      case 'group':
+        deletingGroupId.value = payload.id;
+        await deleteGroup(payload.id);
+        toast.add({
+          severity: 'success',
+          summary: 'Group deleted',
+          detail: 'Group removed',
+          life: 2500,
+        });
+        await refreshGroupList();
+        closeConfirmDialog();
+        break;
+      default:
+        break;
+    }
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err?.response?.data?.error || 'Failed to delete item',
+      life: 3500,
+    });
+  } finally {
+    confirmDialogLoading.value = false;
+    deletingModuleId.value = null;
+    deletingLessonId.value = null;
+    deletingGroupId.value = null;
+  }
+};
 
 const enrollments = ref([]);
 const enrollmentFilter = ref('');
@@ -954,6 +1133,45 @@ const liveSessionGroupOptions = computed(() =>
     value: group.id,
   })),
 );
+const confirmDialogMessage = computed(() => {
+  const { type, title, isPublished } = confirmDialogPayload.value;
+  if (!type) {
+    return '';
+  }
+  const labelMap = {
+    module: 'This module',
+    lesson: 'This lesson',
+    group: 'This group',
+  };
+  const itemLabel = title ? `“${title}”` : labelMap[type] || 'This item';
+  switch (type) {
+    case 'module':
+      return `${itemLabel} — Are you sure you want to delete this module? All its lessons will be removed.${
+        isPublished ? ' It is currently published and deleting it will affect learners immediately.' : ''
+      }`;
+    case 'lesson':
+      return `${itemLabel} — Are you sure you want to delete this lesson?${
+        isPublished ? ' It is published and this action will impact students right away.' : ''
+      }`;
+    case 'group':
+      return `${itemLabel} — Are you sure you want to delete this group? Students and sessions will be affected.`;
+    default:
+      return '';
+  }
+});
+const confirmDialogActionLabel = computed(() => {
+  const { type } = confirmDialogPayload.value;
+  switch (type) {
+    case 'module':
+      return 'Delete module';
+    case 'lesson':
+      return 'Delete lesson';
+    case 'group':
+      return 'Delete group';
+    default:
+      return 'Delete';
+  }
+});
 
 const defaultLiveSessionRange = () => {
   const fromDate = new Date();
@@ -2426,6 +2644,11 @@ init();
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.confirm-message {
+  margin: 0 0 1rem;
+  line-height: 1.35;
 }
 
 .loading-panel {

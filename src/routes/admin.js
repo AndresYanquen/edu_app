@@ -405,6 +405,18 @@ const buildUserResponse = (user) => ({
   global_roles: user.global_roles || [],
 });
 
+const COURSE_LEVEL_SELECT =
+  'id, code, label, is_active, created_at';
+const normalizeLevelCode = (value) => (value || '').trim().toUpperCase();
+
+const fetchCourseLevel = async (levelId) => {
+  const { rows } = await pool.query(
+    `SELECT ${COURSE_LEVEL_SELECT} FROM course_levels WHERE id = $1 LIMIT 1`,
+    [levelId],
+  );
+  return rows[0] || null;
+};
+
 router.post('/users/:id/deactivate', requireAdmin, async (req, res) => {
   const userId = req.params.id;
   const client = await pool.connect();
@@ -910,6 +922,131 @@ router.delete('/courses/:courseId/staff/:userId/role/:roleName', requireAdmin, a
   } catch (err) {
     console.error('Failed to remove course staff role', err);
     return res.status(500).json({ error: 'Failed to remove staff role' });
+  }
+});
+
+router.get('/course-levels', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT ${COURSE_LEVEL_SELECT}
+        FROM course_levels
+        ORDER BY code ASC
+      `,
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('Failed to list course levels', err);
+    return res.status(500).json({ error: 'Failed to load course levels' });
+  }
+});
+
+router.post('/course-levels', requireAdmin, async (req, res) => {
+  const payload = req.body || {};
+  const codeRaw = payload.code || '';
+  const labelRaw = payload.label || '';
+  const code = normalizeLevelCode(codeRaw);
+  const label = (labelRaw || '').trim();
+  const isActive =
+    payload.is_active === undefined || payload.is_active === null
+      ? true
+      : Boolean(payload.is_active);
+
+  if (!code) {
+    return res.status(400).json({ error: 'Level code is required' });
+  }
+  if (!label) {
+    return res.status(400).json({ error: 'Level label is required' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+        INSERT INTO course_levels (code, label, is_active)
+        VALUES ($1, $2, $3)
+        RETURNING ${COURSE_LEVEL_SELECT}
+      `,
+      [code, label, isActive],
+    );
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Level code already exists' });
+    }
+    console.error('Failed to create course level', err);
+    return res.status(500).json({ error: 'Failed to create course level' });
+  }
+});
+
+router.patch('/course-levels/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const payload = req.body || {};
+  const updates = [];
+  const values = [];
+
+  if (payload.label !== undefined) {
+    const label = (payload.label || '').trim();
+    if (!label) {
+      return res.status(400).json({ error: 'Label cannot be empty' });
+    }
+    values.push(label);
+    updates.push(`label = $${values.length}`);
+  }
+
+  if (payload.is_active !== undefined) {
+    values.push(Boolean(payload.is_active));
+    updates.push(`is_active = $${values.length}`);
+  }
+
+  if (!updates.length) {
+    return res.status(400).json({ error: 'No updates provided' });
+  }
+
+  try {
+    values.push(id);
+    const { rows } = await pool.query(
+      `
+        UPDATE course_levels
+        SET ${updates.join(', ')}, updated_at = now()
+        WHERE id = $${values.length}
+        RETURNING ${COURSE_LEVEL_SELECT}
+      `,
+      values,
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Course level not found' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to update course level', err);
+    return res.status(500).json({ error: 'Failed to update course level' });
+  }
+});
+
+router.delete('/course-levels/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows: usageRows } = await pool.query(
+      `
+        SELECT 1
+        FROM courses
+        WHERE level_id = $1
+        LIMIT 1
+      `,
+      [id],
+    );
+    if (usageRows.length) {
+      return res.status(409).json({ error: 'Level is in use by courses' });
+    }
+
+    const deleteRes = await pool.query('DELETE FROM course_levels WHERE id = $1', [id]);
+    if (!deleteRes.rowCount) {
+      return res.status(404).json({ error: 'Course level not found' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to delete course level', err);
+    return res.status(500).json({ error: 'Failed to delete course level' });
   }
 });
 

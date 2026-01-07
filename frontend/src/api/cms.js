@@ -8,6 +8,7 @@ export const createCourse = (payload) => unwrap(api.post('/cms/courses', payload
 export const updateCourse = (id, payload) => unwrap(api.patch(`/cms/courses/${id}`, payload));
 export const publishCourse = (id) => unwrap(api.post(`/cms/courses/${id}/publish`));
 export const unpublishCourse = (id) => unwrap(api.post(`/cms/courses/${id}/unpublish`));
+export const deleteCourse = (courseId) => unwrap(api.delete(`/cms/courses/${courseId}`));
 export const assignInstructors = (id, payload) =>
   unwrap(api.post(`/cms/courses/${id}/instructors`, payload));
 
@@ -18,6 +19,7 @@ export const updateModule = (moduleId, payload) =>
   unwrap(api.patch(`/cms/modules/${moduleId}`, payload));
 export const publishModule = (moduleId) => unwrap(api.post(`/cms/modules/${moduleId}/publish`));
 export const unpublishModule = (moduleId) => unwrap(api.post(`/cms/modules/${moduleId}/unpublish`));
+export const deleteModule = (moduleId) => unwrap(api.delete(`/cms/modules/${moduleId}`));
 
 export const getLessons = (moduleId) => unwrap(api.get(`/cms/modules/${moduleId}/lessons`));
 export const createLesson = (moduleId, payload) =>
@@ -28,6 +30,7 @@ export const publishLesson = (lessonId) =>
   unwrap(api.post(`/cms/lessons/${lessonId}/publish`));
 export const unpublishLesson = (lessonId) =>
   unwrap(api.post(`/cms/lessons/${lessonId}/unpublish`));
+export const deleteLesson = (lessonId) => unwrap(api.delete(`/cms/lessons/${lessonId}`));
 
 export const getLessonQuiz = (lessonId) => unwrap(api.get(`/cms/lessons/${lessonId}/quiz`));
 export const createQuizQuestion = (lessonId, payload) =>
@@ -60,6 +63,7 @@ export const bulkEnrollStudents = (courseId, payload) =>
 export const getGroupTeachers = groupsApi.getGroupTeachers;
 export const addGroupTeacher = groupsApi.addGroupTeacher;
 export const removeGroupTeacher = groupsApi.removeGroupTeacher;
+export const listCourseLevels = () => unwrap(api.get('/cms/course-levels'));
 
 export default {
   listCourses,
@@ -73,11 +77,13 @@ export default {
   updateModule,
   publishModule,
   unpublishModule,
+  deleteModule,
   getLessons,
   createLesson,
   updateLesson,
   publishLesson,
   unpublishLesson,
+  deleteLesson,
   getLessonQuiz,
   createQuizQuestion,
   updateQuizQuestion,
@@ -95,4 +101,5 @@ export default {
   getGroupTeachers,
   addGroupTeacher,
   removeGroupTeacher,
+  listCourseLevels,
 };

@@ -37,6 +37,51 @@ const COURSE_STAFF_ROLES = ['instructor', 'content_editor', 'enrollment_manager'
 
 const router = express.Router();
 
+const COURSE_LEVEL_JOIN = 'LEFT JOIN course_levels cl ON cl.id = c.level_id';
+const FALLBACK_LEVEL_CODE = 'A1';
+const COURSE_SELECT = `
+  c.id,
+  c.title,
+  c.description,
+  COALESCE(cl.code, '${FALLBACK_LEVEL_CODE}') AS level,
+  c.owner_user_id,
+  c.is_published,
+  c.published_at,
+  c.created_at,
+  c.updated_at
+`;
+
+const normalizeLevelCode = (value) => (value || '').trim().toUpperCase();
+
+const resolveLevelId = async (code) => {
+  const normalized = normalizeLevelCode(code);
+  const { rows } = await pool.query(
+    'SELECT id FROM course_levels WHERE code = $1 LIMIT 1',
+    [normalized || FALLBACK_LEVEL_CODE],
+  );
+  if (rows.length) {
+    return rows[0].id;
+  }
+  const fallbackRows = await pool.query(
+    'SELECT id FROM course_levels ORDER BY created_at ASC LIMIT 1',
+  );
+  return fallbackRows.rows[0]?.id || null;
+};
+
+const fetchCourseById = async (courseId) => {
+  const { rows } = await pool.query(
+    `
+      SELECT ${COURSE_SELECT}
+      FROM courses c
+      ${COURSE_LEVEL_JOIN}
+      WHERE c.id = $1
+      LIMIT 1
+    `,
+    [courseId],
+  );
+  return rows[0] || null;
+};
+
 router.use(auth);
 router.use(requireGlobalRoleAny(CMS_GLOBAL_ROLES));
 
@@ -146,25 +191,18 @@ router.get('/courses', async (req, res) => {
     if (isAdmin) {
       ({ rows } = await pool.query(
         `
-          SELECT id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
-          FROM courses
-          ORDER BY created_at DESC
+          SELECT ${COURSE_SELECT}
+          FROM courses c
+          ${COURSE_LEVEL_JOIN}
+          ORDER BY c.created_at DESC
         `,
       ));
     } else {
       ({ rows } = await pool.query(
         `
-          SELECT DISTINCT
-            c.id,
-            c.title,
-            c.description,
-            c.level,
-            c.owner_user_id,
-            c.is_published,
-            c.published_at,
-            c.created_at,
-            c.updated_at
+          SELECT DISTINCT ${COURSE_SELECT}
           FROM courses c
+          ${COURSE_LEVEL_JOIN}
           LEFT JOIN course_user_roles cur
             ON cur.course_id = c.id AND cur.user_id = $1
           LEFT JOIN roles r ON r.id = cur.role_id
@@ -182,6 +220,22 @@ router.get('/courses', async (req, res) => {
   }
 });
 
+router.get('/course-levels', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT id, code, label, is_active
+        FROM course_levels
+        ORDER BY code ASC
+      `,
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('Failed to list CMS course levels', err);
+    return res.status(500).json({ error: 'Failed to load course levels' });
+  }
+});
+
 router.post('/courses', async (req, res) => {
   const parsed = courseCreateSchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -191,17 +245,21 @@ router.post('/courses', async (req, res) => {
   try {
     const isAdmin = hasGlobalRole(req.user, 'admin');
     const ownerUserId = isAdmin ? parsed.data.ownerUserId || null : req.user.id;
+    const levelId = await resolveLevelId(parsed.data.level);
 
     const { rows } = await pool.query(
       `
-        INSERT INTO courses (title, description, level, owner_user_id, is_published)
+        INSERT INTO courses (title, description, level_id, owner_user_id, is_published)
         VALUES ($1, $2, $3, $4, false)
-        RETURNING id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
+        RETURNING id
       `,
-      [parsed.data.title, parsed.data.description || null, parsed.data.level || null, ownerUserId],
+      [parsed.data.title, parsed.data.description || null, levelId, ownerUserId],
     );
-
-    return res.status(201).json(rows[0]);
+    if (!rows.length) {
+      throw new Error('Failed to return created course');
+    }
+    const course = await fetchCourseById(rows[0].id);
+    return res.status(201).json(course);
   } catch (err) {
     console.error('Failed to create course', err);
     return res.status(500).json({ error: 'Failed to create course' });
@@ -231,8 +289,12 @@ router.patch(
       updates.push(`description = $${values.length}`);
     }
     if (parsed.data.level !== undefined) {
-      values.push(parsed.data.level);
-      updates.push(`level = $${values.length}`);
+      const levelId = await resolveLevelId(parsed.data.level);
+      if (!levelId) {
+        return res.status(400).json({ error: 'Invalid level code' });
+      }
+      values.push(levelId);
+      updates.push(`level_id = $${values.length}`);
     }
 
     if (hasGlobalRole(req.user, 'admin') && parsed.data.ownerUserId !== undefined) {
@@ -248,7 +310,7 @@ router.patch(
       UPDATE courses
       SET ${updates.join(', ')}, updated_at = now()
       WHERE id = $${values.length + 1}
-      RETURNING id, title, description, level, owner_user_id, is_published, published_at, created_at, updated_at
+      RETURNING id
     `;
     values.push(courseId);
 
@@ -256,8 +318,8 @@ router.patch(
     if (!rows.length) {
       return res.status(404).json({ error: 'Course not found' });
     }
-
-    return res.json(rows[0]);
+    const course = await fetchCourseById(courseId);
+    return res.json(course);
   } catch (err) {
     console.error('Failed to update course', err);
     return res.status(500).json({ error: 'Failed to update course' });
@@ -298,6 +360,31 @@ router.post(
   '/courses/:id/unpublish',
   requireCourseContentRole(resolveCourseIdFromParam('id')),
   (req, res) => toggleCoursePublish(req, res, false),
+);
+
+router.delete(
+  '/courses/:id',
+  requireCourseContentRole(resolveCourseIdFromParam('id')),
+  async (req, res) => {
+    const courseId = req.params.id;
+    try {
+      const { rows } = await pool.query(
+        `
+          DELETE FROM courses
+          WHERE id = $1
+          RETURNING id
+        `,
+        [courseId],
+      );
+      if (!rows.length) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error('Failed to delete course', err);
+      return res.status(500).json({ error: 'Failed to delete course' });
+    }
+  },
 );
 
 router.post('/courses/:id/instructors', async (req, res) => {
@@ -689,6 +776,31 @@ router.post(
   '/lessons/:id/unpublish',
   requireCourseContentRole(resolveCourseIdFromLessonParam('id')),
   (req, res) => toggleLessonPublish(req, res, false),
+);
+
+router.delete(
+  '/lessons/:id',
+  requireCourseContentRole(resolveCourseIdFromLessonParam('id')),
+  async (req, res) => {
+    const lessonId = req.params.id;
+    try {
+      const { rows } = await pool.query(
+        `
+          DELETE FROM lessons
+          WHERE id = $1
+          RETURNING id
+        `,
+        [lessonId],
+      );
+      if (!rows.length) {
+        return res.status(404).json({ error: 'Lesson not found' });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error('Failed to delete lesson', err);
+      return res.status(500).json({ error: 'Failed to delete lesson' });
+    }
+  },
 );
 
 router.get(

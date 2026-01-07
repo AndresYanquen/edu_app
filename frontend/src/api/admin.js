@@ -14,6 +14,11 @@ export const bulkInviteUsers = (formData) =>
     }),
   );
 
+export const listCourseLevels = () => unwrap(api.get('/admin/course-levels'));
+export const createCourseLevel = (payload) => unwrap(api.post('/admin/course-levels', payload));
+export const updateCourseLevel = (id, payload) => unwrap(api.patch(`/admin/course-levels/${id}`, payload));
+export const deleteCourseLevel = (id) => unwrap(api.delete(`/admin/course-levels/${id}`));
+
 export const getCourseStaff = (courseId) => unwrap(api.get(`/admin/courses/${courseId}/staff`));
 export const assignCourseStaff = (courseId, payload) =>
   unwrap(api.post(`/admin/courses/${courseId}/staff`, payload));
@@ -30,4 +35,8 @@ export default {
   getCourseStaff,
   assignCourseStaff,
   removeCourseStaffRole,
+  listCourseLevels,
+  createCourseLevel,
+  updateCourseLevel,
+  deleteCourseLevel,
 };
