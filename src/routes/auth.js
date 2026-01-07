@@ -29,10 +29,10 @@ const setRefreshCookie = (res, token) => {
 
 const clearRefreshCookie = (res) => {
   res.clearCookie('refresh_token', refreshCookieOptions);
-  res.clearCookie('refresh_token', {
-    ...refreshCookieOptions,
-    path: '/auth',
-  });
+  // res.clearCookie('refresh_token', {
+  //   ...refreshCookieOptions,
+  //   path: '/',
+  // });
 };
 
 const insertRefreshToken = async (userId, hash, expiresAt) => {

@@ -42,23 +42,25 @@
                 :value="course.is_published ? 'Published' : 'Draft'"
                 :severity="course.is_published ? 'success' : 'warning'"
               />
-              <Button
-                :label="course.is_published ? 'Unpublish' : 'Publish'"
-                :icon="course.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                @click="toggleCoursePublish"
-              />
-              <Button
-                label="Preview as student"
-                icon="pi pi-external-link"
-                class="p-button-text"
-                @click="previewStudent"
-              />
+              <div v-if="hasContentAccess" class="header-buttons">
+                <Button
+                  :label="course.is_published ? 'Unpublish' : 'Publish'"
+                  :icon="course.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
+                  @click="toggleCoursePublish"
+                />
+                <Button
+                  label="Preview as student"
+                  icon="pi pi-external-link"
+                  class="p-button-text"
+                  @click="previewStudent"
+                />
+              </div>
             </div>
           </div>
         </template>
       </Card>
 
-      <div class="builder-grid">
+      <div class="builder-grid" v-if="hasContentAccess">
         <Card class="modules-card">
           <template #title>
             <div class="section-header">
@@ -333,7 +335,7 @@
         </template>
       </Card>
 
-      <Card v-if="canManageEnrollments" class="group-teachers-card">
+      <Card v-if="canManageEnrollments && hasContentAccess" class="group-teachers-card">
         <template #title>
           <div class="section-header">
             <div>
@@ -851,8 +853,17 @@ const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.isAdmin);
-const canManageEnrollments = computed(() =>
-  auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'enrollment_manager'])),
+const hasContentAccess = computed(
+  () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'content_editor'])),
+);
+const isEnrollmentManagerRole = computed(
+  () => auth.hasAnyRole && auth.hasAnyRole(['enrollment_manager']),
+);
+const enrollmentOnlyMode = computed(
+  () => isEnrollmentManagerRole.value && !hasContentAccess.value,
+);
+const canManageEnrollments = computed(
+  () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'enrollment_manager'])),
 );
 
 const courseId = route.params.id;
@@ -1798,6 +1809,11 @@ const submitGroupForm = async () => {
 };
 
 const loadCourse = async () => {
+  if (!auth.isAuthenticated || auth.isLoggingOut) {
+    course.value = null;
+    loadingCourse.value = false;
+    return;
+  }
   loadingCourse.value = true;
   try {
     const list = await listCourses();
@@ -1810,6 +1826,13 @@ const loadCourse = async () => {
 };
 
 const loadModules = async () => {
+  if (!hasContentAccess.value) {
+    modules.value = [];
+    selectedModuleId.value = null;
+    lessons.value = [];
+    loadingModules.value = false;
+    return;
+  }
   loadingModules.value = true;
   try {
     modules.value = await getModules(courseId);
@@ -1829,6 +1852,11 @@ const loadModules = async () => {
 };
 
 const loadLessons = async (moduleId) => {
+  if (!hasContentAccess.value) {
+    lessons.value = [];
+    loadingLessons.value = false;
+    return;
+  }
   loadingLessons.value = true;
   try {
     lessons.value = await getLessons(moduleId);
@@ -2540,11 +2568,20 @@ onBeforeUnmount(() => {
 });
 
 const init = async () => {
+  if (!auth.isAuthenticated || auth.isLoggingOut) {
+    return;
+  }
   await loadCourse();
+
+  if (enrollmentOnlyMode.value) {
+    await Promise.all([refreshGroupList(), loadEnrollmentData(), loadAvailableStudents()]);
+    return;
+  }
+
   if (course.value) {
     const tasks = [loadModules()];
     if (canManageEnrollments.value) {
-      tasks.push(loadEnrollmentData(), loadAvailableStudents());
+      tasks.push(loadEnrollmentData(), loadAvailableStudents(), refreshGroupList());
     }
     await Promise.all(tasks);
   }

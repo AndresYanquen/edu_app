@@ -39,7 +39,8 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !isAuthRoute
+      !isAuthRoute &&
+      !auth.isLoggingOut
     ) {
       originalRequest._retry = true
 

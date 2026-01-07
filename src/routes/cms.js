@@ -6,6 +6,7 @@ const {
   requireCourseRoleAny,
   hasGlobalRole,
   hasCourseRole,
+  resolveCourseId
 } = require('../middleware/roles');
 const {
   courseCreateSchema,
@@ -29,6 +30,7 @@ const {
   uuidSchema,
 } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
+const { ensureCourseExists } = require('../utils/roleService');
 
 const CMS_GLOBAL_ROLES = ['admin', 'instructor', 'content_editor', 'enrollment_manager'];
 const CONTENT_ROLES = ['instructor', 'content_editor'];
@@ -115,6 +117,36 @@ const resolveCourseIdFromGroupParam = (param) => async (req) => {
 };
 
 const requireCourseContentRole = (resolver) => requireCourseRoleAny(resolver, CONTENT_ROLES);
+const requireCourseRoleOrAdmin = (resolver, roles = []) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      console.log(resolver)
+      const resolved = await resolveCourseId(resolver, req);
+      const courseId = typeof resolved === 'string' ? resolved : resolved?.courseId;
+      if (!courseId) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+
+      const course = await ensureCourseExists(courseId);
+      if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+
+      if (hasGlobalRole(req.user, 'admin')) {
+        req.courseContext = { ...(req.courseContext || {}), courseId: course.id, course };
+        return next();
+      }
+
+      return requireCourseRoleAny(resolver, roles)(req, res, next);
+    } catch (err) {
+      console.error('Course role verification failed', err);
+      return res.status(500).json({ error: 'Failed to verify course permissions' });
+    }
+  };
+};
 const requireCourseEnrollmentRole = (resolver) =>
   requireCourseRoleAny(resolver, ENROLLMENT_ROLES);
 
@@ -1263,7 +1295,7 @@ router.delete('/quiz/options/:id', async (req, res) => {
 
 router.get(
   '/courses/:courseId/groups',
-  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  requireCourseRoleOrAdmin(resolveCourseIdFromParam('courseId'), ['enrollment_manager', 'admin']),
   async (req, res) => {
     const courseId = req.courseContext.courseId;
 
@@ -1294,7 +1326,7 @@ router.get(
 
 router.post(
   '/courses/:courseId/groups',
-  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  requireCourseRoleOrAdmin(resolveCourseIdFromParam('courseId'), ['enrollment_manager', 'admin']),
   async (req, res) => {
     const courseId = req.courseContext.courseId;
     const parsed = groupCreateSchema.safeParse(req.body || {});
@@ -1529,7 +1561,7 @@ router.delete(
 
 router.get(
   '/courses/:courseId/students/available',
-  requireCourseContentRole(resolveCourseIdFromParam('courseId')),
+  requireCourseRoleOrAdmin(resolveCourseIdFromParam('courseId'), ['enrollment_manager', 'admin']),
   async (req, res) => {
     const courseId = req.courseContext.courseId;
 

@@ -71,6 +71,7 @@ export const useAuthStore = defineStore('auth', {
     globalRoles: [],
     loading: false,
     initialized: false,
+    isLoggingOut: false,
   }),
 
   getters: {
@@ -139,6 +140,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async logout() {
+      this.isLoggingOut = true
       try {
         await api.post('/auth/logout')
       } catch (err) {
@@ -149,6 +151,7 @@ export const useAuthStore = defineStore('auth', {
         this.globalRoles = []
         clearCachedProfile()
         this.initialized = true
+        this.isLoggingOut = false
       }
     },
 

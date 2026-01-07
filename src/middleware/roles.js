@@ -130,4 +130,5 @@ module.exports = {
   getCourseIdFromLesson,
   getCourseIdFromGroup,
   getCourseIdFromModule,
+  resolveCourseId
 };

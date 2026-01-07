@@ -97,7 +97,7 @@
                     size="small"
                     class="p-button-text"
                     :loading="deletingCourseId === data.id"
-                    :disabled="deletingCourseId === data.id"
+                    :disabled="deletingCourseId === data.id || isEnrollmentManager"
                     @click.stop="openDeleteCourseDialog(data)"
                     aria-label="Delete course"
                   />
@@ -168,10 +168,12 @@ import {
   deleteCourse,
   listCourseLevels,
 } from '../api/cms';
+import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
 const toast = useToast();
 const { t } = useI18n();
+const auth = useAuthStore();
 
 const courses = ref([]);
 const loading = ref(true);
@@ -194,6 +196,8 @@ const dialogTitle = computed(() =>
     ? t('cmsCourses.dialog.createHeader')
     : t('cmsCourses.dialog.editHeader'),
 );
+
+const isEnrollmentManager = computed(() => auth.hasRole('enrollment_manager'));
 
 const loadCourses = async () => {
   loading.value = true;
