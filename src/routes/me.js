@@ -4,6 +4,9 @@ const auth = require('../middleware/auth');
 const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
 const { getGlobalRolesForUser } = require('../utils/roleService');
 
+const FALLBACK_LEVEL_CODE = 'A1';
+const COURSE_LEVEL_JOIN = 'LEFT JOIN course_levels cl ON cl.id = c.level_id';
+
 const router = express.Router();
 
 router.use(auth);
@@ -61,13 +64,14 @@ router.get('/courses', requireGlobalRoleAny(['student', 'instructor', 'admin']),
             c.id,
             c.title,
             c.description,
-            c.level,
+            COALESCE(cl.code, '${FALLBACK_LEVEL_CODE}') AS level,
             c.status,
             c.owner_user_id,
             c.is_published,
             c.published_at
           FROM enrollments e
           JOIN courses c ON c.id = e.course_id
+          ${COURSE_LEVEL_JOIN}
           WHERE e.user_id = $1 AND c.is_published = true
           ORDER BY c.title
         `,
@@ -80,12 +84,13 @@ router.get('/courses', requireGlobalRoleAny(['student', 'instructor', 'admin']),
             c.id,
             c.title,
             c.description,
-            c.level,
+            COALESCE(cl.code, '${FALLBACK_LEVEL_CODE}') AS level,
             c.status,
             c.owner_user_id
           FROM courses c
           LEFT JOIN groups g ON g.course_id = c.id
           LEFT JOIN group_teachers gt ON gt.group_id = g.id
+          ${COURSE_LEVEL_JOIN}
           WHERE c.owner_user_id = $1 OR gt.user_id = $1
           ORDER BY c.title
         `,
@@ -98,10 +103,11 @@ router.get('/courses', requireGlobalRoleAny(['student', 'instructor', 'admin']),
             c.id,
             c.title,
             c.description,
-            c.level,
+            COALESCE(cl.code, '${FALLBACK_LEVEL_CODE}') AS level,
             c.status,
             c.owner_user_id
           FROM courses c
+          ${COURSE_LEVEL_JOIN}
           ORDER BY c.created_at DESC
         `,
       ));

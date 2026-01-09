@@ -5,6 +5,9 @@ const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
 const { uuidSchema, formatZodError } = require('../utils/validators');
 const { canEditCourse } = require('../utils/cmsPermissions');
 
+const FALLBACK_LEVEL_CODE = 'A1';
+const COURSE_LEVEL_JOIN = 'LEFT JOIN course_levels cl ON cl.id = c.level_id';
+
 const router = express.Router();
 
 router.use(auth);
@@ -25,7 +28,7 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
           c.id,
           c.title,
           c.description,
-          c.level,
+          COALESCE(cl.code, '${FALLBACK_LEVEL_CODE}') AS level,
           c.status,
           c.owner_user_id,
           c.created_at,
@@ -33,6 +36,7 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
           c.is_published,
           c.updated_at
         FROM courses c
+        ${COURSE_LEVEL_JOIN}
         WHERE c.id = $1
         LIMIT 1
       `,
