@@ -6,6 +6,8 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .DS_Store
+# Local upload cache
+uploads
 # Keep environment variables out of version control
 .env
 .env.local

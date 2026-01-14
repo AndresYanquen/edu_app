@@ -151,9 +151,12 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
           SELECT
             la.lesson_id,
             a.id,
-            a.path,
+            a.kind,
             a.mime_type,
+            a.original_name,
             a.size_bytes,
+            a.storage_path,
+            a.public_url,
             a.storage_provider
           FROM lesson_assets la
           JOIN assets a ON a.id = la.asset_id
@@ -169,9 +172,12 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
         }
         assetsByLesson[row.lesson_id].push({
           id: row.id,
-          path: row.path,
+          kind: row.kind,
           mimeType: row.mime_type,
+          originalName: row.original_name,
           sizeBytes: row.size_bytes,
+          storagePath: row.storage_path,
+          url: row.public_url,
           storageProvider: row.storage_provider,
         });
       }

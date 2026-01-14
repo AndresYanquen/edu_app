@@ -1,5 +1,7 @@
 const dotenv = require('dotenv');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const morgan = require('morgan');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -19,6 +21,10 @@ const adminRoutes = require('./routes/admin');
 const swaggerDocument = require('./docs/openapi');
 
 const app = express();
+
+const uploadsDir = path.join(process.cwd(), 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 
 const corsOptions = {
   origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',

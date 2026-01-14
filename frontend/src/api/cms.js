@@ -46,6 +46,11 @@ export const updateQuizOption = (optionId, payload) =>
 export const deleteQuizOption = (optionId) =>
   unwrap(api.delete(`/cms/quiz/options/${optionId}`));
 
+export const listAssets = (params = {}) =>
+  unwrap(api.get('/cms/assets', { params }));
+
+export const registerAsset = (payload) => unwrap(api.post('/cms/assets/register', payload));
+
 export const getCourseGroups = groupsApi.listCourseGroups;
 export const getAvailableStudents = (courseId) =>
   unwrap(api.get(`/cms/courses/${courseId}/students/available`));
@@ -102,4 +107,6 @@ export default {
   addGroupTeacher,
   removeGroupTeacher,
   listCourseLevels,
+  listAssets,
+  registerAsset,
 };

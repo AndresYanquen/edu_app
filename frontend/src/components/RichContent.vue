@@ -24,6 +24,16 @@
         <img :src="block.url" alt="" loading="lazy" referrerpolicy="no-referrer" />
       </div>
 
+      <div v-else-if="block.type === 'audio'" class="audio-wrapper">
+        <audio controls :src="block.url" preload="none"></audio>
+      </div>
+
+      <p v-else-if="block.type === 'file'" class="rich-file">
+        <a :href="block.url" target="_blank" rel="noopener noreferrer nofollow">
+          {{ block.label || 'Download file' }}
+        </a>
+      </p>
+
       <p v-else-if="block.type === 'link'" class="rich-link">
         <a :href="block.url" target="_blank" rel="noopener noreferrer nofollow">{{ block.url }}</a>
       </p>
@@ -100,9 +110,24 @@ const paragraphs = (value) =>
   height: auto;
 }
 
+.audio-wrapper {
+  width: 100%;
+}
+
+.audio-wrapper audio {
+  width: 100%;
+  border-radius: 0.75rem;
+}
+
 .rich-link a {
   color: #2563eb;
   text-decoration: underline;
   word-break: break-all;
+}
+
+.rich-file a {
+  color: #0f172a;
+  text-decoration: none;
+  font-weight: 600;
 }
 </style>

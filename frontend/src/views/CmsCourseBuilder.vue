@@ -2229,11 +2229,15 @@ const submitLesson = async () => {
   }
   savingLesson.value = true;
   try {
-    await createLesson(selectedModuleId.value, {
+    const payload = {
       title: lessonForm.value.title,
       estimatedMinutes: lessonForm.value.estimatedMinutes,
-      videoUrl: lessonForm.value.videoUrl,
-    });
+    };
+    const trimmedVideoUrl = lessonForm.value.videoUrl?.trim();
+    if (trimmedVideoUrl) {
+      payload.videoUrl = trimmedVideoUrl;
+    }
+    await createLesson(selectedModuleId.value, payload);
     toast.add({ severity: 'success', summary: 'Lesson created', life: 2000 });
     showLessonDialog.value = false;
     await loadLessons(selectedModuleId.value);

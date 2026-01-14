@@ -27,6 +27,15 @@ Minimal single-academy backend built with Node.js, Express, PostgreSQL, and Knex
 - `POST /cms/courses/:courseId/enroll/:studentId/group` – change/remove the student’s group.
 - `DELETE /cms/courses/:courseId/enroll/:studentId` – remove student enrollment (and related group rows).
 
+## CMS Asset Uploads
+- `POST /cms/assets/upload` – upload staff assets via `multipart/form-data` (field name `file`, max 25 MB). Accepts PNG/JPG/WEBP/GIF images, MP3/WAV/OGG/MP4/M4A audio, and PDF docs. Returns `{ assetId, kind, mimeType, originalName, sizeBytes, url }` where `url` is the public `/uploads/<filename>` path.
+- `GET /cms/assets?kind=<image|audio|file>&search=<term>` – list the most recent 50 assets uploaded by the current user, optionally filtered by kind or filename (case-insensitive partial match). Each item contains `assetId`, `kind`, `mimeType`, `originalName`, `sizeBytes`, `storagePath`, `url`, and `createdAt`.
+- `POST /cms/assets/register` – after uploading directly to Supabase storage, send `{ storagePath, publicUrl, kind, mimeType, originalName, sizeBytes, storageProvider }` to persist metadata in the `assets` table (the response mirrors the stored row).
+
+Lesson uploads now push files directly to an optional `VITE_SUPABASE_BUCKET` (default `lesson-assets`) instead of `/uploads/`, so set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and the bucket name in the frontend `.env` when you want Supabase storage.
+
+Uploaded files are persisted under `uploads/` and served publicly by the API at `/uploads/<filename>` so the stored `url` can be embedded directly in lesson content.
+
 ## Authentication
 `POST /auth/login` returns a short-lived access token (store in memory) and sets an httpOnly `refresh_token` cookie. Use `Authorization: Bearer <accessToken>` for protected calls, `POST /auth/refresh` to rotate tokens, and `POST /auth/logout` to revoke + clear the cookie.
 

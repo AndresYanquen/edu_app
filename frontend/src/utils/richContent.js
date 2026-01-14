@@ -1,6 +1,8 @@
 const URL_REGEX = /(https?:\/\/[^\s<]+)/gi;
 const TRAILING_PUNCTUATION = /[),.;!?]+$/;
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.m4a'];
+const FILE_EXTENSION_LABELS = new Map([['.pdf', 'PDF']]);
 const EMBED_HOSTS = new Set([
   'www.youtube.com',
   'youtube.com',
@@ -19,9 +21,23 @@ const splitTextBlock = (blocks, value) => {
   blocks.push({ type: 'text', value });
 };
 
+const normalizeUrlForExtension = (rawUrl) => rawUrl.split(/[?#]/)[0].toLowerCase();
+
 const isImageUrl = (rawUrl) => {
   const lower = rawUrl.split('?')[0].toLowerCase();
   return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
+const isAudioUrl = (rawUrl) => {
+  const lower = normalizeUrlForExtension(rawUrl);
+  return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
+const getFileLabel = (rawUrl) => {
+  const lower = normalizeUrlForExtension(rawUrl);
+  const extensionMatch = lower.match(/\.[a-z0-9]+$/);
+  if (!extensionMatch) return null;
+  return FILE_EXTENSION_LABELS.get(extensionMatch[0]) || null;
 };
 
 const buildYoutubeEmbed = (parsed) => {
@@ -74,6 +90,10 @@ const classifyUrl = (rawUrl) => {
       return { type: 'image', url: rawUrl };
     }
 
+    if (isAudioUrl(rawUrl)) {
+      return { type: 'audio', url: rawUrl };
+    }
+
     if (host.includes('youtube.com') || host === 'youtu.be' || host.endsWith('.youtu.be')) {
       const embedUrl = buildYoutubeEmbed(parsed);
       if (embedUrl && EMBED_HOSTS.has(new URL(embedUrl).hostname)) {
@@ -108,6 +128,11 @@ const classifyUrl = (rawUrl) => {
           embedUrl,
         };
       }
+    }
+
+    const fileLabel = getFileLabel(rawUrl);
+    if (fileLabel) {
+      return { type: 'file', url: rawUrl, label: fileLabel };
     }
 
     const allowed = EMBED_HOSTS.has(host);

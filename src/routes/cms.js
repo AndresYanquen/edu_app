@@ -1,4 +1,8 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+const { randomUUID } = require('crypto');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const {
@@ -36,8 +40,71 @@ const CMS_GLOBAL_ROLES = ['admin', 'instructor', 'content_editor', 'enrollment_m
 const CONTENT_ROLES = ['instructor', 'content_editor'];
 const ENROLLMENT_ROLES = ['instructor', 'enrollment_manager'];
 const COURSE_STAFF_ROLES = ['instructor', 'content_editor', 'enrollment_manager'];
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
+const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const AUDIO_MIME_TYPES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/x-m4a'];
+const DOCUMENT_MIME_TYPES = ['application/pdf'];
+const ALLOWED_MIME_TYPES = new Set([
+  ...IMAGE_MIME_TYPES,
+  ...AUDIO_MIME_TYPES,
+  ...DOCUMENT_MIME_TYPES,
+]);
+const ASSET_LIST_LIMIT = 50;
+const ASSET_KIND_VALUES = new Set(['image', 'audio', 'file']);
+
+const sanitizeAssetKind = (kind) =>
+  ASSET_KIND_VALUES.has(kind) ? kind : 'file';
+
 
 const router = express.Router();
+
+const uploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const extension = path.extname(file.originalname) || '';
+    cb(null, `${randomUUID()}${extension}`);
+  },
+});
+
+const uploadAsset = multer({
+  storage: uploadStorage,
+  limits: { fileSize: MAX_UPLOAD_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new Error('Unsupported file type'), false);
+  },
+}).single('file');
+
+const runUploadFile = (req, res) =>
+  new Promise((resolve, reject) => {
+    uploadAsset(req, res, (err) => {
+      if (err) {
+        return reject(err);
+      }
+      resolve();
+    });
+  });
+
+const getAssetKind = (mimeType) => {
+  if (IMAGE_MIME_TYPES.includes(mimeType)) {
+    return 'image';
+  }
+  if (AUDIO_MIME_TYPES.includes(mimeType)) {
+    return 'audio';
+  }
+  if (DOCUMENT_MIME_TYPES.includes(mimeType)) {
+    return 'file';
+  }
+  return null;
+};
+
+const isValidAssetKind = (kind) => ['image', 'audio', 'file'].includes(kind);
 
 const COURSE_LEVEL_JOIN = 'LEFT JOIN course_levels cl ON cl.id = c.level_id';
 const FALLBACK_LEVEL_CODE = 'A1';
@@ -1996,5 +2063,191 @@ router.post(
     }
   },
 );
+
+router.post('/assets/upload', async (req, res) => {
+  try {
+    await runUploadFile(req, res);
+  } catch (err) {
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ error: err.message || 'File upload failed' });
+    }
+    return res.status(400).json({ error: err.message || 'File upload failed' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'File is required' });
+  }
+
+  const kind = getAssetKind(req.file.mimetype);
+  if (!kind) {
+    return res.status(400).json({ error: 'Unsupported file type' });
+  }
+
+  const filename = req.file.filename;
+  const storagePath = path.posix.join('uploads', filename);
+  const publicUrl = `/uploads/${filename}`;
+
+  try {
+    const insertRes = await pool.query(
+      `
+        INSERT INTO assets (
+          uploaded_by_user_id,
+          storage_provider,
+          storage_path,
+          public_url,
+          kind,
+          mime_type,
+          original_name,
+          size_bytes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+      `,
+      [
+        req.user.id,
+        'local',
+        storagePath,
+        publicUrl,
+        kind,
+        req.file.mimetype,
+        req.file.originalname,
+        req.file.size,
+      ],
+    );
+    const asset = insertRes.rows[0];
+    return res.status(201).json({
+      assetId: asset.id,
+      kind,
+      mimeType: req.file.mimetype,
+      originalName: req.file.originalname,
+      sizeBytes: req.file.size,
+      url: publicUrl,
+    });
+  } catch (err) {
+    console.error('Failed to save asset metadata', err);
+    return res.status(500).json({ error: 'Failed to save asset metadata' });
+  }
+});
+
+router.post('/assets/register', async (req, res) => {
+  const {
+    storagePath,
+    publicUrl,
+    kind,
+    mimeType,
+    originalName,
+    sizeBytes,
+    storageProvider = 'supabase',
+  } = req.body || {};
+
+  if (!storagePath || !publicUrl || !kind || !mimeType || !sizeBytes) {
+    return res.status(400).json({ error: 'Missing asset metadata' });
+  }
+
+  const sanitizedKind = sanitizeAssetKind(kind);
+  try {
+    const { rows } = await pool.query(
+      `
+        INSERT INTO assets (
+          uploaded_by_user_id,
+          storage_provider,
+          storage_path,
+          public_url,
+          kind,
+          mime_type,
+          original_name,
+          size_bytes
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        RETURNING id, storage_path, public_url, kind, mime_type, original_name, size_bytes, created_at
+      `,
+      [
+        req.user.id,
+        storageProvider,
+        storagePath,
+        publicUrl,
+        sanitizedKind,
+        mimeType,
+        originalName || null,
+        sizeBytes,
+      ],
+    );
+    const asset = rows[0];
+    return res.status(201).json({
+      assetId: asset.id,
+      storagePath: asset.storage_path,
+      publicUrl: asset.public_url,
+      kind: asset.kind,
+      mimeType: asset.mime_type,
+      originalName: asset.original_name,
+      sizeBytes: asset.size_bytes,
+      createdAt: asset.created_at,
+      url: asset.public_url,
+    });
+  } catch (err) {
+    console.error('Failed to register asset metadata', err);
+    return res.status(500).json({ error: 'Failed to register asset metadata' });
+  }
+});
+
+router.get('/assets', async (req, res) => {
+  const queryKind = typeof req.query.kind === 'string' ? req.query.kind : null;
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+  if (queryKind && !isValidAssetKind(queryKind)) {
+    return res.status(400).json({ error: 'Invalid asset kind filter' });
+  }
+
+  const filters = ['uploaded_by_user_id = $1'];
+  const values = [req.user.id];
+
+  if (queryKind) {
+    values.push(queryKind);
+    filters.push(`kind = $${values.length}`);
+  }
+
+  if (search) {
+    values.push(`%${search}%`);
+    filters.push(`original_name ILIKE $${values.length}`);
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT
+          id,
+          kind,
+          mime_type,
+          original_name,
+          size_bytes,
+          storage_path,
+          public_url,
+          created_at
+        FROM assets
+        WHERE ${filters.join(' AND ')}
+        ORDER BY created_at DESC
+        LIMIT ${ASSET_LIST_LIMIT}
+      `,
+      values,
+    );
+
+    return res.json(
+      rows.map((asset) => ({
+        assetId: asset.id,
+        kind: asset.kind,
+        mimeType: asset.mime_type,
+        originalName: asset.original_name,
+        sizeBytes: asset.size_bytes,
+        storagePath: asset.storage_path,
+        url: asset.public_url,
+        createdAt: asset.created_at,
+      })),
+    );
+  } catch (err) {
+    console.error('Failed to list assets', err);
+    return res.status(500).json({ error: 'Failed to list assets' });
+  }
+});
 
 module.exports = router;

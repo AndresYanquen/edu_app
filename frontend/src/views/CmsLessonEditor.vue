@@ -39,6 +39,7 @@
               <div class="dialog-field">
                 <label>Content</label>
                 <textarea
+                  ref="contentTextarea"
                   v-model="form.contentMarkdown"
                   rows="10"
                   class="p-inputtextarea p-inputtext"
@@ -47,6 +48,108 @@
                 <small class="muted">
                   Paste YouTube, Vimeo, Loom, or image URLs on their own lines to render rich embeds.
                 </small>
+                <div class="assets-section">
+                  <div class="assets-header">
+                    <div>
+                      <h4>Assets (images/audio/files)</h4>
+                      <small class="muted">
+                        Upload staff media and insert the public URL directly into markdown.
+                      </small>
+                    </div>
+                    <Button
+                      class="p-button-text"
+                      icon="pi pi-paperclip"
+                      :label="assetsSectionExpanded ? 'Hide assets' : 'Show assets'"
+                      @click="assetsSectionExpanded = !assetsSectionExpanded"
+                    />
+                  </div>
+                  <div v-if="assetsSectionExpanded" class="assets-body">
+                    <div class="asset-input-row">
+                      <input
+                        ref="assetInputRef"
+                        type="file"
+                        :accept="ASSET_ACCEPT"
+                        :disabled="assetsUploadProcessing"
+                        @change="handleSelectedAsset"
+                      />
+                      <Button
+                        label="Upload"
+                        icon="pi pi-upload"
+                        :disabled="!selectedAssetFile || assetsUploadProcessing"
+                        @click="uploadSelectedAsset"
+                      />
+                    </div>
+                    <div class="assets-hint">
+                      <small>
+                        Accepts PNG/JPG/WEBP/GIF images, MP3/WAV/OGG/MP4/M4A audio, or PDF files (max 25 MB).
+                      </small>
+                    </div>
+                    <div class="assets-filters">
+                      <Dropdown
+                        v-model="assetsKindFilter"
+                        :options="assetKindOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                      />
+                      <InputText
+                        v-model="assetsSearchTerm"
+                        placeholder="Search by filename"
+                        @keyup.enter="refreshAssets"
+                      />
+                      <Button
+                        label="Refresh"
+                        icon="pi pi-refresh"
+                        class="p-button-text"
+                        @click="refreshAssets"
+                      />
+                    </div>
+                    <div v-if="assetsUploadProcessing" class="assets-loading">
+                      Uploading file...
+                    </div>
+                    <div v-if="assetsLoading" class="assets-loading">
+                      <Skeleton height="2rem" class="mb-2" />
+                      <Skeleton height="2rem" />
+                    </div>
+                    <div v-else-if="assetsError" class="assets-error">
+                      Unable to load assets.
+                      <Button
+                        label="Retry"
+                        class="p-button-text"
+                        icon="pi pi-refresh"
+                        @click="refreshAssets"
+                      />
+                    </div>
+                    <div v-else-if="recentAssets.length" class="assets-list">
+                      <div v-for="asset in recentAssets" :key="asset.assetId" class="asset-row">
+                        <div class="asset-info">
+                          <div class="asset-title">{{ asset.originalName || asset.assetId }}</div>
+                          <div class="asset-meta">
+                            <Tag :value="asset.kind" severity="info" />
+                            <small>{{ asset.mimeType }}</small>
+                            <small>{{ formatTimestamp(asset.createdAt) }}</small>
+                          </div>
+                        </div>
+                        <div class="asset-actions">
+                          <Button
+                            icon="pi pi-copy"
+                            class="p-button-text"
+                            label="Copy"
+                            @click="copyAssetUrl(asset.url)"
+                          />
+                          <Button
+                            icon="pi pi-arrow-down"
+                            class="p-button-text"
+                            label="Insert"
+                            @click="handleInsertAsset(asset)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else class="assets-empty">
+                      No assets uploaded yet.
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="form-actions">
                 <Button
@@ -249,10 +352,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RichContent from '../components/RichContent.vue';
+import { supabaseClient } from '../lib/supabase';
 import {
   getLessons,
   updateLesson,
@@ -265,6 +369,8 @@ import {
   createQuizOption,
   updateQuizOption,
   deleteQuizOption,
+  listAssets,
+  registerAsset,
 } from '../api/cms';
 
 const route = useRoute();
@@ -284,6 +390,27 @@ const form = ref({
   videoUrl: '',
   estimatedMinutes: 0,
 });
+const contentTextarea = ref(null);
+const assetsSectionExpanded = ref(true);
+const assetsLoaded = ref(false);
+const assetsLoading = ref(false);
+const assetsError = ref(false);
+const recentAssets = ref([]);
+const assetsKindFilter = ref(null);
+const assetsSearchTerm = ref('');
+const assetsUploadProcessing = ref(false);
+const MAX_ASSET_FILE_SIZE = 25 * 1024 * 1024;
+const ASSET_ACCEPT = 'image/*,audio/*,application/pdf';
+const assetKindOptions = [
+  { label: 'All kinds', value: null },
+  { label: 'Images', value: 'image' },
+  { label: 'Audio', value: 'audio' },
+  { label: 'Files', value: 'file' },
+];
+const selectedAssetFile = ref(null);
+const assetInputRef = ref(null);
+const SUPABASE_BUCKET = import.meta.env.VITE_SUPABASE_BUCKET || 'lesson-assets';
+const SUPABASE_PATH_PREFIX = import.meta.env.VITE_SUPABASE_PATH_PREFIX || 'cms-assets';
 
 const quizQuestions = ref([]);
 const quizLoading = ref(true);
@@ -374,6 +501,197 @@ const loadLesson = async () => {
   }
 };
 
+const insertAssetUrl = (url) => {
+  const textarea = contentTextarea.value;
+  const current = form.value.contentMarkdown || '';
+  let newContent = current;
+  let cursorPosition = current.length;
+
+  if (textarea && typeof textarea.selectionStart === 'number' && typeof textarea.selectionEnd === 'number') {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = current.slice(0, start);
+    const after = current.slice(end);
+    const prefix = before && !before.endsWith('\n') ? `${before}\n` : before;
+    const suffix = after && !after.startsWith('\n') ? `\n${after}` : after;
+    newContent = `${prefix || ''}${url}${suffix || ''}`;
+    cursorPosition = (prefix || '').length + url.length;
+  } else {
+    const base = current && !current.endsWith('\n') ? `${current}\n` : current;
+    newContent = `${base || ''}${url}\n`;
+    cursorPosition = newContent.length;
+  }
+
+  form.value.contentMarkdown = newContent;
+  nextTick(() => {
+    if (textarea) {
+      textarea.focus();
+      textarea.setSelectionRange(cursorPosition, cursorPosition);
+    }
+  });
+};
+
+const handleSelectedAsset = (event) => {
+  if (event?.target?.files?.length) {
+    selectedAssetFile.value = event.target.files[0];
+  } else {
+    selectedAssetFile.value = null;
+  }
+};
+
+const clearSelectedAsset = () => {
+  selectedAssetFile.value = null;
+  if (assetInputRef.value) {
+    assetInputRef.value.value = '';
+  }
+};
+
+const determineAssetKind = (mimeType) => {
+  if (mimeType?.startsWith('image/')) return 'image';
+  if (mimeType?.startsWith('audio/')) return 'audio';
+  return 'file';
+};
+
+const uploadSelectedAsset = async () => {
+  if (!selectedAssetFile.value) return;
+  assetsUploadProcessing.value = true;
+  const storagePath = `${SUPABASE_PATH_PREFIX}/${crypto.randomUUID()}-${selectedAssetFile.value.name}`;
+  try {
+    const { error: uploadError } = await supabaseClient.storage
+      .from(SUPABASE_BUCKET)
+      .upload(storagePath, selectedAssetFile.value, { upsert: false });
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicData } = supabaseClient.storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(storagePath);
+    const url = publicData?.publicUrl;
+
+    const payload = {
+      storagePath: `${SUPABASE_BUCKET}/${storagePath}`,
+      publicUrl: url,
+      kind: determineAssetKind(selectedAssetFile.value.type),
+      mimeType: selectedAssetFile.value.type,
+      originalName: selectedAssetFile.value.name,
+      sizeBytes: selectedAssetFile.value.size,
+      storageProvider: 'supabase',
+    };
+
+    const registered = await registerAsset(payload);
+    toast.add({
+      severity: 'success',
+      summary: 'Uploaded',
+      detail: 'File uploaded and URL inserted',
+      life: 2500,
+    });
+    insertAssetUrl(registered.url);
+    const entry = {
+      assetId: registered.assetId,
+      kind: registered.kind,
+      mimeType: registered.mimeType,
+      originalName: registered.originalName,
+      sizeBytes: registered.sizeBytes,
+      storagePath: registered.storagePath,
+      url: registered.url,
+      createdAt: registered.createdAt || new Date().toISOString(),
+    };
+    recentAssets.value = [entry, ...recentAssets.value.filter((item) => item.assetId !== entry.assetId)];
+    if (recentAssets.value.length > 50) {
+      recentAssets.value.pop();
+    }
+    assetsLoaded.value = true;
+    clearSelectedAsset();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Upload failed',
+      detail: err?.message || err?.response?.data?.error || 'Failed to upload asset',
+      life: 3500,
+    });
+  } finally {
+    assetsUploadProcessing.value = false;
+  }
+};
+
+const loadAssetsList = async (force = false) => {
+  if (!force && assetsLoaded.value && recentAssets.value.length) {
+    return;
+  }
+  if (assetsLoading.value) {
+    return;
+  }
+  assetsLoading.value = true;
+  assetsError.value = false;
+  try {
+    const params = {};
+    if (assetsKindFilter.value) {
+      params.kind = assetsKindFilter.value;
+    }
+    if (assetsSearchTerm.value) {
+      params.search = assetsSearchTerm.value;
+    }
+    const rows = await listAssets(params);
+    recentAssets.value = rows;
+    assetsLoaded.value = true;
+  } catch (err) {
+    assetsError.value = true;
+    toast.add({
+      severity: 'error',
+      summary: 'Assets error',
+      detail: err?.response?.data?.error || 'Failed to load assets',
+      life: 3000,
+    });
+  } finally {
+    assetsLoading.value = false;
+  }
+};
+
+const refreshAssets = () => loadAssetsList(true);
+
+const handleInsertAsset = (asset) => {
+  if (!asset?.url) return;
+  insertAssetUrl(asset.url);
+  toast.add({
+    severity: 'success',
+    summary: 'Inserted',
+    detail: 'Asset URL inserted into content',
+    life: 2000,
+  });
+};
+
+const copyAssetUrl = async (url) => {
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.add({
+      severity: 'success',
+      summary: 'Copied',
+      detail: 'Asset URL copied to clipboard',
+      life: 2000,
+    });
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Copy failed',
+      detail: 'Unable to copy URL',
+      life: 3000,
+    });
+  }
+};
+
+watch(
+  () => assetsSectionExpanded.value,
+  (expanded) => {
+    if (expanded) {
+      loadAssetsList();
+    }
+  },
+);
+
+const formatTimestamp = (value) => (value ? new Date(value).toLocaleString() : '');
+
 const loadQuiz = async () => {
   quizLoading.value = true;
   quizError.value = false;
@@ -410,13 +728,17 @@ const saveLesson = async () => {
   }
   saving.value = true;
   try {
-    await updateLesson(lessonId, {
+    const payload = {
       title: form.value.title,
       contentText: form.value.contentMarkdown,
       contentMarkdown: form.value.contentMarkdown,
-      videoUrl: form.value.videoUrl,
       estimatedMinutes: form.value.estimatedMinutes,
-    });
+    };
+    const trimmedVideoUrl = form.value.videoUrl?.trim();
+    if (trimmedVideoUrl) {
+      payload.videoUrl = trimmedVideoUrl;
+    }
+    await updateLesson(lessonId, payload);
     toast.add({ severity: 'success', summary: 'Lesson saved', life: 2000 });
     await loadLesson();
   } catch (err) {
@@ -715,6 +1037,101 @@ loadQuiz();
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.assets-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  background: #f8fafc;
+}
+
+.assets-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.assets-body {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.assets-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.assets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.asset-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.asset-input-row input[type='file'] {
+  flex: 1;
+}
+
+.asset-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.asset-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.asset-title {
+  font-weight: 600;
+}
+
+.asset-meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.asset-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.assets-loading {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.assets-error {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.assets-empty {
+  color: #475569;
+  font-size: 0.9rem;
 }
 
 .dialog-field {
