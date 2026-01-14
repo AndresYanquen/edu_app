@@ -38,13 +38,11 @@
               </div>
               <div class="dialog-field">
                 <label>Content</label>
-                <textarea
-                  ref="contentTextarea"
+                <Editor
                   v-model="form.contentMarkdown"
-                  rows="10"
+                  :style="{ minHeight: '220px' }"
                   class="p-inputtextarea p-inputtext"
-                  placeholder="Write lesson notes and paste media links"
-                ></textarea>
+                />
                 <small class="muted">
                   Paste YouTube, Vimeo, Loom, or image URLs on their own lines to render rich embeds.
                 </small>
@@ -352,10 +350,11 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RichContent from '../components/RichContent.vue';
+import Editor from 'primevue/editor';
 import { supabaseClient } from '../lib/supabase';
 import {
   getLessons,
@@ -390,7 +389,6 @@ const form = ref({
   videoUrl: '',
   estimatedMinutes: 0,
 });
-const contentTextarea = ref(null);
 const assetsSectionExpanded = ref(true);
 const assetsLoaded = ref(false);
 const assetsLoading = ref(false);
@@ -502,33 +500,9 @@ const loadLesson = async () => {
 };
 
 const insertAssetUrl = (url) => {
-  const textarea = contentTextarea.value;
   const current = form.value.contentMarkdown || '';
-  let newContent = current;
-  let cursorPosition = current.length;
-
-  if (textarea && typeof textarea.selectionStart === 'number' && typeof textarea.selectionEnd === 'number') {
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const before = current.slice(0, start);
-    const after = current.slice(end);
-    const prefix = before && !before.endsWith('\n') ? `${before}\n` : before;
-    const suffix = after && !after.startsWith('\n') ? `\n${after}` : after;
-    newContent = `${prefix || ''}${url}${suffix || ''}`;
-    cursorPosition = (prefix || '').length + url.length;
-  } else {
-    const base = current && !current.endsWith('\n') ? `${current}\n` : current;
-    newContent = `${base || ''}${url}\n`;
-    cursorPosition = newContent.length;
-  }
-
-  form.value.contentMarkdown = newContent;
-  nextTick(() => {
-    if (textarea) {
-      textarea.focus();
-      textarea.setSelectionRange(cursorPosition, cursorPosition);
-    }
-  });
+  const prefix = current && !current.endsWith('\n') ? `${current}\n` : current;
+  form.value.contentMarkdown = `${prefix || ''}${url}\n`;
 };
 
 const handleSelectedAsset = (event) => {
