@@ -230,7 +230,8 @@ const lesson = ref(null);
 const assets = ref([]);
 
 const richContentSource = computed(() => {
-  const source = lesson.value?.contentMarkdown || lesson.value?.contentText || '';
+  const source =
+    lesson.value?.contentHtml || lesson.value?.contentMarkdown || lesson.value?.contentText || '';
   return source ? source.trim() : '';
 });
 const hasRichContent = computed(() => richContentSource.value.length > 0);
@@ -290,6 +291,7 @@ const normalizeLesson = (rawLesson) => ({
   title: rawLesson.title,
   contentType: rawLesson.contentType ?? rawLesson.content_type ?? null,
   contentMarkdown: rawLesson.contentMarkdown ?? rawLesson.content_markdown ?? null,
+  contentHtml: rawLesson.contentHtml ?? rawLesson.content_html ?? null,
   contentText: rawLesson.contentText ?? rawLesson.content_text ?? null,
   contentUrl: rawLesson.contentUrl ?? rawLesson.content_url ?? null,
   videoUrl: rawLesson.videoUrl ?? rawLesson.video_url ?? null,

@@ -223,6 +223,22 @@ const lessonBody = (text) =>
   text +
   ' This lesson includes starter projects, guided steps, and review questions to help students practice in an English-first environment.';
 
+const markdownToHtml = (value) => {
+  if (!value) {
+    return null;
+  }
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) =>
+      `<p>${paragraph
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length)
+        .join('<br/>')}</p>`,
+    )
+    .join('');
+};
+
 const lessonEntry = ({
   id,
   moduleId,
@@ -232,6 +248,7 @@ const lessonEntry = ({
   videoUrl = null,
   contentUrl = null,
   contentMarkdown = null,
+  contentHtml = null,
   durationMinutes = 30,
 }) => ({
   id,
@@ -242,6 +259,7 @@ const lessonEntry = ({
   content_type: contentType,
   content_text: lessonBody(title),
   content_markdown: contentMarkdown || null,
+  content_html: contentHtml ?? markdownToHtml(contentMarkdown),
   video_url: videoUrl,
   content_url: contentUrl,
   embed_html: null,

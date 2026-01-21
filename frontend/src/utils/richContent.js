@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify';
+
 const URL_REGEX = /(https?:\/\/[^\s<]+)/gi;
 const TRAILING_PUNCTUATION = /[),.;!?]+$/;
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
@@ -13,6 +15,64 @@ const EMBED_HOSTS = new Set([
   'www.loom.com',
   'loom.com',
 ]);
+
+const sanitizeContent = (value) => {
+  if (!value) return '';
+  return DOMPurify.sanitize(value);
+};
+
+const htmlToPlainText = (value) => {
+  if (!value) return '';
+  if (typeof window === 'undefined' || typeof window.DOMParser === 'undefined') {
+    return value;
+  }
+  const parser = new window.DOMParser();
+  const doc = parser.parseFromString(value, 'text/html');
+  const segments = [];
+
+  const pushText = (text) => {
+    if (!text) return;
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    if (normalized) {
+      segments.push(normalized);
+    }
+  };
+
+  const pushUrl = (url) => {
+    if (!url) return;
+    segments.push(`\n${url}\n`);
+  };
+
+  const extractNode = (node) => {
+    if (!node) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(node.nodeValue);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+    const tag = node.tagName.toUpperCase();
+    if ((tag === 'IMG' || tag === 'IMAGE') && node.getAttribute('src')) {
+      pushUrl(node.getAttribute('src'));
+    } else if (tag === 'AUDIO' && node.getAttribute('src')) {
+      pushUrl(node.getAttribute('src'));
+    } else if (tag === 'A' && node.getAttribute('href')) {
+      pushUrl(node.getAttribute('href'));
+    }
+    node.childNodes.forEach((child) => extractNode(child));
+    if (['P', 'DIV', 'BR', 'SECTION', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3'].includes(tag)) {
+      segments.push('\n');
+    }
+  };
+
+  extractNode(doc.body);
+  return segments
+    .join(' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+};
 
 const splitTextBlock = (blocks, value) => {
   if (!value) {
@@ -146,15 +206,19 @@ const classifyUrl = (rawUrl) => {
 };
 
 export const parseRichContent = (text = '') => {
-  if (!text) return [];
+  const sanitized = sanitizeContent(text);
+  const normalized = htmlToPlainText(sanitized || text);
+  if (!normalized) {
+    return [];
+  }
   const blocks = [];
   let lastIndex = 0;
 
-  const matches = [...text.matchAll(URL_REGEX)];
+  const matches = [...normalized.matchAll(URL_REGEX)];
   matches.forEach((match) => {
     const matchStart = match.index || 0;
     if (matchStart > lastIndex) {
-      splitTextBlock(blocks, text.slice(lastIndex, matchStart));
+      splitTextBlock(blocks, normalized.slice(lastIndex, matchStart));
     }
 
     let url = match[0];
@@ -176,8 +240,8 @@ export const parseRichContent = (text = '') => {
     lastIndex = matchStart + (url.length || 0);
   });
 
-  if (lastIndex < text.length) {
-    splitTextBlock(blocks, text.slice(lastIndex));
+  if (lastIndex < normalized.length) {
+    splitTextBlock(blocks, normalized.slice(lastIndex));
   }
 
   return blocks.filter((block) => {

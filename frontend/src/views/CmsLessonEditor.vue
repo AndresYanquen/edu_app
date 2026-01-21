@@ -13,14 +13,17 @@
           />
         </div>
       </template>
+
       <template #content>
         <div v-if="loading">
           <Skeleton height="3rem" class="mb-2" />
           <Skeleton height="10rem" />
         </div>
+
         <div v-else-if="!lesson">
           <div class="empty-state">Lesson not found.</div>
         </div>
+
         <div v-else>
           <div class="lesson-grid">
             <div class="lesson-form">
@@ -28,24 +31,28 @@
                 <label>Title</label>
                 <InputText v-model="form.title" placeholder="Lesson title" />
               </div>
+
               <div class="dialog-field">
                 <label>Estimated minutes</label>
                 <InputNumber v-model="form.estimatedMinutes" showButtons />
               </div>
+
               <div class="dialog-field">
                 <label>Video URL</label>
                 <InputText v-model="form.videoUrl" placeholder="https://..." />
               </div>
+
               <div class="dialog-field">
                 <label>Content</label>
-                <Editor
-                  v-model="form.contentMarkdown"
-                  :style="{ minHeight: '220px' }"
-                  class="p-inputtextarea p-inputtext"
-                />
+
+                <div class="quill-wrapper">
+                  <div ref="quillEl" class="quill-editor" />
+                </div>
+
                 <small class="muted">
                   Paste YouTube, Vimeo, Loom, or image URLs on their own lines to render rich embeds.
                 </small>
+
                 <div class="assets-section">
                   <div class="assets-header">
                     <div>
@@ -61,27 +68,71 @@
                       @click="assetsSectionExpanded = !assetsSectionExpanded"
                     />
                   </div>
+
                   <div v-if="assetsSectionExpanded" class="assets-body">
-                    <div class="asset-input-row">
-                      <input
-                        ref="assetInputRef"
-                        type="file"
-                        :accept="ASSET_ACCEPT"
+                    <div class="asset-upload-actions">
+                      <Button
+                        label="Insert Image"
+                        icon="pi pi-image"
                         :disabled="assetsUploadProcessing"
-                        @change="handleSelectedAsset"
+                        class="p-button-outlined"
+                        @click="triggerAssetInput('image')"
                       />
                       <Button
-                        label="Upload"
-                        icon="pi pi-upload"
-                        :disabled="!selectedAssetFile || assetsUploadProcessing"
-                        @click="uploadSelectedAsset"
+                        label="Insert Audio"
+                        icon="pi pi-music"
+                        :disabled="assetsUploadProcessing"
+                        class="p-button-outlined"
+                        @click="triggerAssetInput('audio')"
+                      />
+                      <Button
+                        label="Attach File"
+                        icon="pi pi-paperclip"
+                        :disabled="assetsUploadProcessing"
+                        class="p-button-outlined"
+                        @click="triggerAssetInput('file')"
                       />
                     </div>
+
+                    <div v-if="assetsUploadProcessing" class="assets-uploading">
+                      <ProgressSpinner strokeWidth="5" class="assets-spinner" />
+                      <small>Uploading asset…</small>
+                    </div>
+
                     <div class="assets-hint">
                       <small>
-                        Accepts PNG/JPG/WEBP/GIF images, MP3/WAV/OGG/MP4/M4A audio, or PDF files (max 25 MB).
+                        Supported PNG/JPG/WEBP/GIF images, MP3/WAV/OGG/MP4/M4A audio, and PDF/DOC/DOCX/PPT/PPTX/ZIP (max
+                        25 MB).
                       </small>
                     </div>
+
+                    <div class="asset-file-inputs">
+                      <input
+                        ref="imageInputRef"
+                        type="file"
+                        accept="image/*"
+                        class="asset-file-input"
+                        style="display: none"
+                        @change="handleAssetSelection('image', $event)"
+                      />
+                      <input
+                        ref="audioInputRef"
+                        type="file"
+                        accept="audio/*"
+                        class="asset-file-input"
+                        style="display: none"
+                        @change="handleAssetSelection('audio', $event)"
+                      />
+                      <input
+                        ref="fileInputRef"
+                        type="file"
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
+                        class="asset-file-input"
+                        style="display: none"
+                        @change="handleAssetSelection('file', $event)"
+                      />
+                    </div>
+
                     <div class="assets-filters">
                       <Dropdown
                         v-model="assetsKindFilter"
@@ -101,13 +152,16 @@
                         @click="refreshAssets"
                       />
                     </div>
+
                     <div v-if="assetsUploadProcessing" class="assets-loading">
                       Uploading file...
                     </div>
+
                     <div v-if="assetsLoading" class="assets-loading">
                       <Skeleton height="2rem" class="mb-2" />
                       <Skeleton height="2rem" />
                     </div>
+
                     <div v-else-if="assetsError" class="assets-error">
                       Unable to load assets.
                       <Button
@@ -117,6 +171,7 @@
                         @click="refreshAssets"
                       />
                     </div>
+
                     <div v-else-if="recentAssets.length" class="assets-list">
                       <div v-for="asset in recentAssets" :key="asset.assetId" class="asset-row">
                         <div class="asset-info">
@@ -143,12 +198,14 @@
                         </div>
                       </div>
                     </div>
+
                     <div v-else class="assets-empty">
                       No assets uploaded yet.
                     </div>
                   </div>
                 </div>
               </div>
+
               <div class="form-actions">
                 <Button
                   :label="lesson.is_published ? 'Unpublish' : 'Publish'"
@@ -159,24 +216,24 @@
                 <Button label="Save" :loading="saving" @click="saveLesson" />
               </div>
             </div>
+
             <div class="lesson-preview">
               <h4>Preview</h4>
-              <RichContent v-if="form.contentMarkdown" :content="form.contentMarkdown" />
+              <RichContent v-if="form.contentHtml" :content="form.contentHtml" />
               <p v-else class="empty-state">Content will appear here.</p>
               <div v-if="form.videoUrl" class="preview-actions">
                 <Button label="Open video" icon="pi pi-external-link" class="p-button-text" @click="openVideo" />
               </div>
             </div>
           </div>
+
           <Divider />
+
           <div class="quiz-section">
             <div class="quiz-header">
               <div>
                 <h3>Quiz</h3>
-                <Tag
-                  :value="quizReady ? 'Ready' : 'Needs setup'"
-                  :severity="quizReady ? 'success' : 'warning'"
-                />
+                <Tag :value="quizReady ? 'Ready' : 'Needs setup'" :severity="quizReady ? 'success' : 'warning'" />
               </div>
               <div class="quiz-actions">
                 <Button
@@ -189,18 +246,22 @@
                 <Button label="Add question" icon="pi pi-plus" @click="openQuestionDialog()" />
               </div>
             </div>
+
             <div v-if="quizLoading">
               <Skeleton height="3rem" class="mb-2" />
               <Skeleton height="3rem" class="mb-2" />
             </div>
+
             <div v-else-if="quizError" class="empty-state">
               Failed to load quiz.
               <Button label="Retry" class="p-button-text" @click="loadQuiz" />
             </div>
+
             <div v-else>
               <div v-if="!quizQuestions.length" class="empty-state">
                 No questions yet. Click "Add question" to start.
               </div>
+
               <div v-else>
                 <DataTable
                   :value="sortedQuestions"
@@ -247,6 +308,7 @@
                   </Column>
                 </DataTable>
               </div>
+
               <div v-if="selectedQuestion" class="options-panel">
                 <div class="options-header">
                   <div>
@@ -262,9 +324,11 @@
                     />
                   </div>
                 </div>
+
                 <p v-if="selectedQuestion.questionType === 'true_false'" class="muted">
                   True/False options are generated automatically. Use "Mark correct" to set the answer.
                 </p>
+
                 <DataTable :value="sortedOptions" dataKey="id">
                   <Column field="orderIndex" header="#" style="width: 4rem" />
                   <Column field="optionText" header="Option" />
@@ -350,12 +414,15 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RichContent from '../components/RichContent.vue';
-import Editor from 'primevue/editor';
-import { supabaseClient } from '../lib/supabase';
+import Quill from 'quill';
+import 'quill/dist/quill.snow.css';
+import ProgressSpinner from 'primevue/progressspinner';
+import { uploadLessonAsset } from '../lib/storageAssets';
+import DOMPurify from 'dompurify';
 import {
   getLessons,
   updateLesson,
@@ -383,12 +450,15 @@ const courseId = route.query.courseId;
 const lesson = ref(null);
 const loading = ref(true);
 const saving = ref(false);
+
 const form = ref({
   title: '',
+  contentHtml: '',
   contentMarkdown: '',
   videoUrl: '',
   estimatedMinutes: 0,
 });
+
 const assetsSectionExpanded = ref(true);
 const assetsLoaded = ref(false);
 const assetsLoading = ref(false);
@@ -398,17 +468,20 @@ const assetsKindFilter = ref(null);
 const assetsSearchTerm = ref('');
 const assetsUploadProcessing = ref(false);
 const MAX_ASSET_FILE_SIZE = 25 * 1024 * 1024;
-const ASSET_ACCEPT = 'image/*,audio/*,application/pdf';
+
 const assetKindOptions = [
   { label: 'All kinds', value: null },
   { label: 'Images', value: 'image' },
   { label: 'Audio', value: 'audio' },
   { label: 'Files', value: 'file' },
 ];
-const selectedAssetFile = ref(null);
-const assetInputRef = ref(null);
-const SUPABASE_BUCKET = import.meta.env.VITE_SUPABASE_BUCKET || 'lesson-assets';
-const SUPABASE_PATH_PREFIX = import.meta.env.VITE_SUPABASE_PATH_PREFIX || 'cms-assets';
+
+const quillEl = ref(null);
+const quillInstance = ref(null);
+const isQuillApplying = ref(false);
+const imageInputRef = ref(null);
+const audioInputRef = ref(null);
+const fileInputRef = ref(null);
 
 const quizQuestions = ref([]);
 const quizLoading = ref(true);
@@ -444,12 +517,8 @@ const quizReady = computed(() => {
       return false;
     }
     const correctCount = question.options.filter((opt) => opt.isCorrect).length;
-    if (question.questionType === 'single_choice') {
-      return correctCount === 1;
-    }
-    if (question.questionType === 'true_false') {
-      return correctCount === 1;
-    }
+    if (question.questionType === 'single_choice') return correctCount === 1;
+    if (question.questionType === 'true_false') return correctCount === 1;
     return true;
   });
 });
@@ -469,6 +538,79 @@ const syncSelectedQuestion = () => {
   selectedQuestion.value = next || null;
 };
 
+const toHtmlFallback = (value) => {
+  if (!value) return '';
+  return value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<p>${line}</p>`)
+    .join('');
+};
+
+// ✅ estable: extrae texto plano desde HTML
+const updatePlainTextFromEditor = () => {
+  if (typeof document === 'undefined') return;
+  const container = document.createElement('div');
+  container.innerHTML = form.value.contentHtml || '';
+  form.value.contentMarkdown = (container.textContent || '').trim();
+};
+
+const applyHtmlToQuill = (html = '') => {
+  const quill = quillInstance.value;
+  if (!quill) return;
+  const safeHtml = html || '';
+  if (isQuillApplying.value) return;
+  isQuillApplying.value = true;
+  try {
+    const delta = quill.clipboard.convert(safeHtml);
+    quill.setContents(delta, 'silent');
+    quill.setSelection(quill.getLength(), 0, 'silent');
+    updatePlainTextFromEditor();
+  } finally {
+    isQuillApplying.value = false;
+  }
+};
+
+const initializeQuillEditor = () => {
+  if (!quillEl.value || quillInstance.value) return;
+  const instance = new Quill(quillEl.value, {
+    theme: 'snow',
+    modules: {
+      toolbar: [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image'],
+        ['clean'],
+      ],
+    },
+  });
+  quillInstance.value = instance;
+  instance.on('text-change', () => {
+    if (isQuillApplying.value) return;
+    const html = instance.root.innerHTML;
+    form.value.contentHtml = html === '<p><br></p>' ? '' : html;
+  });
+  if (form.value.contentHtml) {
+    applyHtmlToQuill(form.value.contentHtml);
+  }
+};
+
+onMounted(() => {
+  initializeQuillEditor();
+  nextTick(() => {
+    applyHtmlToQuill(form.value.contentHtml);
+  });
+});
+
+onBeforeUnmount(() => {
+  if (quillInstance.value) {
+    quillInstance.value.off && quillInstance.value.off('text-change');
+    quillInstance.value = null;
+  }
+});
+
 const loadLesson = async () => {
   if (!moduleId) {
     toast.add({
@@ -480,87 +622,102 @@ const loadLesson = async () => {
     loading.value = false;
     return;
   }
+
   loading.value = true;
+
   try {
     const lessons = await getLessons(moduleId);
     lesson.value = lessons.find((item) => item.id === lessonId) || null;
-    if (lesson.value) {
-      form.value = {
-        title: lesson.value.title,
-        contentMarkdown: lesson.value.content_markdown || lesson.value.content_text || '',
-        videoUrl: lesson.value.video_url || '',
-        estimatedMinutes: lesson.value.estimated_minutes || 0,
-      };
+
+    if (!lesson.value) {
+      loading.value = false;
+      return;
     }
-  } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson', life: 3000 });
-  } finally {
+
+    const fallbackText = lesson.value.content_markdown || lesson.value.content_text || '';
+    const htmlValue = lesson.value.content_html || toHtmlFallback(fallbackText);
+
+    form.value = {
+      title: lesson.value.title,
+      contentHtml: htmlValue,
+      contentMarkdown: lesson.value.content_markdown || lesson.value.content_text || '',
+      videoUrl: lesson.value.video_url || '',
+      estimatedMinutes: lesson.value.estimated_minutes || 0,
+    };
+
     loading.value = false;
+    await nextTick();
+    initializeQuillEditor();
+    await nextTick();
+    updatePlainTextFromEditor();
+    applyHtmlToQuill(htmlValue);
+  } catch (err) {
+    loading.value = false;
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson'+ err, life: 3000 });
+  }
+};
+const escapeHtml = (value = '') =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const buildAssetSnippet = (asset) => {
+  const safeLabel = escapeHtml(asset.originalName || asset.url);
+  if (asset.kind === 'image' || asset.kind === 'images') {
+    return `<p><img src="${asset.url}" alt="${safeLabel}" /></p>`;
+  }
+  if (asset.kind === 'audio') {
+    return `<p><audio controls src="${asset.url}"></audio></p>`;
+  }
+  return `<p><a href="${asset.url}" target="_blank" rel="noopener">${safeLabel}</a></p>`;
+};
+
+const insertAssetHtml = (asset) => {
+  if (!asset?.url) return;
+  const snippet = buildAssetSnippet(asset);
+  form.value.contentHtml = `${form.value.contentHtml || ''}${snippet}`;
+  updatePlainTextFromEditor();
+};
+
+const triggerAssetInput = (kind) => {
+  const map = { image: imageInputRef, audio: audioInputRef, file: fileInputRef };
+  const target = map[kind];
+  if (target?.value) {
+    target.value.value = '';
+    target.value.click();
   }
 };
 
-const insertAssetUrl = (url) => {
-  const current = form.value.contentMarkdown || '';
-  const prefix = current && !current.endsWith('\n') ? `${current}\n` : current;
-  form.value.contentMarkdown = `${prefix || ''}${url}\n`;
+const handleAssetSelection = async (kind, event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+  await processAssetUpload(kind, file);
 };
 
-const handleSelectedAsset = (event) => {
-  if (event?.target?.files?.length) {
-    selectedAssetFile.value = event.target.files[0];
-  } else {
-    selectedAssetFile.value = null;
-  }
-};
-
-const clearSelectedAsset = () => {
-  selectedAssetFile.value = null;
-  if (assetInputRef.value) {
-    assetInputRef.value.value = '';
-  }
-};
-
-const determineAssetKind = (mimeType) => {
-  if (mimeType?.startsWith('image/')) return 'image';
-  if (mimeType?.startsWith('audio/')) return 'audio';
-  return 'file';
-};
-
-const uploadSelectedAsset = async () => {
-  if (!selectedAssetFile.value) return;
+const processAssetUpload = async (kind, file) => {
   assetsUploadProcessing.value = true;
-  const storagePath = `${SUPABASE_PATH_PREFIX}/${crypto.randomUUID()}-${selectedAssetFile.value.name}`;
   try {
-    const { error: uploadError } = await supabaseClient.storage
-      .from(SUPABASE_BUCKET)
-      .upload(storagePath, selectedAssetFile.value, { upsert: false });
-    if (uploadError) {
-      throw uploadError;
-    }
+    if (file.size > MAX_ASSET_FILE_SIZE) throw new Error('File must be 25 MB or smaller');
+    if (!courseId) throw new Error('Course context is missing');
 
-    const { data: publicData } = supabaseClient.storage
-      .from(SUPABASE_BUCKET)
-      .getPublicUrl(storagePath);
-    const url = publicData?.publicUrl;
+    const uploadResult = await uploadLessonAsset({ courseId, lessonId, file, kind });
 
     const payload = {
-      storagePath: `${SUPABASE_BUCKET}/${storagePath}`,
-      publicUrl: url,
-      kind: determineAssetKind(selectedAssetFile.value.type),
-      mimeType: selectedAssetFile.value.type,
-      originalName: selectedAssetFile.value.name,
-      sizeBytes: selectedAssetFile.value.size,
+      storagePath: uploadResult.path,
+      publicUrl: uploadResult.publicUrl,
+      kind: uploadResult.kind,
+      mimeType: uploadResult.mimeType,
+      originalName: uploadResult.originalName,
+      sizeBytes: uploadResult.size,
       storageProvider: 'supabase',
     };
 
     const registered = await registerAsset(payload);
-    toast.add({
-      severity: 'success',
-      summary: 'Uploaded',
-      detail: 'File uploaded and URL inserted',
-      life: 2500,
-    });
-    insertAssetUrl(registered.url);
+
     const entry = {
       assetId: registered.assetId,
       kind: registered.kind,
@@ -571,12 +728,16 @@ const uploadSelectedAsset = async () => {
       url: registered.url,
       createdAt: registered.createdAt || new Date().toISOString(),
     };
+
     recentAssets.value = [entry, ...recentAssets.value.filter((item) => item.assetId !== entry.assetId)];
-    if (recentAssets.value.length > 50) {
-      recentAssets.value.pop();
-    }
+    if (recentAssets.value.length > 50) recentAssets.value.pop();
+
     assetsLoaded.value = true;
-    clearSelectedAsset();
+
+    // ✅ inserta en el HTML (preview y editor se actualizan)
+    insertAssetHtml(entry);
+
+    toast.add({ severity: 'success', summary: 'Uploaded', detail: 'File uploaded and inserted', life: 2500 });
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -590,22 +751,16 @@ const uploadSelectedAsset = async () => {
 };
 
 const loadAssetsList = async (force = false) => {
-  if (!force && assetsLoaded.value && recentAssets.value.length) {
-    return;
-  }
-  if (assetsLoading.value) {
-    return;
-  }
+  if (!force && assetsLoaded.value && recentAssets.value.length) return;
+  if (assetsLoading.value) return;
+
   assetsLoading.value = true;
   assetsError.value = false;
   try {
     const params = {};
-    if (assetsKindFilter.value) {
-      params.kind = assetsKindFilter.value;
-    }
-    if (assetsSearchTerm.value) {
-      params.search = assetsSearchTerm.value;
-    }
+    if (assetsKindFilter.value) params.kind = assetsKindFilter.value;
+    if (assetsSearchTerm.value) params.search = assetsSearchTerm.value;
+
     const rows = await listAssets(params);
     recentAssets.value = rows;
     assetsLoaded.value = true;
@@ -626,41 +781,40 @@ const refreshAssets = () => loadAssetsList(true);
 
 const handleInsertAsset = (asset) => {
   if (!asset?.url) return;
-  insertAssetUrl(asset.url);
-  toast.add({
-    severity: 'success',
-    summary: 'Inserted',
-    detail: 'Asset URL inserted into content',
-    life: 2000,
-  });
+  insertAssetHtml(asset);
+  toast.add({ severity: 'success', summary: 'Inserted', detail: 'Asset inserted into content', life: 2000 });
 };
 
 const copyAssetUrl = async (url) => {
   if (!url) return;
   try {
     await navigator.clipboard.writeText(url);
-    toast.add({
-      severity: 'success',
-      summary: 'Copied',
-      detail: 'Asset URL copied to clipboard',
-      life: 2000,
-    });
+    toast.add({ severity: 'success', summary: 'Copied', detail: 'Asset URL copied to clipboard', life: 2000 });
   } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Copy failed',
-      detail: 'Unable to copy URL',
-      life: 3000,
-    });
+    toast.add({ severity: 'error', summary: 'Copy failed', detail: 'Unable to copy URL', life: 3000 });
   }
 };
 
 watch(
   () => assetsSectionExpanded.value,
   (expanded) => {
-    if (expanded) {
-      loadAssetsList();
+    if (expanded) loadAssetsList();
+  },
+);
+
+watch(
+  () => form.value.contentHtml,
+  (html) => {
+    const quill = quillInstance.value;
+    const next = html || '';
+    if (quill && !isQuillApplying.value) {
+      const current = quill.root?.innerHTML || '';
+      if (current !== next) {
+        applyHtmlToQuill(next);
+        return;
+      }
     }
+    updatePlainTextFromEditor();
   },
 );
 
@@ -692,28 +846,30 @@ const loadQuiz = async () => {
 
 const saveLesson = async () => {
   if (!form.value.title.trim()) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Title required',
-      detail: 'Lesson title is required',
-      life: 2500,
-    });
+    toast.add({ severity: 'warn', summary: 'Title required', detail: 'Lesson title is required', life: 2500 });
     return;
   }
+
   saving.value = true;
   try {
+    const sanitizedHtml = DOMPurify.sanitize(form.value.contentHtml || '');
+
     const payload = {
       title: form.value.title,
       contentText: form.value.contentMarkdown,
       contentMarkdown: form.value.contentMarkdown,
+      contentHtml: sanitizedHtml || null,
       estimatedMinutes: form.value.estimatedMinutes,
     };
+
     const trimmedVideoUrl = form.value.videoUrl?.trim();
-    if (trimmedVideoUrl) {
-      payload.videoUrl = trimmedVideoUrl;
-    }
+    if (trimmedVideoUrl) payload.videoUrl = trimmedVideoUrl;
+
     await updateLesson(lessonId, payload);
+
     toast.add({ severity: 'success', summary: 'Lesson saved', life: 2000 });
+
+    // ✅ reload to refresh the content after saving
     await loadLesson();
   } catch (err) {
     toast.add({
@@ -778,6 +934,7 @@ const saveQuestion = async () => {
     toast.add({ severity: 'warn', summary: 'Text required', detail: 'Question text is required', life: 2500 });
     return;
   }
+
   questionSaving.value = true;
   try {
     if (editingQuestionId.value) {
@@ -807,14 +964,11 @@ const saveQuestion = async () => {
 };
 
 const removeQuestion = async (question) => {
-  if (!window.confirm('Delete this question? This cannot be undone.')) {
-    return;
-  }
+  if (!window.confirm('Delete this question? This cannot be undone.')) return;
+
   try {
     await deleteQuizQuestion(question.id);
-    if (selectedQuestion.value?.id === question.id) {
-      selectedQuestion.value = null;
-    }
+    if (selectedQuestion.value?.id === question.id) selectedQuestion.value = null;
     toast.add({ severity: 'info', summary: 'Question deleted', life: 2000 });
     await loadQuiz();
   } catch (err) {
@@ -832,6 +986,7 @@ const moveQuestion = async (question, direction) => {
   const index = list.findIndex((item) => item.id === question.id);
   const targetIndex = index + direction;
   if (targetIndex < 0 || targetIndex >= list.length) return;
+
   const target = list[targetIndex];
   try {
     await updateQuizQuestion(question.id, { orderIndex: target.orderIndex });
@@ -876,6 +1031,7 @@ const saveOption = async () => {
     toast.add({ severity: 'warn', summary: 'Text required', detail: 'Option text is required', life: 2500 });
     return;
   }
+
   optionSaving.value = true;
   try {
     if (editingOptionId.value) {
@@ -905,12 +1061,9 @@ const saveOption = async () => {
 };
 
 const removeOption = async (option) => {
-  if (!selectedQuestion.value || selectedQuestion.value.questionType === 'true_false') {
-    return;
-  }
-  if (!window.confirm('Delete this option?')) {
-    return;
-  }
+  if (!selectedQuestion.value || selectedQuestion.value.questionType === 'true_false') return;
+  if (!window.confirm('Delete this option?')) return;
+
   try {
     await deleteQuizOption(option.id);
     toast.add({ severity: 'info', summary: 'Option deleted', life: 2000 });
@@ -931,6 +1084,7 @@ const moveOption = async (option, direction) => {
   const index = options.findIndex((item) => item.id === option.id);
   const targetIndex = index + direction;
   if (targetIndex < 0 || targetIndex >= options.length) return;
+
   const target = options[targetIndex];
   try {
     await updateQuizOption(option.id, { orderIndex: target.orderIndex });
@@ -990,6 +1144,16 @@ loadQuiz();
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.quill-wrapper {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  min-height: 220px;
+}
+
+.quill-editor {
+  min-height: 220px;
 }
 
 .lesson-preview {
