@@ -179,11 +179,13 @@
               :loading="seriesLoading"
               :publishLoadingId="publishLoadingId"
               :generatingId="generatingSeriesId"
+              :regeneratingId="regeneratingSeriesId"
               :deletingId="deletingSeriesId"
               @create="openCreateSeries"
               @edit="openEditSeries"
               @toggle-publish="handlePublishToggle"
               @generate="handleGenerateSeries"
+              @regenerate="handleRegenerateSeries"
               @delete-series="handleDeleteSeries"
             />
             <SessionsTable
@@ -194,6 +196,7 @@
               :teachers="groupTeachers"
               :range="sessionRange"
               @refresh="loadSessions"
+              @edit="openSessionEditDialog"
               @range-change="handleSessionsRangeChange"
             />
           </div>
@@ -210,6 +213,15 @@
       :editing="editingSeries"
       @submit="handleSeriesSubmit"
     />
+    <SessionEditDialog
+      v-model:visible="liveSessionEditDialogVisible"
+      :loading="savingLiveSessionEdit"
+      :session="editingLiveSession"
+      :modules="courseModules"
+      :classTypes="classTypes"
+      :teachers="groupTeachers"
+      @submit="handleSessionEditSubmit"
+    />
   </div>
 </template>
 
@@ -221,6 +233,7 @@ import { useI18n } from 'vue-i18n';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 import api from '../api/axios';
+import SessionEditDialog from '../components/live/SessionEditDialog.vue';
 import SeriesTable from '../components/live/SeriesTable.vue';
 import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
 import SessionsTable from '../components/live/SessionsTable.vue';
@@ -233,6 +246,8 @@ import {
   publishSeries,
   unpublishSeries,
   generateSeries,
+  regenerateSeries,
+  updateSession,
   deleteSeries,
   listGroupSessions,
 } from '../api/liveSessions';
@@ -268,7 +283,11 @@ const editingSeries = ref(null);
 const savingSeries = ref(false);
 const publishLoadingId = ref(null);
 const generatingSeriesId = ref(null);
+const regeneratingSeriesId = ref(null);
 const deletingSeriesId = ref(null);
+const editingLiveSession = ref(null);
+const liveSessionEditDialogVisible = ref(false);
+const savingLiveSessionEdit = ref(false);
 const defaultSessionRange = () => {
   const from = new Date();
   from.setDate(from.getDate() - 7);
@@ -292,6 +311,7 @@ const resetLiveTabState = () => {
   editingSeries.value = null;
   publishLoadingId.value = null;
   generatingSeriesId.value = null;
+  regeneratingSeriesId.value = null;
   deletingSeriesId.value = null;
   sessionRange.value = defaultSessionRange();
 };
@@ -653,6 +673,75 @@ const handleGenerateSeries = async (series) => {
     });
   } finally {
     generatingSeriesId.value = null;
+  }
+};
+
+const handleRegenerateSeries = async (series) => {
+  if (!series) return;
+  const confirmed = window.confirm(t('liveSessions.confirmRegenerateSeries'));
+  if (!confirmed) return;
+  regeneratingSeriesId.value = series.id;
+  try {
+    const result = await regenerateSeries(series.id, { weeks: 8 });
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail: t('liveSessions.toasts.sessionsRegenerated', {
+        created: result?.created || 0,
+        deleted: result?.deleted || 0,
+      }),
+      life: 3500,
+    });
+    await loadSessions();
+  } catch (err) {
+    console.error('Failed to regenerate sessions', err);
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: err.response?.data?.error || t('liveSessions.toasts.generateFailed'),
+      life: 3500,
+    });
+  } finally {
+    regeneratingSeriesId.value = null;
+  }
+};
+
+const openSessionEditDialog = (session) => {
+  if (!session?.id) return;
+  editingLiveSession.value = session;
+  liveSessionEditDialogVisible.value = true;
+};
+
+watch(liveSessionEditDialogVisible, (visible) => {
+  if (!visible) {
+    editingLiveSession.value = null;
+  }
+});
+
+const handleSessionEditSubmit = async ({ sessionId, payload }) => {
+  if (!sessionId) {
+    return;
+  }
+  savingLiveSessionEdit.value = true;
+  try {
+    await updateSession(sessionId, payload);
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail: t('liveSessions.toasts.sessionUpdated'),
+      life: 3000,
+    });
+    await loadSessions();
+    liveSessionEditDialogVisible.value = false;
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: err?.response?.data?.error || t('liveSessions.toasts.sessionUpdateFailed'),
+      life: 3500,
+    });
+  } finally {
+    savingLiveSessionEdit.value = false;
   }
 };
 

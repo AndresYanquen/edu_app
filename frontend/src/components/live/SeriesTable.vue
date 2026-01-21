@@ -67,7 +67,7 @@
           />
         </template>
       </Column>
-      <Column :header="t('liveSessions.columns.actions')" style="width: 12rem">
+      <Column :header="t('liveSessions.columns.actions')" style="width: 15rem">
         <template #body="{ data }">
           <div class="actions">
             <Button
@@ -82,6 +82,13 @@
               :label="t('liveSessions.actions.generate')"
               :loading="generatingId === data.id"
               @click="emit('generate', data)"
+            />
+            <Button
+              icon="pi pi-sync"
+              class="p-button-text"
+              :label="t('liveSessions.actions.regenerate')"
+              :loading="regeneratingId === data.id"
+              @click="emit('regenerate', data)"
             />
             <Button
               icon="pi pi-trash"
@@ -128,9 +135,13 @@ const props = defineProps({
     type: String,
     default: null,
   },
+  regeneratingId: {
+    type: String,
+    default: null,
+  },
 });
 
-const emit = defineEmits(['create', 'edit', 'toggle-publish', 'generate', 'deleteSeries']);
+const emit = defineEmits(['create', 'edit', 'toggle-publish', 'generate', 'regenerate', 'deleteSeries']);
 const { t } = useI18n();
 
 const moduleLookup = computed(() => {

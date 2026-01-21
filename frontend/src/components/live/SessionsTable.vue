@@ -105,19 +105,25 @@
           <Tag :value="statusLabel(data)" :severity="statusSeverity(data)" />
         </template>
       </Column>
-      <Column :header="t('liveSessions.sessionColumns.actions')" style="width: 12rem">
-        <template #body="{ data }">
-          <Button
-            v-if="data.joinUrl"
-            :label="t('liveSessions.actions.join')"
-            class="p-button-text"
-            icon="pi pi-external-link"
-            @click="openJoinLink(data.joinUrl)"
-          />
-          <span v-else class="muted">—</span>
-        </template>
-      </Column>
-    </DataTable>
+    <Column :header="t('liveSessions.sessionColumns.actions')" style="width: 15rem">
+      <template #body="{ data }">
+        <Button
+          v-if="data.joinUrl"
+          :label="t('liveSessions.actions.join')"
+          class="p-button-text"
+          icon="pi pi-external-link"
+          @click="openJoinLink(data.joinUrl)"
+        />
+        <span v-else class="muted">—</span>
+        <Button
+          icon="pi pi-pencil"
+          class="p-button-text"
+          :label="t('common.edit')"
+          @click="emit('edit', data)"
+        />
+      </template>
+    </Column>
+  </DataTable>
   </div>
 </template>
 
@@ -152,7 +158,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['refresh', 'range-change']);
+const emit = defineEmits(['refresh', 'range-change', 'edit']);
 const { t, locale } = useI18n();
 
 const rangeValue = ref([]);

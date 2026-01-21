@@ -100,6 +100,13 @@ export default {
       error: 'Failed to load the live sessions.',
       join: 'Join',
       unknownType: 'Session',
+      weekLabel: 'Week of {start} — {end}',
+      weekMetaSingle: '1 session',
+      weekMetaMany: '{count} sessions',
+    },
+    weeklySchedule: {
+      label: 'Weekly plan',
+      empty: 'No lessons published yet.',
     },
     progressSummary: 'Completed {done} / {total}',
     nextLesson: 'Next: {title}',
@@ -264,16 +271,22 @@ export default {
     seriesEmpty: 'No live series yet. Create one to schedule sessions.',
     sessionsTitle: 'Scheduled sessions',
     sessionsDescription: 'Auto-generated sessions based on the series configuration.',
+    sessionEdit: {
+      title: 'Edit session',
+    },
     sessionsEmpty: 'No sessions available for this range.',
     actions: {
       newSeries: 'New series',
       generate: 'Generate',
+      regenerate: 'Regenerate',
       deleteSeries: 'Delete',
       join: 'Join',
       reloadTab: 'Reload data',
     },
     confirmDeleteSeries:
       'Are you sure you want to delete this series? Generated sessions will be removed.',
+    confirmRegenerateSeries:
+      'Regenerating will replace the previously generated sessions for this series. Continue?',
     columns: {
       title: 'Title',
       classType: 'Type',
@@ -311,6 +324,8 @@ export default {
     status: {
       draft: 'Draft',
       scheduled: 'Scheduled',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
     },
     form: {
       createHeader: 'New live series',
@@ -347,6 +362,8 @@ export default {
       rruleHint: 'Use an iCal RRULE string.',
       joinUrl: 'Meeting link (student)',
       hostUrl: 'Host link (optional)',
+      statusLabel: 'Status',
+      publishedLabel: 'Published',
     },
     validation: {
       title: 'Enter a title',
@@ -368,6 +385,10 @@ export default {
       seriesUnpublished: 'Series unpublished',
       publishFailed: 'Failed to update publish state.',
       sessionsGenerated: 'Generated {count} sessions.',
+      sessionsRegenerated: 'Regenerated {created} sessions and removed {deleted} outdated ones.',
+      sessionUpdated: 'Session updated',
+      noChanges: 'No changes detected',
+      sessionUpdateFailed: 'Failed to update session',
       generateFailed: 'Failed to generate sessions.',
       seriesDeleted: 'Series deleted',
       deleteFailed: 'Failed to delete series.',

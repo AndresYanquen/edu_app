@@ -109,44 +109,59 @@
               <div v-else-if="!liveSessions.length">
                 <p class="muted-text">{{ t('course.liveSessions.empty') }}</p>
               </div>
-              <div v-else class="session-list">
-                <div
-                  v-for="session in liveSessions"
-                  :key="session.id"
-                  class="session-row"
-                >
-                  <div class="session-time">
-                    <strong>{{ formatSessionDate(session.startsAt) }}</strong>
-                    <small>{{ formatSessionRange(session.startsAt, session.endsAt) }}</small>
-                    <small class="muted countdown-text" v-if="formatCountdown(session.startsAt)">
-                      {{ formatCountdown(session.startsAt) }}
-                    </small>
-                  </div>
-                  <div class="session-details">
-                    <div class="session-title">{{ session.title }}</div>
-                    <div class="session-meta">
-                      <Tag
-                        :value="session.classTypeName || t('course.liveSessions.unknownType')"
-                        severity="info"
-                      />
-                      <span v-if="session.hostTeacherName">{{ session.hostTeacherName }}</span>
-                      <Divider
-                        v-if="session.hostTeacherName && session.groupName"
-                        layout="vertical"
-                      />
-                      <span v-if="session.groupName">{{ session.groupName }}</span>
+              <div v-else class="session-schedule">
+                <template v-for="week in liveSessionWeekGroups" :key="week.key">
+                  <div class="week-group">
+                    <div class="week-header">
+                      <div>
+                        <h3 class="week-title">{{ week.label }}</h3>
+                        <small class="week-meta muted">{{ week.meta }}</small>
+                      </div>
+                    </div>
+                    <div class="session-list">
+                      <div
+                        v-for="session in week.sessions"
+                        :key="session.id"
+                        class="session-row"
+                      >
+                        <div class="session-time">
+                          <strong>{{ formatSessionDate(session.startsAt) }}</strong>
+                          <small>{{ formatSessionRange(session.startsAt, session.endsAt) }}</small>
+                          <small
+                            class="muted countdown-text"
+                            v-if="formatCountdown(session.startsAt)"
+                          >
+                            {{ formatCountdown(session.startsAt) }}
+                          </small>
+                        </div>
+                        <div class="session-details">
+                          <div class="session-title">{{ session.title }}</div>
+                          <div class="session-meta">
+                            <Tag
+                              :value="session.classTypeName || t('course.liveSessions.unknownType')"
+                              severity="info"
+                            />
+                            <span v-if="session.hostTeacherName">{{ session.hostTeacherName }}</span>
+                            <Divider
+                              v-if="session.hostTeacherName && session.groupName"
+                              layout="vertical"
+                            />
+                            <span v-if="session.groupName">{{ session.groupName }}</span>
+                          </div>
+                        </div>
+                        <div class="session-action">
+                          <Button
+                            :label="t('course.liveSessions.join')"
+                            icon="pi pi-external-link"
+                            class="p-button-text"
+                            :disabled="!isSessionJoinable(session)"
+                            @click="joinSession(session.joinUrl)"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div class="session-action">
-                    <Button
-                      :label="t('course.liveSessions.join')"
-                      icon="pi pi-external-link"
-                      class="p-button-text"
-                      :disabled="!isSessionJoinable(session)"
-                      @click="joinSession(session.joinUrl)"
-                    />
-                  </div>
-                </div>
+                </template>
               </div>
             </div>
           </TabPanel>
@@ -172,7 +187,7 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const course = ref(null);
 const progress = ref(null);
@@ -386,6 +401,92 @@ const formatCountdown = (value) => {
   return `Starts in ${parts.join(' ')}`;
 };
 
+const formatWeekDateLabel = (value) => {
+  if (!value) return '';
+  try {
+    return new Intl.DateTimeFormat(locale.value || undefined, {
+      month: 'short',
+      day: 'numeric',
+    }).format(value);
+  } catch (_) {
+    return value.toLocaleDateString();
+  }
+};
+
+const getWeekBounds = (value) => {
+  const reference = value ? new Date(value) : null;
+  if (!reference || Number.isNaN(reference.getTime())) {
+    return null;
+  }
+  const weekStart = new Date(reference);
+  const day = weekStart.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  weekStart.setDate(weekStart.getDate() + offset);
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+  return { start: weekStart, end: weekEnd };
+};
+
+const formatWeekLabel = (start, end) => {
+  if (!start || !end) {
+    return '';
+  }
+  return t('course.liveSessions.weekLabel', {
+    start: formatWeekDateLabel(start),
+    end: formatWeekDateLabel(end),
+  });
+};
+
+const formatWeekMeta = (count) =>
+  count === 1
+    ? t('course.liveSessions.weekMetaSingle')
+    : t('course.liveSessions.weekMetaMany', { count });
+
+const liveSessionWeekGroups = computed(() => {
+  const sortedSessions = [...liveSessions.value]
+    .filter((session) => session.startsAt)
+    .map((session) => ({
+      ...session,
+      startsAtDate: new Date(session.startsAt),
+    }))
+    .filter((session) => !Number.isNaN(session.startsAtDate.getTime()))
+    .sort((a, b) => a.startsAtDate - b.startsAtDate);
+
+  const weekMap = new Map();
+  sortedSessions.forEach((session) => {
+    const bounds = getWeekBounds(session.startsAtDate);
+    if (!bounds) {
+      return;
+    }
+    const key = bounds.start.toISOString();
+    const existing = weekMap.get(key);
+    if (existing) {
+      existing.sessions.push(session);
+    } else {
+      weekMap.set(key, {
+        key,
+        weekStart: bounds.start,
+        weekEnd: bounds.end,
+        sessions: [session],
+      });
+    }
+  });
+
+  return Array.from(weekMap.values()).map((group, index) => {
+    const orderedSessions = [...group.sessions].sort(
+      (a, b) => a.startsAtDate - b.startsAtDate,
+    );
+    return {
+      key: `${group.key}-${index}`,
+      label: formatWeekLabel(group.weekStart, group.weekEnd),
+      meta: formatWeekMeta(orderedSessions.length),
+      sessions: orderedSessions,
+    };
+  });
+});
+
 const isSessionJoinable = (session) => {
   if (!session?.joinUrl || !session.startsAt) {
     return false;
@@ -546,6 +647,28 @@ const nextLessonText = computed(() =>
   flex-direction: column;
   gap: 1rem;
   margin-top: 0.5rem;
+}
+
+.week-group {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: #fff;
+  margin-bottom: 1rem;
+}
+.week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 0.5rem;
+}
+.week-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.week-meta {
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .session-row {

@@ -2,7 +2,7 @@
   <div class="page cms-page">
     <Dialog
       v-model:visible="confirmDialogVisible"
-      header="Confirm deletion"
+      :header="confirmDialogHeader"
       modal
       :style="{ width: '28rem' }"
       :closable="!confirmDialogLoading"
@@ -314,11 +314,13 @@
               :loading="liveSessionSeriesLoading"
               :publishLoadingId="liveSeriesPublishLoadingId"
               :generatingId="liveSeriesGeneratingId"
+              :regeneratingId="liveSeriesRegeneratingId"
               :deletingId="liveSeriesDeletingId"
               @create="openLiveSeriesCreate"
               @edit="openLiveSeriesEdit"
               @toggle-publish="handleLiveSeriesPublishToggle"
               @generate="handleLiveSeriesGenerate"
+              @regenerate="openRegenerateSeriesDialog"
               @delete-series="handleLiveSeriesDelete"
             />
             <SessionsTable
@@ -329,6 +331,7 @@
               :teachers="liveSessionTeachers"
               :range="liveSessionRange"
               @refresh="handleLiveSessionsRefresh"
+              @edit="openLiveSessionEdit"
               @range-change="handleLiveSessionsRangeChange"
             />
           </div>
@@ -787,6 +790,15 @@
       :editing="editingLiveSeries"
       @submit="handleLiveSeriesSubmit"
     />
+    <SessionEditDialog
+      v-model:visible="liveSessionEditDialogVisible"
+      :loading="savingLiveSessionEdit"
+      :session="liveSessionEditingSession"
+      :modules="modules"
+      :classTypes="liveSessionClassTypes"
+      :teachers="liveSessionTeachers"
+      @submit="handleLiveSessionEditSubmit"
+    />
   </div>
 </template>
 
@@ -794,8 +806,10 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
+import { useI18n } from 'vue-i18n';
 import SeriesTable from '../components/live/SeriesTable.vue';
 import SessionsTable from '../components/live/SessionsTable.vue';
+import SessionEditDialog from '../components/live/SessionEditDialog.vue';
 import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
 import { useAuthStore } from '../stores/auth';
 import {
@@ -844,6 +858,8 @@ import {
   publishSeries,
   unpublishSeries,
   generateSeries,
+  regenerateSeries,
+  updateSession,
   deleteSeries,
   listGroupSessions,
 } from '../api/liveSessions';
@@ -851,6 +867,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const { t } = useI18n();
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.isAdmin);
 const hasContentAccess = computed(
@@ -947,6 +964,14 @@ const openDeleteGroupDialog = (group) => {
     title: group.name,
   });
 };
+const openRegenerateSeriesDialog = (series) => {
+  if (!series?.id) return;
+  openConfirmDialog({
+    type: 'regenerate-series',
+    id: series.id,
+    title: series.title,
+  });
+};
 const confirmDeletion = async () => {
   const payload = confirmDialogPayload.value;
   if (!payload.type || !payload.id) {
@@ -996,6 +1021,21 @@ const confirmDeletion = async () => {
         await refreshGroupList();
         closeConfirmDialog();
         break;
+      case 'regenerate-series':
+        liveSeriesRegeneratingId.value = payload.id;
+        const result = await regenerateSeries(payload.id, { weeks: 8 });
+        toast.add({
+          severity: 'success',
+          summary: t('common.notifications.success'),
+          detail: t('liveSessions.toasts.sessionsRegenerated', {
+            created: result?.created || 0,
+            deleted: result?.deleted || 0,
+          }),
+          life: 3500,
+        });
+        await loadLiveSessionSessions();
+        closeConfirmDialog();
+        break;
       default:
         break;
     }
@@ -1003,7 +1043,10 @@ const confirmDeletion = async () => {
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: err?.response?.data?.error || 'Failed to delete item',
+      detail:
+        payload.type === 'regenerate-series'
+          ? err?.response?.data?.error || 'Failed to regenerate sessions'
+          : err?.response?.data?.error || 'Failed to delete item',
       life: 3500,
     });
   } finally {
@@ -1011,6 +1054,7 @@ const confirmDeletion = async () => {
     deletingModuleId.value = null;
     deletingLessonId.value = null;
     deletingGroupId.value = null;
+    liveSeriesRegeneratingId.value = null;
   }
 };
 
@@ -1153,6 +1197,7 @@ const confirmDialogMessage = computed(() => {
     module: 'This module',
     lesson: 'This lesson',
     group: 'This group',
+    'regenerate-series': 'This series',
   };
   const itemLabel = title ? `“${title}”` : labelMap[type] || 'This item';
   switch (type) {
@@ -1166,9 +1211,18 @@ const confirmDialogMessage = computed(() => {
       }`;
     case 'group':
       return `${itemLabel} — Are you sure you want to delete this group? Students and sessions will be affected.`;
+    case 'regenerate-series':
+      return `${itemLabel} — Regenerating will remove previously generated sessions in the upcoming window and recreate them with the updated series settings.`;
     default:
       return '';
   }
+});
+const confirmDialogHeader = computed(() => {
+  const { type } = confirmDialogPayload.value;
+  if (type === 'regenerate-series') {
+    return 'Regenerate sessions';
+  }
+  return 'Confirm deletion';
 });
 const confirmDialogActionLabel = computed(() => {
   const { type } = confirmDialogPayload.value;
@@ -1179,6 +1233,8 @@ const confirmDialogActionLabel = computed(() => {
       return 'Delete lesson';
     case 'group':
       return 'Delete group';
+    case 'regenerate-series':
+      return 'Regenerate sessions';
     default:
       return 'Delete';
   }
@@ -1210,7 +1266,11 @@ const editingLiveSeries = ref(null);
 const savingLiveSeries = ref(false);
 const liveSeriesPublishLoadingId = ref(null);
 const liveSeriesGeneratingId = ref(null);
+const liveSeriesRegeneratingId = ref(null);
 const liveSeriesDeletingId = ref(null);
+const liveSessionEditingSession = ref(null);
+const liveSessionEditDialogVisible = ref(false);
+const savingLiveSessionEdit = ref(false);
 const liveSessionRange = ref(defaultLiveSessionRange());
 
 const loadLiveSessionClassTypes = async () => {
@@ -1438,6 +1498,45 @@ const handleLiveSeriesGenerate = async (series) => {
     });
   } finally {
     liveSeriesGeneratingId.value = null;
+  }
+};
+
+const openLiveSessionEdit = (session) => {
+  if (!session || !session.id) return;
+  liveSessionEditingSession.value = session;
+  liveSessionEditDialogVisible.value = true;
+};
+
+watch(liveSessionEditDialogVisible, (visible) => {
+  if (!visible) {
+    liveSessionEditingSession.value = null;
+  }
+});
+
+const handleLiveSessionEditSubmit = async ({ sessionId, payload }) => {
+  if (!sessionId || !liveSessionGroupId.value) {
+    return;
+  }
+  savingLiveSessionEdit.value = true;
+  try {
+    await updateSession(sessionId, payload);
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail: t('liveSessions.toasts.sessionUpdated'),
+      life: 3000,
+    });
+    await loadLiveSessionSessions();
+    liveSessionEditDialogVisible.value = false;
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: err?.response?.data?.error || t('liveSessions.toasts.sessionUpdateFailed'),
+      life: 3500,
+    });
+  } finally {
+    savingLiveSessionEdit.value = false;
   }
 };
 

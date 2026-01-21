@@ -272,6 +272,26 @@ const liveSeriesUpdateSchema = z
     message: 'At least one field must be provided',
   });
 
+const liveSessionStatusEnum = z.enum(['scheduled', 'cancelled', 'completed']);
+
+const liveSessionUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    moduleId: z.string().uuid().optional().nullable(),
+    classTypeId: z.string().uuid().optional(),
+    hostTeacherId: z.string().uuid().optional(),
+    startsAt: z.string().datetime().optional(),
+    durationMinutes: preprocessInt().optional(),
+    endsAt: z.string().datetime().optional(),
+    status: liveSessionStatusEnum.optional(),
+    published: z.boolean().optional(),
+    joinUrl: urlString.optional().nullable(),
+    hostUrl: urlString.optional().nullable(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided',
+  });
+
 const formatZodError = (error) =>
   error.errors
     .map((issue) => {
@@ -379,6 +399,7 @@ module.exports = {
   quizOptionUpdateSchema,
   liveSeriesCreateSchema,
   liveSeriesUpdateSchema,
+  liveSessionUpdateSchema,
   userCreateSchema,
   activationSchema,
   enrollStudentSchema,

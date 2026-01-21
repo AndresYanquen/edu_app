@@ -100,6 +100,13 @@ export default {
       error: 'No se pudieron cargar las sesiones en vivo.',
       join: 'Unirse',
       unknownType: 'Sesión',
+      weekLabel: 'Semana del {start} al {end}',
+      weekMetaSingle: '1 sesión',
+      weekMetaMany: '{count} sesiones',
+    },
+    weeklySchedule: {
+      label: 'Plan semanal',
+      empty: 'Aún no hay lecciones publicadas.',
     },
     progressSummary: 'Completado {done} / {total}',
     nextLesson: 'Siguiente: {title}',
@@ -264,15 +271,21 @@ export default {
     seriesEmpty: 'Aún no hay series creadas. Crea una para programar sesiones.',
     sessionsTitle: 'Sesiones programadas',
     sessionsDescription: 'Sesiones generadas automáticamente a partir de las series.',
+    sessionEdit: {
+      title: 'Editar sesión',
+    },
     sessionsEmpty: 'No hay sesiones para este rango.',
     actions: {
       newSeries: 'Nueva serie',
       generate: 'Generar',
+      regenerate: 'Regenerar',
       deleteSeries: 'Eliminar',
       join: 'Unirse',
       reloadTab: 'Recargar datos',
     },
     confirmDeleteSeries: '¿Estás seguro de eliminar esta serie? Se quitarán las sesiones generadas.',
+    confirmRegenerateSeries:
+      'Regenerar reemplazará las sesiones generadas anteriormente para esta serie. ¿Continuar?',
     columns: {
       title: 'Título',
       classType: 'Tipo',
@@ -310,6 +323,8 @@ export default {
     status: {
       draft: 'Borrador',
       scheduled: 'Programada',
+      completed: 'Completada',
+      cancelled: 'Cancelada',
     },
     form: {
       createHeader: 'Nueva serie en vivo',
@@ -346,6 +361,8 @@ export default {
       rruleHint: 'Usa una cadena RRULE de iCal.',
       joinUrl: 'Enlace para estudiantes',
       hostUrl: 'Enlace del anfitrión (opcional)',
+      statusLabel: 'Estado',
+      publishedLabel: 'Publicado',
     },
     validation: {
       title: 'Ingresa un título',
@@ -367,6 +384,10 @@ export default {
       seriesUnpublished: 'Serie como borrador',
       publishFailed: 'No se pudo actualizar el estado.',
       sessionsGenerated: 'Se generaron {count} sesiones.',
+      sessionsRegenerated: 'Se regeneraron {created} sesiones y se eliminaron {deleted} anteriores.',
+      sessionUpdated: 'Sesión actualizada',
+      sessionUpdateFailed: 'No se pudo actualizar la sesión',
+      noChanges: 'No se detectaron cambios',
       generateFailed: 'No se pudieron generar las sesiones.',
       seriesDeleted: 'Serie eliminada',
       deleteFailed: 'No se pudo eliminar la serie.',
