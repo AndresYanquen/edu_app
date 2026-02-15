@@ -102,3 +102,7 @@ textarea,
 .muted {
   color: var(--text-secondary);
 }
+
+.tox .tox-promotion, .tox-promotion-link{
+  visibility:hidden!important
+}

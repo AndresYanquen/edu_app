@@ -45,8 +45,16 @@
               <div class="dialog-field">
                 <label>Content</label>
 
-                <div class="quill-wrapper">
-                  <div ref="quillEl" class="quill-editor" />
+                <div class="editor-wrapper">
+                  <Editor
+                    v-model="form.contentHtml"
+                    ref="editorRef"
+                    id="<uid>"
+                    licenseKey="gpl"
+                    tinymce-script-src="/tinymce/tinymce.min.js"
+                    :init="tinymceInit"
+                    
+                  />
                 </div>
 
                 <small class="muted">
@@ -152,7 +160,9 @@
                         @click="refreshAssets"
                       />
                     </div>
+                  </div>
 
+                  <div class="assets-list-wrapper">
                     <div v-if="assetsUploadProcessing" class="assets-loading">
                       Uploading file...
                     </div>
@@ -174,6 +184,10 @@
 
                     <div v-else-if="recentAssets.length" class="assets-list">
                       <div v-for="asset in recentAssets" :key="asset.assetId" class="asset-row">
+                        <div class="asset-preview">
+                          <img v-if="asset.kind === 'image'" :src="asset.url" alt="" />
+                          <div v-else class="asset-icon">{{ asset.kind?.charAt(0)?.toUpperCase() || '?' }}</div>
+                        </div>
                         <div class="asset-info">
                           <div class="asset-title">{{ asset.originalName || asset.assetId }}</div>
                           <div class="asset-meta">
@@ -217,14 +231,14 @@
               </div>
             </div>
 
-            <div class="lesson-preview">
+            <!-- <div class="lesson-preview">
               <h4>Preview</h4>
               <RichContent v-if="form.contentHtml" :content="form.contentHtml" />
               <p v-else class="empty-state">Content will appear here.</p>
               <div v-if="form.videoUrl" class="preview-actions">
                 <Button label="Open video" icon="pi pi-external-link" class="p-button-text" @click="openVideo" />
               </div>
-            </div>
+            </div> -->
           </div>
 
           <Divider />
@@ -414,15 +428,19 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RichContent from '../components/RichContent.vue';
-import Quill from 'quill';
-import 'quill/dist/quill.snow.css';
 import ProgressSpinner from 'primevue/progressspinner';
 import { uploadLessonAsset } from '../lib/storageAssets';
 import DOMPurify from 'dompurify';
+import Editor from '@tinymce/tinymce-vue';
+
+// theme
+
+
+
 import {
   getLessons,
   updateLesson,
@@ -476,12 +494,10 @@ const assetKindOptions = [
   { label: 'Files', value: 'file' },
 ];
 
-const quillEl = ref(null);
-const quillInstance = ref(null);
-const isQuillApplying = ref(false);
 const imageInputRef = ref(null);
 const audioInputRef = ref(null);
 const fileInputRef = ref(null);
+const editorRef = ref(null);
 
 const quizQuestions = ref([]);
 const quizLoading = ref(true);
@@ -550,66 +566,175 @@ const toHtmlFallback = (value) => {
 
 // ✅ estable: extrae texto plano desde HTML
 const updatePlainTextFromEditor = () => {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') {
+    form.value.contentMarkdown = '';
+    return;
+  }
   const container = document.createElement('div');
   container.innerHTML = form.value.contentHtml || '';
   form.value.contentMarkdown = (container.textContent || '').trim();
 };
 
-const applyHtmlToQuill = (html = '') => {
-  const quill = quillInstance.value;
-  if (!quill) return;
-  const safeHtml = html || '';
-  if (isQuillApplying.value) return;
-  isQuillApplying.value = true;
+const escapeHtml = (value = '') =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const buildAssetSnippet = (asset) => {
+  const safeLabel = escapeHtml(asset.originalName || asset.url);
+  if (asset.kind === 'image' || asset.kind === 'images') {
+    return `<p><img src="${asset.url}" alt="${safeLabel}" /></p>`;
+  }
+  if (asset.kind === 'audio') {
+    return `<p><audio controls src="${asset.url}"></audio></p>`;
+  }
+  return `<p><a href="${asset.url}" target="_blank" rel="noopener">${safeLabel}</a></p>`;
+};
+
+const recentAssetLimit = 50;
+
+const addRecentAsset = (entry) => {
+  recentAssets.value = [entry, ...recentAssets.value.filter((item) => item.assetId !== entry.assetId)];
+  if (recentAssets.value.length > recentAssetLimit) recentAssets.value.pop();
+  assetsLoaded.value = true;
+};
+
+const uploadAndRegisterAsset = async (kind, file) => {
+  if (file.size > MAX_ASSET_FILE_SIZE) throw new Error('File must be 25 MB or smaller');
+  if (!courseId) throw new Error('Course context is missing');
+
+  const uploadResult = await uploadLessonAsset({ courseId, lessonId, file, kind });
+
+  const payload = {
+    storagePath: uploadResult.path,
+    publicUrl: uploadResult.publicUrl,
+    kind: uploadResult.kind,
+    mimeType: uploadResult.mimeType,
+    originalName: uploadResult.originalName,
+    sizeBytes: uploadResult.size,
+    storageProvider: 'supabase',
+  };
+
+  const registered = await registerAsset(payload);
+
+  const entry = {
+    assetId: registered.assetId,
+    kind: registered.kind,
+    mimeType: registered.mimeType,
+    originalName: registered.originalName,
+    sizeBytes: registered.sizeBytes,
+    storagePath: registered.storagePath,
+    url: registered.url || uploadResult.publicUrl,
+    createdAt: registered.createdAt || new Date().toISOString(),
+  };
+
+  addRecentAsset(entry);
+  return entry;
+};
+
+const editorInsertContent = (asset) => {
+  const editor = editorRef.value?.editor;
+  if (!editor || !asset?.url) return;
+  const snippet = buildAssetSnippet(asset);
+  editor.focus();
+  editor.insertContent(snippet);
+};
+
+const handleTinyMceImageUpload = async (blobInfo, success, failure) => {
+  const file = blobInfo.blob();
   try {
-    const delta = quill.clipboard.convert(safeHtml);
-    quill.setContents(delta, 'silent');
-    quill.setSelection(quill.getLength(), 0, 'silent');
-    updatePlainTextFromEditor();
-  } finally {
-    isQuillApplying.value = false;
+    const entry = await uploadAndRegisterAsset('image', file);
+    addRecentAsset(entry);
+    editorInsertContent(entry);
+    success(entry.url);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Image upload failed',
+      detail: err?.message || err?.response?.data?.error || 'Unable to upload image',
+      life: 3500,
+    });
+    if (failure) failure(err?.message || 'Unable to upload image');
   }
 };
 
-const initializeQuillEditor = () => {
-  if (!quillEl.value || quillInstance.value) return;
-  const instance = new Quill(quillEl.value, {
-    theme: 'snow',
-    modules: {
-      toolbar: [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
-        ['clean'],
-      ],
-    },
-  });
-  quillInstance.value = instance;
-  instance.on('text-change', () => {
-    if (isQuillApplying.value) return;
-    const html = instance.root.innerHTML;
-    form.value.contentHtml = html === '<p><br></p>' ? '' : html;
-  });
-  if (form.value.contentHtml) {
-    applyHtmlToQuill(form.value.contentHtml);
+const determineAssetKind = (file, meta) => {
+  if (meta?.filetype === 'image') return 'image';
+  if (meta?.filetype === 'media') {
+    if (file.type.startsWith('audio/')) return 'audio';
+    return 'file';
   }
+  return 'file';
 };
 
-onMounted(() => {
-  initializeQuillEditor();
-  nextTick(() => {
-    applyHtmlToQuill(form.value.contentHtml);
-  });
-});
+const handleTinyMceFilePicker = (cb, value, meta) => {
+  const input = document.createElement('input');
+  input.setAttribute('type', 'file');
+  input.accept = meta?.filetype === 'media' ? 'audio/*,video/*' : meta?.filetype === 'image' ? 'image/*' : '.pdf,.doc,.docx,.ppt,.pptx,.zip';
 
-onBeforeUnmount(() => {
-  if (quillInstance.value) {
-    quillInstance.value.off && quillInstance.value.off('text-change');
-    quillInstance.value = null;
-  }
-});
+  input.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    try {
+      const kind = determineAssetKind(file, meta);
+      const entry = await uploadAndRegisterAsset(kind, file);
+      addRecentAsset(entry);
+
+      if (meta?.filetype === 'image') {
+        cb(entry.url, { alt: file.name });
+      } else {
+        cb(entry.url, { text: file.name });
+      }
+    } catch (err) {
+      toast.add({
+        severity: 'error',
+        summary: 'Upload failed',
+        detail: err?.message || err?.response?.data?.error || 'Unable to upload file',
+        life: 3500,
+      });
+    }
+  });
+
+  input.click();
+};
+
+const tinymceInit = {
+  license_key: 'gpl',
+  base_url: '/tinymce',
+  suffix: '.min',
+  menubar: true,
+  height: 400,
+  plugins: [
+    'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+    'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+    'insertdatetime', 'media', 'table', 'help', 'wordcount',
+    /* Premium plugins for demo purposes only */
+    'mediaembed',
+  ],
+  plugins: 'link lists table code image media autoresize preview fullscreen',
+  toolbar:
+    'undo redo | link image media | blocks | bold italic underline | bullist numlist | table | code | removeformat',
+  branding: false,
+  convert_urls: false,
+  relative_urls: false,
+
+  extended_valid_elements:
+    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox],script[src|async|defer],audio[controls|src],source[src|type]',
+  valid_children: '+body[iframe|script]',
+  sandbox_iframes: false,    
+  
+  automatic_uploads: true,
+  file_picker_types: 'image media file',
+  images_upload_handler: handleTinyMceImageUpload,
+  file_picker_callback: handleTinyMceFilePicker,
+}
+
+
 
 const loadLesson = async () => {
   if (!moduleId) {
@@ -646,42 +771,12 @@ const loadLesson = async () => {
     };
 
     loading.value = false;
-    await nextTick();
-    initializeQuillEditor();
-    await nextTick();
     updatePlainTextFromEditor();
-    applyHtmlToQuill(htmlValue);
   } catch (err) {
     loading.value = false;
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson'+ err, life: 3000 });
   }
 };
-const escapeHtml = (value = '') =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-
-const buildAssetSnippet = (asset) => {
-  const safeLabel = escapeHtml(asset.originalName || asset.url);
-  if (asset.kind === 'image' || asset.kind === 'images') {
-    return `<p><img src="${asset.url}" alt="${safeLabel}" /></p>`;
-  }
-  if (asset.kind === 'audio') {
-    return `<p><audio controls src="${asset.url}"></audio></p>`;
-  }
-  return `<p><a href="${asset.url}" target="_blank" rel="noopener">${safeLabel}</a></p>`;
-};
-
-const insertAssetHtml = (asset) => {
-  if (!asset?.url) return;
-  const snippet = buildAssetSnippet(asset);
-  form.value.contentHtml = `${form.value.contentHtml || ''}${snippet}`;
-  updatePlainTextFromEditor();
-};
-
 const triggerAssetInput = (kind) => {
   const map = { image: imageInputRef, audio: audioInputRef, file: fileInputRef };
   const target = map[kind];
@@ -701,42 +796,8 @@ const handleAssetSelection = async (kind, event) => {
 const processAssetUpload = async (kind, file) => {
   assetsUploadProcessing.value = true;
   try {
-    if (file.size > MAX_ASSET_FILE_SIZE) throw new Error('File must be 25 MB or smaller');
-    if (!courseId) throw new Error('Course context is missing');
-
-    const uploadResult = await uploadLessonAsset({ courseId, lessonId, file, kind });
-
-    const payload = {
-      storagePath: uploadResult.path,
-      publicUrl: uploadResult.publicUrl,
-      kind: uploadResult.kind,
-      mimeType: uploadResult.mimeType,
-      originalName: uploadResult.originalName,
-      sizeBytes: uploadResult.size,
-      storageProvider: 'supabase',
-    };
-
-    const registered = await registerAsset(payload);
-
-    const entry = {
-      assetId: registered.assetId,
-      kind: registered.kind,
-      mimeType: registered.mimeType,
-      originalName: registered.originalName,
-      sizeBytes: registered.sizeBytes,
-      storagePath: registered.storagePath,
-      url: registered.url,
-      createdAt: registered.createdAt || new Date().toISOString(),
-    };
-
-    recentAssets.value = [entry, ...recentAssets.value.filter((item) => item.assetId !== entry.assetId)];
-    if (recentAssets.value.length > 50) recentAssets.value.pop();
-
-    assetsLoaded.value = true;
-
-    // ✅ inserta en el HTML (preview y editor se actualizan)
-    insertAssetHtml(entry);
-
+    const entry = await uploadAndRegisterAsset(kind, file);
+    editorInsertContent(entry);
     toast.add({ severity: 'success', summary: 'Uploaded', detail: 'File uploaded and inserted', life: 2500 });
   } catch (err) {
     toast.add({
@@ -780,10 +841,10 @@ const loadAssetsList = async (force = false) => {
 const refreshAssets = () => loadAssetsList(true);
 
 const handleInsertAsset = (asset) => {
-  if (!asset?.url) return;
-  insertAssetHtml(asset);
-  toast.add({ severity: 'success', summary: 'Inserted', detail: 'Asset inserted into content', life: 2000 });
+  editorInsertContent(asset);
+  toast.add({ severity: 'success', summary: 'Inserted', detail: 'Asset inserted into editor', life: 2000 });
 };
+
 
 const copyAssetUrl = async (url) => {
   if (!url) return;
@@ -804,18 +865,10 @@ watch(
 
 watch(
   () => form.value.contentHtml,
-  (html) => {
-    const quill = quillInstance.value;
-    const next = html || '';
-    if (quill && !isQuillApplying.value) {
-      const current = quill.root?.innerHTML || '';
-      if (current !== next) {
-        applyHtmlToQuill(next);
-        return;
-      }
-    }
+  () => {
     updatePlainTextFromEditor();
   },
+  { immediate: true },
 );
 
 const formatTimestamp = (value) => (value ? new Date(value).toLocaleString() : '');
@@ -844,6 +897,12 @@ const loadQuiz = async () => {
   }
 };
 
+const sanitizerConfig = {
+  USE_PROFILES: { html: true },
+  ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track', 'code', 'pre'],
+  ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'referrerpolicy', 'controls', 'muted', 'playsinline', 'data-mce-*', 'class', 'style'],
+};
+
 const saveLesson = async () => {
   if (!form.value.title.trim()) {
     toast.add({ severity: 'warn', summary: 'Title required', detail: 'Lesson title is required', life: 2500 });
@@ -852,7 +911,7 @@ const saveLesson = async () => {
 
   saving.value = true;
   try {
-    const sanitizedHtml = DOMPurify.sanitize(form.value.contentHtml || '');
+    const sanitizedHtml = DOMPurify.sanitize(form.value.contentHtml || '', sanitizerConfig);
 
     const payload = {
       title: form.value.title,
@@ -1123,8 +1182,11 @@ const markOptionCorrect = async (option) => {
   }
 };
 
-loadLesson();
-loadQuiz();
+onMounted(async () => {
+  await loadLesson();
+  await loadQuiz();
+  loadAssetsList(true);
+});
 </script>
 
 <style scoped>
@@ -1146,14 +1208,15 @@ loadQuiz();
   gap: 1rem;
 }
 
-.quill-wrapper {
+.editor-wrapper {
   border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
-  min-height: 220px;
+  overflow: hidden;
 }
 
-.quill-editor {
+.editor-wrapper :deep(.tox-tinymce) {
   min-height: 220px;
+  border-radius: 0.75rem;
 }
 
 .lesson-preview {
@@ -1235,6 +1298,29 @@ loadQuiz();
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.asset-preview {
+  width: 48px;
+  height: 48px;
+  margin-right: 0.75rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #eef2ff;
+}
+
+.asset-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.asset-icon {
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .asset-title {
