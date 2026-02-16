@@ -1198,8 +1198,9 @@ onMounted(async () => {
 
 .lesson-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1rem;
+  padding: 2rem;
 }
 
 .lesson-form {

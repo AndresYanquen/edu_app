@@ -315,6 +315,7 @@ export default {
       anyModule: 'Any module',
       teacher: 'Teacher',
       anyTeacher: 'Any teacher',
+      clearFilters: 'Clear filters',
     },
     labels: {
       unknownType: 'Unknown',

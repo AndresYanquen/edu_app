@@ -33,6 +33,7 @@ import 'primeicons/primeicons.css';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/prime-overrides.css';
+import './style.css';
 
 import App from './App.vue';
 import router from './router';

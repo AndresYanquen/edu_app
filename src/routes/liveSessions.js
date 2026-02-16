@@ -56,6 +56,7 @@ const mapSeriesRow = (row) => ({
   timezone: row.timezone,
   rrule: row.rrule,
   dtstart: row.dtstart ? row.dtstart.toISOString() : null,
+  dtend: row.dtend ? row.dtend.toISOString() : null,
   durationMinutes: row.duration_minutes,
   published: row.published,
   joinUrl: row.join_url || null,
@@ -169,6 +170,19 @@ const loadSeries = async (seriesId) => {
   return rows[0] || null;
 };
 
+const loadSeriesEndDate = async (seriesId) => {
+  const { rows } = await pool.query(
+    `
+      SELECT dtend
+      FROM live_session_series
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [seriesId],
+  );
+  return rows[0]?.dtend || null;
+};
+
 const loadSessionById = async (sessionId) => {
   const { rows } = await pool.query(
     `
@@ -252,6 +266,7 @@ router.post('/groups/:groupId/live-series', async (req, res) => {
           timezone,
           rrule,
           dtstart,
+          dtend,
           duration_minutes,
           published,
           join_url,
@@ -259,7 +274,7 @@ router.post('/groups/:groupId/live-series', async (req, res) => {
           created_by,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false, $11, $12, $13, now())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false, $12, $13, $14, now())
         RETURNING *
       `,
       [
@@ -272,6 +287,7 @@ router.post('/groups/:groupId/live-series', async (req, res) => {
         payload.timezone,
         payload.rrule,
         new Date(payload.dtstart),
+        new Date(payload.dtend),
         payload.durationMinutes,
         payload.joinUrl || null,
         payload.hostUrl || null,
@@ -363,6 +379,7 @@ router.patch('/live-series/:id', async (req, res) => {
     if (updates.rrule !== undefined) setField('rrule', updates.rrule);
     if (updates.dtstart !== undefined) setField('dtstart', new Date(updates.dtstart));
     if (updates.durationMinutes !== undefined) setField('duration_minutes', updates.durationMinutes);
+    if (updates.dtend !== undefined) setField('dtend', updates.dtend ? new Date(updates.dtend) : null);
     if (updates.joinUrl !== undefined) setField('join_url', updates.joinUrl || null);
     if (updates.hostUrl !== undefined) setField('host_url', updates.hostUrl || null);
 
@@ -447,15 +464,13 @@ router.delete('/live-series/:id', async (req, res) => {
   }
 });
 
-const parseWindow = (body = {}) => {
-  const from = body.from ? new Date(body.from) : new Date();
-  const weeksInput = Number(body.weeks);
-  const weeks = Number.isFinite(weeksInput) && weeksInput > 0 ? weeksInput : 8;
+const parseWindow = (fromInput, toInput) => {
+  const from = fromInput ? new Date(fromInput) : new Date();
   let to;
-  if (body.to) {
-    to = new Date(body.to);
+  if (toInput) {
+    to = new Date(toInput);
   } else {
-    to = new Date(from.getTime() + weeks * WEEK_MS);
+    to = new Date(from.getTime() + 8 * WEEK_MS);
   }
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
     throw new Error('Invalid date range');
@@ -523,6 +538,8 @@ const insertSessionsForSeries = async (series, occurrences) => {
   return rows;
 };
 
+
+
 const generateSessionsForSeries = async (series, window) => {
   const occurrences = planSeriesOccurrences(series, window);
   if (!occurrences.length) {
@@ -559,6 +576,10 @@ const generateSessionsForSeries = async (series, window) => {
 // Generates live session occurrences for a series
 router.post('/live-series/:id/generate', async (req, res) => {
   try {
+    const seriesEndDate = await loadSeriesEndDate(req.params.id);
+    if (!seriesEndDate) {
+      return res.status(404).json({ error: 'Series not found' });
+    }
     const lookup = await ensureSeriesAccess(req, res, req.params.id);
     if (!lookup) {
       return;
@@ -568,7 +589,7 @@ router.post('/live-series/:id/generate', async (req, res) => {
     let window;
     if (req.body?.dtend) {
       const from = new Date(series.dtstart);
-      const to = new Date(req.body.dtend);
+      const to = new Date(series.dtend);
       if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
         return res.status(400).json({ error: 'Invalid dtend parameter' });
       }
@@ -584,6 +605,7 @@ router.post('/live-series/:id/generate', async (req, res) => {
       }
     }
 
+
     const result = await generateSessionsForSeries(series, window);
     return res.json(result);
   } catch (err) {
@@ -594,6 +616,10 @@ router.post('/live-series/:id/generate', async (req, res) => {
 
 router.post('/live-series/:id/regenerate', async (req, res) => {
   try {
+    const seriesEndDate = await loadSeriesEndDate(req.params.id);
+    if (!seriesEndDate) {
+      return res.status(404).json({ error: 'Series not found' });
+    }
     const lookup = await ensureSeriesAccess(req, res, req.params.id);
     if (!lookup) {
       return;
@@ -606,6 +632,7 @@ router.post('/live-series/:id/regenerate', async (req, res) => {
     } catch (err) {
       return res.status(400).json({ error: err.message || 'Invalid window' });
     }
+
 
     const deleted = await pool.query(
       `
@@ -766,10 +793,10 @@ router.get('/groups/:groupId/live-sessions', async (req, res) => {
         JOIN class_types ct ON ct.id = ls.class_type_id
         LEFT JOIN users u ON u.id = ls.host_teacher_id
         WHERE ls.group_id = $1
-          AND ls.starts_at BETWEEN $2 AND $3
+          AND ls.starts_at >= $2
         ORDER BY ls.starts_at ASC
       `,
-      [group.id, range.from, range.to],
+      [group.id, range.from],
     );
 
     return res.json(rows.map(mapSessionRow));

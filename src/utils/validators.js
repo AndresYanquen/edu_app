@@ -248,6 +248,7 @@ const liveSeriesCreateSchema = z.object({
   timezone: z.string({ required_error: 'timezone is required' }).trim().min(1, 'timezone required'),
   rrule: z.string({ required_error: 'rrule is required' }).trim().min(5, 'rrule is required'),
   dtstart: z.string({ required_error: 'dtstart is required' }).datetime(),
+  dtend: z.string({ required_error: 'dtend is required' }).datetime(),
   durationMinutes: preprocessInt().refine((value) => value > 0, {
     message: 'durationMinutes must be greater than 0',
   }),

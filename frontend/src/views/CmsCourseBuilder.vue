@@ -1397,7 +1397,7 @@ const liveSeriesDeletingId = ref(null);
 const liveSessionEditingSession = ref(null);
 const liveSessionEditDialogVisible = ref(false);
 const savingLiveSessionEdit = ref(false);
-const liveSessionRange = ref(defaultLiveSessionRange());
+const liveSessionRange = ref(null);
 
 const loadLiveSessionClassTypes = async () => {
   if (liveSessionClassTypesLoaded.value) {
@@ -1544,6 +1544,7 @@ const openLiveSeriesEdit = (series) => {
 };
 
 const handleLiveSeriesSubmit = async (payload) => {
+  debugger;
   if (!liveSessionGroupId.value) return;
   savingLiveSeries.value = true;
   try {
@@ -1604,10 +1605,11 @@ const handleLiveSeriesPublishToggle = async ({ series, value }) => {
 };
 
 const handleLiveSeriesGenerate = async (series) => {
+  debugger;
   if (!series) return;
   liveSeriesGeneratingId.value = series.id;
   try {
-    const result = await generateSeries(series.id, { weeks: 8 });
+    const result = await generateSeries(series.id, series);
     toast.add({
       severity: 'success',
       summary: 'Sessions generated',
@@ -3267,9 +3269,13 @@ init();
   height: 2.5rem;
 }
 
+.modules-accordion{
+}
+
 @media (max-width: 900px) {
   .builder-grid {
     grid-template-columns: 1fr;
   }
 }
+
 </style>

@@ -25,6 +25,12 @@ a {
   text-decoration: none;
 }
 
+.p-accordion .p-accordion-tab .p-accordion-header .p-accordion-header-link{
+  box-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
 /* .page {
   padding: 1.5rem;
   min-height: calc(100vh - 4rem);
@@ -49,5 +55,11 @@ a {
  div.p-datatable-wrapper > table > thead > tr > thead > div > span {
   font-weight: 100;
  }
+ 
+.p-accordion .p-accordion-header .p-accordion-header-link{
+  box-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.06);
+}
 
 

@@ -16,7 +16,7 @@
       </div>
     </div>
 
-    <!-- <div class="filters">
+    <div class="filters">
       <div class="filter-field">
         <label>{{ t('liveSessions.filters.range') }}</label>
         <Calendar
@@ -28,9 +28,9 @@
         <div class="filter-actions">
           <Button class="p-button-text" :label="t('liveSessions.filters.resetRange')" @click="resetRange" />
           <Button
-            :label="t('liveSessions.filters.applyRange')"
-            icon="pi pi-check"
             class="p-button-text"
+            icon="pi pi-check"
+            :label="t('liveSessions.filters.applyRange')"
             @click="applyRange"
           />
         </div>
@@ -68,13 +68,22 @@
           showClear
         />
       </div>
-    </div> -->
+      <div class="filter-actions">
+        <Button class="p-button-text" :label="t('liveSessions.filters.clearFilters')" @click="clearFilters" />
+      </div>
+    </div>
 
     <DataTable
       :value="filteredSessions"
       :loading="loading"
       responsiveLayout="scroll"
       :emptyMessage="t('liveSessions.sessionsEmpty')"
+      paginator
+      :rows="rowsPerPage"
+      :first="firstRecord"
+      :totalRecords="filteredSessions.length"
+      :rowsPerPageOptions="rowsPerPageOptions"
+      @page="handlePage"
     >
     <Column :header="t('liveSessions.sessionColumns.startsAt')" style="min-width: 14rem">
       <template #body="{ data }">
@@ -162,21 +171,28 @@ const emit = defineEmits(['refresh', 'range-change', 'edit']);
 const { t, locale } = useI18n();
 
 const rangeValue = ref([]);
+const selectedRange = ref({ from: null, to: null });
 const filterClassType = ref(null);
 const filterModule = ref(null);
 const filterTeacher = ref(null);
 
-watch(
-  () => props.range,
-  (range) => {
-    if (range?.from && range?.to) {
-      rangeValue.value = [new Date(range.from), new Date(range.to)];
-    } else {
-      rangeValue.value = [];
-    }
-  },
-  { immediate: true },
-);
+// watch(
+//   () => props.range,
+//   (range) => {
+//     if (range?.from && range?.to) {
+//       const fromDate = new Date(range.from);
+//       const toDate = new Date(range.to);
+//       if (!Number.isNaN(fromDate.getTime()) && !Number.isNaN(toDate.getTime())) {
+//         rangeValue.value = [fromDate];
+//         selectedRange.value = { from: fromDate };
+//         return;
+//       }
+//     }
+//     rangeValue.value = [];
+//     selectedRange.value = { from: null, to: null };
+//   },
+//   { immediate: true },
+// );
 
 const classTypeOptions = computed(() =>
   props.classTypes.map((type) => ({ label: type.name, value: type.id })),
@@ -193,8 +209,10 @@ const teacherOptions = computed(() =>
   })),
 );
 
-const filteredSessions = computed(() =>
-  props.sessions.filter((session) => {
+const filteredSessions = computed(() => {
+  const rangeFrom = selectedRange.value.from;
+  const rangeTo = selectedRange.value.to;
+  return props.sessions.filter((session) => {
     if (filterClassType.value && session.classTypeId !== filterClassType.value) {
       return false;
     }
@@ -204,17 +222,49 @@ const filteredSessions = computed(() =>
     if (filterTeacher.value && session.hostTeacherId !== filterTeacher.value) {
       return false;
     }
+    if (rangeFrom && rangeTo) {
+      const startsAt = session.startsAt ? new Date(session.startsAt) : null;
+      if (!startsAt || Number.isNaN(startsAt.getTime())) {
+        return false;
+      }
+      if (startsAt < rangeFrom || startsAt > rangeTo) {
+        return false;
+      }
+    }
     return true;
-  }),
-);
+  });
+});
+
+const rowsPerPage = ref(10);
+const firstRecord = ref(0);
+const rowsPerPageOptions = [50, 100, 200, 500];
+
+
+const handlePage = (event) => {
+  firstRecord.value = event.first;
+  rowsPerPage.value = event.rows;
+};
+
+watch(filteredSessions, () => {
+  firstRecord.value = 0;
+});
+
+const clearFilters = () => {
+  filterClassType.value = null;
+  filterModule.value = null;
+  filterTeacher.value = null;
+  resetRange();
+};
 
 const resetRange = () => {
   rangeValue.value = [];
+  selectedRange.value = { from: null, to: null };
   emit('range-change', { from: null, to: null });
 };
 
 const applyRange = () => {
   if (!rangeValue.value?.length) {
+    selectedRange.value = { from: null, to: null };
     emit('range-change', { from: null, to: null });
     return;
   }
@@ -222,6 +272,7 @@ const applyRange = () => {
   if (!from || !to) {
     return;
   }
+  selectedRange.value = { from, to };
   emit('range-change', {
     from: from.toISOString(),
     to: to.toISOString(),
@@ -282,6 +333,7 @@ const openJoinLink = (url) => {
   if (!url) return;
   window.open(url, '_blank', 'noopener');
 };
+
 </script>
 
 <style scoped>

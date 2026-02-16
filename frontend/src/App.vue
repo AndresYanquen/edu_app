@@ -28,4 +28,6 @@ const auth = useAuthStore();
 #app-container{
   font-size: 12px;
 }
+
+
 </style>
