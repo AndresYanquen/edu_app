@@ -13,6 +13,7 @@ const CmsCourses = () => import('../views/CmsCourses.vue');
 const CmsCourseBuilder = () => import('../views/CmsCourseBuilder.vue');
 const CmsLessonEditor = () => import('../views/CmsLessonEditor.vue');
 const ActivateAccount = () => import('../views/ActivateAccount.vue');
+const LandingPage = () => import('../views/LandingPage.vue');
 
 const routes = [
   { path: '/login', name: 'login', component: Login, meta: { public: true } },
@@ -71,6 +72,12 @@ const routes = [
     name: 'cms-lesson-editor',
     component: CmsLessonEditor,
     meta: { requiresAuth: true, requiresStaff: true },
+  },
+  {
+    path: '/',
+    name: 'landing',
+    component: LandingPage,
+    meta: { public: true, hideSidebar: true },
   },
   {
     path: '/:pathMatch(.*)*',

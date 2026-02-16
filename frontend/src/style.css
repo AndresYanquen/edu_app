@@ -2,6 +2,8 @@
   box-sizing: border-box;
 }
 
+
+
 :root {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background-color: #f4f5f7;
@@ -23,10 +25,10 @@ a {
   text-decoration: none;
 }
 
-.page {
+/* .page {
   padding: 1.5rem;
   min-height: calc(100vh - 4rem);
-}
+} */
 
 .empty-state {
   padding: 2rem;
@@ -37,3 +39,15 @@ a {
 .mb-2 {
   margin-bottom: 0.75rem;
 }
+
+/* TABLE STYLES */
+
+.p-datatable .p-datatable-thead > tr > th {
+  font-weight: 500!important;
+}
+
+ div.p-datatable-wrapper > table > thead > tr > thead > div > span {
+  font-weight: 100;
+ }
+
+

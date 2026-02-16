@@ -97,7 +97,7 @@ html, body {
 .p-progressbar {
   border-radius: 999px;
   overflow: hidden;
-  height: 10px;
+  height: 25px;
   background: rgba(34, 197, 94, 0.12);
 }
 

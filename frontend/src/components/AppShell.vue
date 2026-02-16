@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <aside :class="['sidebar', { collapsed }]">
+    <aside v-if="showSidebar" :class="['sidebar', { collapsed }]">
       <div class="sidebar-inner">
         <div class="sidebar-header">
           <Avatar label="AC" shape="circle" size="large" class="brand-avatar" />
@@ -160,6 +160,8 @@ const handleLogout = async () => {
 const toggleSidebar = () => {
   collapsed.value = !collapsed.value;
 };
+
+const showSidebar = computed(() => !route.meta?.hideSidebar);
 
 const languageToggle = computed({
   get: () => locale.value === 'es',
@@ -393,7 +395,7 @@ const toggleIcon = computed(() =>
 
 .shell-content {
   flex: 1;
-  padding: 2rem;
   background: var(--app-bg);
+  max-width: 100%;
 }
 </style>

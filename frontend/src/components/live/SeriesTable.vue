@@ -72,27 +72,27 @@
           <div class="actions">
             <Button
               icon="pi pi-pencil"
-              class="p-button-text"
+              class="small-cta p-button-text"
               :label="t('common.edit')"
               @click="emit('edit', data)"
             />
             <Button
               icon="pi pi-refresh"
-              class="p-button-text"
+              class="small-cta p-button-text"
               :label="t('liveSessions.actions.generate')"
               :loading="generatingId === data.id"
               @click="emit('generate', data)"
             />
             <Button
               icon="pi pi-sync"
-              class="p-button-text"
+              class="small-cta p-button-text"
               :label="t('liveSessions.actions.regenerate')"
               :loading="regeneratingId === data.id"
               @click="emit('regenerate', data)"
             />
             <Button
               icon="pi pi-trash"
-              class="p-button-text"
+              class="small-cta p-button-text"
               severity="danger"
               :label="t('liveSessions.actions.deleteSeries')"
               :loading="deletingId === data.id"
@@ -210,5 +210,11 @@ const formatDate = (value) => {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.small-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 </style>

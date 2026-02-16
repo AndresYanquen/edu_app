@@ -1,42 +1,85 @@
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Clash Display';
+  src: url('/fonts/ClashDisplay-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Clash Display';
+  src: url('/fonts/ClashDisplay-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  /* Duolingo-ish: verde principal + acento cálido */
-  --brand-primary: #22c55e;        /* green */
-  --brand-primary-hover: #16a34a;
-  --brand-primary-soft: #dcfce7;
+  --font-heading: 'Clash Display','Satoshi','Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-body: 'Satoshi','Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+
+  /* Classic blue base */
+  --brand-primary: #0d3b66;
+  --brand-primary-hover: #0b2e57;
+  --brand-primary-soft: #d9e7ff;
 
   /* Estados */
-  --brand-success: #16a34a;
-  --brand-success-soft: #dcfce7;
+  --brand-success: #1e88e5;
+  --brand-success-soft: #d0e9ff;
 
-  --brand-warning: #f59e0b;        /* amber */
-  --brand-warning-soft: #fef3c7;
+  --brand-warning: #ffb300;
+  --brand-warning-soft: #fff4cd;
 
-  --brand-danger: #ef4444;         /* red */
-  --brand-danger-soft: #fee2e2;
+  --brand-danger: #e53935;
+  --brand-danger-soft: #ffd8d6;
 
-  /* Acento “feliz” para highlights (chips, dots, progress extra) */
-  --brand-accent: #fbbf24;         /* warm yellow */
-  --brand-accent-soft: #fffbeb;
+  /* Acento para highlights */
+  --brand-accent: #2680eb;
+  --brand-accent-soft: #e3f0ff;
 
-  /* Fondos y superficies (más “cremosos”) */
-  --app-bg: #f6fbf7;               /* verde muy suave */
+  /* Fondos y superficies */
+  --app-bg: #f2f6ff;
   --app-surface: #ffffff;
-  --app-surface-2: #fbfffc;
-  --app-border: #e7f3ea;
+  --app-surface-2: #f7f9ff;
+  --app-border: rgba(13, 59, 102, 0.15);
 
   /* Texto */
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
+  --text-primary: #0b1b2b;
+  --text-secondary: #2d3e55;
+  --text-muted: #5b6a83;
 
   /* Forma y profundidad */
   --radius-sm: 12px;
   --radius-md: 16px;
   --radius-lg: 20px;
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 12px 24px rgba(15, 23, 42, 0.10);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.07);
+  --shadow-md: 0 14px 32px rgba(15, 23, 42, 0.12);
 
   /* Focus ring amigable */
-  --focus-ring: 0 0 0 4px rgba(34, 197, 94, 0.18);
+  --focus-ring: 0 0 0 4px rgba(13, 59, 102, 0.25);
 }

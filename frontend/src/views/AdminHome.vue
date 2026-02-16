@@ -1,371 +1,420 @@
 <template>
   <div class="page admin-page">
-    <Card>
-      <template #title>Create user</template>
-      <template #content>
-        <div class="form-grid">
-          <div class="dialog-field">
-            <label>Full name</label>
-            <InputText v-model="form.fullName" placeholder="Ava Parker" />
-          </div>
-          <div class="dialog-field">
-            <label>Email</label>
-            <InputText v-model="form.email" placeholder="user@academy.local" />
-          </div>
-          <div class="dialog-field">
-            <label>Role</label>
-            <Dropdown
-              v-model="form.role"
-              :options="roleOptions"
-              optionLabel="label"
-              optionValue="value"
-            />
-          </div>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div class="admin-topbar__titles">
+          <p class="admin-topbar__eyebrow">Academy</p>
+          <h1>Admin Panel</h1>
         </div>
-        <div class="form-actions">
-          <Button label="Create user" :loading="creating" @click="submit" />
-        </div>
-      </template>
-    </Card>
+      </header>
 
-    <Card class="mt-card">
-      <template #title>
-        <div class="section-header">
-          <div>
-            <h3>Users</h3>
-            <small>Students and instructors</small>
-          </div>
-          <div class="section-actions">
-            <span class="search-input">
-              <i class="pi pi-search" />
-              <InputText
-                v-model="userSearch"
-                placeholder="Search name or email"
-              />
-            </span>
-            <Dropdown
-              v-model="filterRole"
-              :options="filterOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="All roles"
-              showClear
-              class="filter-dropdown"
-            />
-            <Tag class="total-tag" severity="info" :value="`Total: ${totalUsers} usuarios`" />
-            <Button icon="pi pi-refresh" class="p-button-text" :loading="loadingUsers" @click="loadUsers" />
-          </div>
-        </div>
-      </template>
-      <template #content>
-        <div v-if="loadingUsers">
-          <Skeleton height="2.5rem" class="mb-2" />
-          <Skeleton height="2.5rem" class="mb-2" />
-          <Skeleton height="2.5rem" class="mb-2" />
-        </div>
-        <div v-else-if="!users.length" class="empty-state">
-          No users found for this filter.
-        </div>
-        <div v-else>
-          <DataTable
-            :value="users"
-            responsiveLayout="scroll"
-            scrollable
-            scrollHeight="420px"
-            class="user-table"
-            paginator
-            lazy
-            :rows="rows"
-            :totalRecords="totalUsers"
-            :rowsPerPageOptions="rowsPerPageOptions"
-            :first="page * rows"
-            :loading="loadingUsers"
-            @page="onPageChange"
+      <div class="admin-tabs">
+        <nav class="tabs-nav">
+          <button
+            type="button"
+            class="tabs-nav__item"
+            :class="{ active: activeTab === 'users' }"
+            @click="activeTab = 'users'"
           >
-            <Column field="full_name" header="Name" />
-            <Column field="email" header="Email" />
-            <Column header="Role" style="width: 12rem">
-              <template #body="{ data }">
-                <div class="role-tag-wrap">
-                  <Tag
-                    v-for="role in userRoles(data)"
-                    :key="`${data.id}-${role}`"
-                    :value="roleLabel(role)"
-                    severity="info"
+            Usuarios
+          </button>
+          <button
+            type="button"
+            class="tabs-nav__item"
+            :class="{ active: activeTab === 'bulkInvite' }"
+            @click="activeTab = 'bulkInvite'"
+          >
+            Invitación masiva
+          </button>
+          <button
+            type="button"
+            class="tabs-nav__item"
+            :class="{ active: activeTab === 'courseLevels' }"
+            @click="activeTab = 'courseLevels'"
+          >
+            Niveles de curso
+          </button>
+          <button
+            type="button"
+            class="tabs-nav__item"
+            :class="{ active: activeTab === 'settings' }"
+            @click="activeTab = 'settings'"
+          >
+            Configuración
+          </button>
+        </nav>
+
+        <section v-if="activeTab === 'users'" class="tab-content">
+          <Card class="card create-user-card">
+            <template #title>
+              <div class="card-title">
+                <span class="icon-circle"><i class="pi pi-user-plus" aria-hidden="true"></i></span>
+                <div>
+                  <h2>Crear usuario</h2>
+                  <p>Invita y asigna rol en segundos</p>
+                </div>
+              </div>
+            </template>
+            <template #content>
+              <div class="form-grid">
+                <div class="dialog-field">
+                  <label>Full name</label>
+                  <InputText v-model="form.fullName" placeholder="Ava Parker" />
+                </div>
+                <div class="dialog-field">
+                  <label>Email</label>
+                  <InputText v-model="form.email" placeholder="user@academy.local" />
+                </div>
+                <div class="dialog-field">
+                  <label>Role</label>
+                  <Dropdown
+                    v-model="form.role"
+                    :options="roleOptions"
+                    optionLabel="label"
+                    optionValue="value"
                   />
                 </div>
-              </template>
-            </Column>
-            <Column header="Activation" style="width: 12rem">
-              <template #body="{ data }">
-                <Tag
-                  :value="data.must_set_password ? 'Pending' : 'Ready'"
-                  :severity="data.must_set_password ? 'warning' : 'success'"
-                />
-              </template>
-            </Column>
-            <Column header="Access" style="width: 10rem">
-              <template #body="{ data }">
-                <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'danger'" />
-              </template>
-            </Column>
-            <Column header="Actions" style="width: 16rem">
-              <template #body="{ data }">
-                <div class="actions-row">
-                  <Button
-                    label="Reset link"
-                    class="p-button-text"
-                    :loading="resettingId === data.id"
-                    @click="resetPassword(data.id)"
+              </div>
+              <div class="create-user-actions">
+                <Button label="Create user" :loading="creating" @click="submit" />
+              </div>
+            </template>
+          </Card>
+          <Card class="card users-card">
+            <template #title>
+              <div class="users-header">
+                <div>
+                  <h2>Usuarios</h2>
+                  <p>Estudiantes e instructores</p>
+                </div>
+                <div class="users-header__actions">
+                  <span class="search-input">
+                    <i class="pi pi-search" />
+                    <InputText v-model="userSearch" placeholder="Search name or email" />
+                  </span>
+                  <Dropdown
+                    v-model="filterRole"
+                    :options="filterOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="All roles"
+                    showClear
+                    class="filter-dropdown"
                   />
+                  <span class="total-pill">Total: {{ totalUsers }} usuarios</span>
                   <Button
-                    :label="data.is_active ? 'Deactivate' : 'Activate'"
+                    icon="pi pi-refresh"
                     class="p-button-text"
-                    :severity="data.is_active ? 'danger' : 'success'"
-                    :loading="togglingId === data.id"
-                    @click="toggleUser(data)"
+                    :loading="loadingUsers"
+                    @click="loadUsers"
                   />
                 </div>
-              </template>
-            </Column>
-          </DataTable>
-        </div>
-      </template>
-    </Card>
+              </div>
+            </template>
+            <template #content>
+              <div v-if="loadingUsers">
+                <Skeleton height="2.5rem" class="mb-2" />
+                <Skeleton height="2.5rem" class="mb-2" />
+                <Skeleton height="2.5rem" class="mb-2" />
+              </div>
+              <div v-else-if="!users.length" class="empty-state">
+                No users found for this filter.
+              </div>
+              <div v-else>
+                <DataTable
+                  :value="users"
+                  responsiveLayout="scroll"
+                  scrollable
+                  scrollHeight="420px"
+                  class="user-table"
+                  paginator
+                  lazy
+                  :rows="rows"
+                  :totalRecords="totalUsers"
+                  :rowsPerPageOptions="rowsPerPageOptions"
+                  :first="page * rows"
+                  :loading="loadingUsers"
+                  @page="onPageChange"
+                >
+                  <Column header="Name" style="width: 20rem">
+                    <template #body="{ data }">
+                      <div class="user-meta">
+                        <span class="user-avatar">{{ getInitials(data.full_name) }}</span>
+                        <div>
+                          <strong>{{ data.full_name }}</strong>                 
+                        </div>
+                      </div>
+                    </template>
+                  </Column>
+                  <Column field="email" header="Email" style="width: 18rem">
+                    <template #body="{ data }">
+                      <span class="muted">{{ data.email }}</span>
+                    </template>
+                  </Column>
+                  <Column header="Role" style="width: 12rem">
+                    <template #body="{ data }">
+                      <div class="role-tag-wrap">
+                        <Tag
+                          v-for="role in userRoles(data)"
+                          :key="`${data.id}-${role}`"
+                          :value="roleLabel(role)"
+                          severity="info"
+                        />
+                      </div>
+                    </template>
+                  </Column>
+                  <Column header="Activation" style="width: 12rem">
+                    <template #body="{ data }">
+                      <Tag
+                        :value="data.must_set_password ? 'Pending' : 'Ready'"
+                        :severity="data.must_set_password ? 'warning' : 'success'"
+                      />
+                    </template>
+                  </Column>
+                  <Column header="Access" style="width: 10rem">
+                    <template #body="{ data }">
+                      <Tag
+                        :value="data.is_active ? 'Active' : 'Inactive'"
+                        :severity="data.is_active ? 'success' : 'danger'"
+                      />
+                    </template>
+                  </Column>
+                  <Column header="Actions" style="width: 16rem">
+                    <template #body="{ data }">
+                      <div class="actions-row">
+                        <Button
+                          label="Restablecer"
+                          class="p-button-text"
+                          :loading="resettingId === data.id"
+                          @click="resetPassword(data.id)"
+                        />
+                        <Button
+                          :label="data.is_active ? 'Desactivar' : 'Activar'"
+                          class="p-button-text"
+                          :severity="data.is_active ? 'warning' : 'success'"
+                          :loading="togglingId === data.id"
+                          @click="toggleUser(data)"
+                        />
+                      </div>
+                    </template>
+                  </Column>
+                </DataTable>
+              </div>
+            </template>
+          </Card>
+        </section>
 
-    <Card class="mt-card">
-      <template #title>Bulk invite via CSV</template>
-      <template #content>
-        <div class="bulk-info">
-          <p>
-            Upload a CSV with columns:
-            <strong>email</strong> (required), <strong>fullName</strong>, <strong>role</strong>,
-            <strong>courseId</strong>, <strong>groupId</strong>.
-          </p>
-          <p>Defaults below apply when a row omits those values.</p>
-        </div>
-        <div class="form-grid bulk-grid">
-          <div class="dialog-field">
-            <label>Default role</label>
-            <Dropdown
-              v-model="bulkDefaults.role"
-              :options="roleOptions"
-              optionLabel="label"
-              optionValue="value"
-            />
-          </div>
-          <div class="dialog-field">
-            <label>Default course</label>
-            <Dropdown
-              v-model="bulkDefaults.courseId"
-              :options="courseOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="None"
-              showClear
-            />
-          </div>
-          <div class="dialog-field">
-            <label>Default group</label>
-            <Dropdown
-              v-model="bulkDefaults.groupId"
-              :options="filteredGroupOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="None"
-              showClear
-              :disabled="!bulkDefaults.courseId"
-            />
-          </div>
-          <div class="dialog-field">
-            <label>Activation expiry (days)</label>
-            <InputNumber v-model="bulkDefaults.expiresDays" :min="1" :max="30" />
-          </div>
-        </div>
-        <div class="file-input-row">
-          <input ref="bulkFileInput" type="file" accept=".csv,text/csv" @change="handleBulkFile" />
-          <span v-if="bulkFileName" class="file-name">{{ bulkFileName }}</span>
-        </div>
-        <div class="bulk-actions-bar">
-          <Button label="Upload CSV" :disabled="!bulkFile" :loading="uploading" @click="submitBulk" />
-          <Button
-            label="Download results"
-            class="p-button-text"
-            :disabled="!bulkResults.length"
-            @click="downloadBulkResults"
-          />
-          <Button
-            label="Clear results"
-            class="p-button-text"
-            :disabled="!bulkResults.length"
-            @click="clearBulkResults"
-          />
-        </div>
-        <div v-if="bulkTotals" class="bulk-summary">
-          <Tag :value="`Total: ${bulkTotals.total}`" severity="info" />
-          <Tag :value="`Created: ${bulkTotals.created}`" severity="success" />
-          <Tag :value="`Existing: ${bulkTotals.alreadyExists}`" severity="info" />
-          <Tag :value="`Invalid: ${bulkTotals.invalid}`" severity="warning" />
-          <Tag :value="`Failed: ${bulkTotals.failed}`" severity="danger" />
-        </div>
-        <DataTable v-if="bulkResults.length" :value="bulkResults" responsiveLayout="scroll" class="mt-2">
-          <Column field="rowNumber" header="#" style="width: 4rem" />
-          <Column field="email" header="Email" />
-          <Column header="Role" style="width: 8rem">
-            <template #body="{ data }">
-              <Tag :value="data.role" severity="info" />
-            </template>
-          </Column>
-          <Column header="Status" style="width: 10rem">
-            <template #body="{ data }">
-              <Tag :value="data.status" :severity="statusSeverity(data.status)" />
-            </template>
-          </Column>
-          <Column header="Activation">
-            <template #body="{ data }">
-              <Button
-                v-if="data.activationLink"
-                icon="pi pi-copy"
-                class="p-button-text"
-                @click="copyActivationLink(data.activationLink)"
-              />
-              <span v-else class="muted">—</span>
-            </template>
-          </Column>
-          <Column header="Course" field="enrollment.courseId" style="width: 16rem">
-            <template #body="{ data }">
-              {{ data.enrollment.courseId || '—' }}
-            </template>
-          </Column>
-          <Column header="Group" field="enrollment.groupId" style="width: 16rem">
-            <template #body="{ data }">
-              {{ data.enrollment.groupId || '—' }}
-            </template>
-          </Column>
-          <Column header="Enrollment" style="width: 12rem">
-            <template #body="{ data }">
-              <span v-if="!data.enrollment.requested" class="muted">Not requested</span>
-              <Tag
-                v-else
-                :value="data.enrollment.status || 'pending'"
-                :severity="enrollmentSeverity(data.enrollment.status)"
-              />
-            </template>
-          </Column>
-          <Column header="Enrollment error">
-            <template #body="{ data }">
-              <span class="muted">{{ data.enrollment.error || '—' }}</span>
-            </template>
-          </Column>
-        </DataTable>
-      </template>
-    </Card>
-
-    <Card class="mt-card levels-card">
-      <template #title>
-        <div class="section-header">
-          <div>
-            <h3>Course levels</h3>
-            <small>Codes that courses may reference</small>
-          </div>
-          <Button label="Create level" icon="pi pi-plus" @click="openLevelDialog" />
-        </div>
-      </template>
-      <template #content>
-        <div v-if="loadingLevels">
-          <Skeleton height="2rem" class="mb-2" />
-          <Skeleton height="2rem" class="mb-2" />
-        </div>
-        <div v-else-if="!courseLevels.length" class="empty-state">
-          No course levels defined yet.
-        </div>
-        <div v-else>
-          <DataTable :value="courseLevels" responsiveLayout="scroll">
-            <Column field="code" header="Code" />
-            <Column field="label" header="Label" />
-            <Column header="Status" style="width: 10rem">
-              <template #body="{ data }">
-                <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'warning'" />
-              </template>
-            </Column>
-            <Column field="created_at" header="Created" bodyStyle="width: 14rem">
-              <template #body="{ data }">
-                {{ formatDate(data.created_at) }}
-              </template>
-            </Column>
-            <Column header="Actions" bodyStyle="width: 10rem">
-              <template #body="{ data }">
+        <section v-if="activeTab === 'bulkInvite'" class="tab-content">
+          <Card class="card bulk-card">
+            <template #title>Invitación masiva via CSV</template>
+            <template #content>
+              <div class="bulk-info">
+                <p>
+                  Upload a CSV with columns:
+                  <strong>email</strong> (required), <strong>fullName</strong>, <strong>role</strong>,
+                  <strong>courseId</strong>, <strong>groupId</strong>.
+                </p>
+                <p>Defaults below apply when a row omits those values.</p>
+              </div>
+              <div class="form-grid bulk-grid">
+                <div class="dialog-field">
+                  <label>Default role</label>
+                  <Dropdown
+                    v-model="bulkDefaults.role"
+                    :options="roleOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                  />
+                </div>
+                <div class="dialog-field">
+                  <label>Default course</label>
+                  <Dropdown
+                    v-model="bulkDefaults.courseId"
+                    :options="courseOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="None"
+                    showClear
+                  />
+                </div>
+                <div class="dialog-field">
+                  <label>Default group</label>
+                  <Dropdown
+                    v-model="bulkDefaults.groupId"
+                    :options="filteredGroupOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="None"
+                    showClear
+                    :disabled="!bulkDefaults.courseId"
+                  />
+                </div>
+                <div class="dialog-field">
+                  <label>Activation expiry (days)</label>
+                  <InputNumber v-model="bulkDefaults.expiresDays" :min="1" :max="30" />
+                </div>
+              </div>
+              <div class="file-input-row">
+                <input ref="bulkFileInput" type="file" accept=".csv,text/csv" @change="handleBulkFile" />
+                <span v-if="bulkFileName" class="file-name">{{ bulkFileName }}</span>
+              </div>
+              <div class="bulk-actions-bar">
+                <Button label="Upload CSV" :disabled="!bulkFile" :loading="uploading" @click="submitBulk" />
                 <Button
-                  icon="pi pi-trash"
-                  class="p-button-text p-button-danger"
-                  severity="danger"
-                  size="small"
-                  :loading="deletingLevelId === data.id"
-                  :disabled="deletingLevelId === data.id"
-                  @click="openDeleteLevelDialog(data)"
-                  aria-label="Delete level"
+                  label="Download results"
+                  class="p-button-text"
+                  :disabled="!bulkResults.length"
+                  @click="downloadBulkResults"
                 />
-              </template>
-            </Column>
-          </DataTable>
-        </div>
-      </template>
-    </Card>
+                <Button
+                  label="Clear results"
+                  class="p-button-text"
+                  :disabled="!bulkResults.length"
+                  @click="clearBulkResults"
+                />
+              </div>
+              <div v-if="bulkTotals" class="bulk-summary">
+                <Tag :value="`Total: ${bulkTotals.total}`" severity="info" />
+                <Tag :value="`Created: ${bulkTotals.created}`" severity="success" />
+                <Tag :value="`Existing: ${bulkTotals.alreadyExists}`" severity="info" />
+                <Tag :value="`Invalid: ${bulkTotals.invalid}`" severity="warning" />
+                <Tag :value="`Failed: ${bulkTotals.failed}`" severity="danger" />
+              </div>
+              <DataTable v-if="bulkResults.length" :value="bulkResults" responsiveLayout="scroll" class="mt-2">
+                <Column field="rowNumber" header="#" style="width: 4rem" />
+                <Column field="email" header="Email" />
+                <Column header="Role" style="width: 8rem">
+                  <template #body="{ data }">
+                    <Tag :value="data.role" severity="info" />
+                  </template>
+                </Column>
+                <Column header="Status" style="width: 10rem">
+                  <template #body="{ data }">
+                    <Tag :value="data.status" :severity="statusSeverity(data.status)" />
+                  </template>
+                </Column>
+                <Column header="Activation">
+                  <template #body="{ data }">
+                    <Button
+                      v-if="data.activationLink"
+                      icon="pi pi-copy"
+                      class="p-button-text"
+                      @click="copyActivationLink(data.activationLink)"
+                    />
+                    <span v-else class="muted">—</span>
+                  </template>
+                </Column>
+                <Column header="Course" field="enrollment.courseId" style="width: 16rem">
+                  <template #body="{ data }">
+                    {{ data.enrollment.courseId || '—' }}
+                  </template>
+                </Column>
+                <Column header="Group" field="enrollment.groupId" style="width: 16rem">
+                  <template #body="{ data }">
+                    {{ data.enrollment.groupId || '—' }}
+                  </template>
+                </Column>
+                <Column header="Enrollment" style="width: 12rem">
+                  <template #body="{ data }">
+                    <span v-if="!data.enrollment.requested" class="muted">Not requested</span>
+                    <Tag
+                      v-else
+                      :value="data.enrollment.status || 'pending'"
+                      :severity="enrollmentSeverity(data.enrollment.status)"
+                    />
+                  </template>
+                </Column>
+                <Column header="Enrollment error">
+                  <template #body="{ data }">
+                    <span class="muted">{{ data.enrollment.error || '—' }}</span>
+                  </template>
+                </Column>
+              </DataTable>
+            </template>
+          </Card>
+        </section>
 
-    <Dialog v-model:visible="showLevelDialog" header="Create course level" modal :style="{ width: '32rem' }">
-      <div class="form-grid">
-        <div class="dialog-field">
-          <label>Code</label>
-          <InputText v-model="levelForm.code" placeholder="A1" />
-        </div>
-        <div class="dialog-field">
-          <label>Label</label>
-          <InputText v-model="levelForm.label" placeholder="Beginner" />
-        </div>
-        <div class="dialog-field dialog-switch">
-          <label>Active</label>
-          <InputSwitch v-model="levelForm.isActive" />
-        </div>
+        <section v-if="activeTab === 'courseLevels'" class="tab-content">
+          <Card class="card levels-card">
+            <template #title>
+              <div class="levels-header">
+                <div>
+                  <h2>Niveles de curso</h2>
+                  <p>Codes that courses may reference</p>
+                </div>
+                <div class="levels-header__actions">
+                  <span class="search-input">
+                    <i class="pi pi-search" />
+                    <InputText v-model="levelSearch" placeholder="Buscar nivel" />
+                  </span>
+                  <Button label="Create level" icon="pi pi-plus" @click="openLevelDialog" />
+                </div>
+              </div>
+            </template>
+            <template #content>
+              <div v-if="loadingLevels">
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" class="mb-2" />
+              </div>
+              <div v-else-if="!filteredCourseLevels.length" class="empty-state">
+                No course levels defined yet.
+              </div>
+              <div v-else>
+                <DataTable :value="filteredCourseLevels" responsiveLayout="scroll">
+                  <Column field="code" header="Code" />
+                  <Column field="label" header="Label" />
+                  <Column header="Status" style="width: 10rem">
+                    <template #body="{ data }">
+                      <Tag
+                        :value="data.is_active ? 'Active' : 'Inactive'"
+                        :severity="data.is_active ? 'success' : 'warning'"
+                      />
+                    </template>
+                  </Column>
+                  <Column field="created_at" header="Created" bodyStyle="width: 14rem">
+                    <template #body="{ data }">
+                      {{ formatDate(data.created_at) }}
+                    </template>
+                  </Column>
+                  <Column header="Actions" bodyStyle="width: 10rem">
+                    <template #body="{ data }">
+                      <Button
+                        icon="pi pi-trash"
+                        class="p-button-text p-button-danger"
+                        severity="danger"
+                        size="small"
+                        :loading="deletingLevelId === data.id"
+                        :disabled="deletingLevelId === data.id"
+                        @click="openDeleteLevelDialog(data)"
+                        aria-label="Delete level"
+                      />
+                    </template>
+                  </Column>
+                </DataTable>
+              </div>
+            </template>
+          </Card>
+        </section>
+
+        <section v-if="activeTab === 'settings'" class="tab-content">
+          <Card class="card settings-card">
+            <template #title>
+              <div class="card-title">
+                <div>
+                  <h2>Configuración</h2>
+                  <p>Opciones administrativas y de seguridad.</p>
+                </div>
+              </div>
+            </template>
+            <template #content>
+              <p class="muted">
+                Ajustes de branding, roles y políticas de seguridad próximamente.
+              </p>
+            </template>
+          </Card>
+        </section>
       </div>
-      <template #footer>
-        <Button label="Cancel" class="p-button-text" :disabled="savingLevel" @click="closeLevelDialog" />
-        <Button label="Save" :loading="savingLevel" severity="success" @click="submitLevelForm" />
-      </template>
-    </Dialog>
-
-    <Dialog
-      v-model:visible="confirmDeleteLevelVisible"
-      header="Confirm deletion"
-      modal
-      :style="{ width: '28rem' }"
-      :closable="!confirmDeleteLevelLoading"
-    >
-      <p class="confirm-message">{{ confirmDeleteLevelMessage }}</p>
-      <template #footer>
-        <Button
-          label="Cancel"
-          class="p-button-text"
-          :disabled="confirmDeleteLevelLoading"
-          @click="closeDeleteLevelDialog"
-        />
-        <Button
-          label="Delete"
-          severity="danger"
-          :loading="confirmDeleteLevelLoading"
-          :disabled="confirmDeleteLevelLoading"
-          @click="confirmDeleteLevel"
-        />
-      </template>
-    </Dialog>
-
-    <Dialog v-model:visible="linkDialogVisible" header="Activation link" modal :style="{ width: '32rem' }">
-      <p>Share this link with the user so they can set their password.</p>
-      <div class="link-box">
-        <InputText :modelValue="activationLink" readonly />
-        <Button icon="pi pi-copy" class="p-button-text" @click="copyLink" />
-      </div>
-      <small>Links expire after 7 days.</small>
-    </Dialog>
+    </main>
   </div>
 </template>
 
@@ -399,6 +448,7 @@ const users = ref([]);
 const loadingUsers = ref(false);
 const filterRole = ref(null);
 const userSearch = ref('');
+const activeTab = ref('users');
 const resettingId = ref(null);
 const togglingId = ref(null);
 
@@ -434,6 +484,7 @@ const rowsPerPageOptions = [10, 20, 50];
 const totalUsers = ref(0);
 const courseLevels = ref([]);
 const loadingLevels = ref(false);
+const levelSearch = ref('');
 const levelForm = ref({ code: '', label: '', isActive: true });
 const showLevelDialog = ref(false);
 const savingLevel = ref(false);
@@ -458,6 +509,27 @@ const bulkFileName = computed(() => bulkFile.value?.name || '');
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 const userRoles = (user) =>
   Array.isArray(user.global_roles) ? user.global_roles.filter(Boolean) : [];
+
+const getInitials = (name = '') =>
+  (name || '')
+    .split(' ')
+    .map((part) => part.charAt(0))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+const filteredCourseLevels = computed(() => {
+  const search = (levelSearch.value || '').trim().toLowerCase();
+  if (!search) {
+    return courseLevels.value;
+  }
+  return courseLevels.value.filter((level) => {
+    const code = (level.code || '').toLowerCase();
+    const label = (level.label || '').toLowerCase();
+    return code.includes(search) || label.includes(search);
+  });
+});
 
 const confirmDeleteLevelMessage = computed(() => {
   const level = courseLevels.value.find((entry) => entry.id === confirmDeleteLevelId.value);
@@ -911,102 +983,258 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-page {
+.admin-main {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 2.5vw, 2.5rem) clamp(1rem, 2vw, 2rem) 3rem;
   display: flex;
   flex-direction: column;
+  gap: 1.5rem;
+  font-family: var(--font-body);
+}
+
+.admin-topbar {
+  background: #fff;
+  border: 1px solid var(--app-border);
+  border-radius: 20px;
+  padding: 1rem 1.5rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 1rem;
 }
+
+.admin-topbar__titles h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+}
+
+.admin-topbar__eyebrow {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.35rem;
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.admin-tabs {
+  background: #fff;
+  border-radius: 24px;
+  border: 1px solid var(--app-border);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.tabs-nav {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 2px solid rgba(45, 62, 85, 0.12);
+  padding-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.tabs-nav__item {
+  border: none;
+  background: transparent;
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-radius: 999px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.tabs-nav__item.active {
+  color: var(--brand-primary);
+}
+
+.tabs-nav__item.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.5rem;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--brand-primary);
+}
+
+.tabs-nav__item:focus-visible {
+  outline: 3px solid rgba(13, 59, 102, 0.25);
+  outline-offset: 4px;
+}
+
+.tab-content {
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 22px;
+  border: 1px solid var(--app-border);
+  box-shadow: var(--shadow-sm);
+  padding: 1.4rem 1.6rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.card-title h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.card-title p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.icon-circle {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  background: rgba(13, 59, 102, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-primary);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
 }
+
 .dialog-field {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
 }
-.form-actions {
+
+.dialog-field label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.create-user-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 1rem;
+  margin-top: 1.25rem;
 }
-.section-header {
+
+.users-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  margin-bottom: 0.5rem;
 }
-.section-actions {
+
+.users-header__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
+
+.total-pill {
+  background: rgba(13, 59, 102, 0.08);
+  border-radius: 999px;
+  padding: 0.35rem 0.95rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .search-input {
   position: relative;
 }
+
 .search-input i {
   position: absolute;
   top: 50%;
-  left: 0.75rem;
+  left: 0.8rem;
   transform: translateY(-50%);
   color: #94a3b8;
 }
+
 .search-input :deep(.p-inputtext) {
-  padding-left: 2.25rem;
+  padding-left: 2.5rem;
   min-width: 14rem;
 }
-.link-box {
+
+.user-meta {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
-  margin: 1rem 0;
+  gap: 0.85rem;
 }
-.empty-state {
-  color: #64748b;
+
+.user-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
 }
-.mt-card {
-  margin-top: 1rem;
+
+.role-tag-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
-.filter-dropdown {
-  min-width: 10rem;
-}
-.total-tag {
-  white-space: nowrap;
-}
+
 .actions-row {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.user-table :deep(.p-datatable-wrapper) {
-  max-height: 420px;
-}
-.role-tag-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
+
 .bulk-info {
   background: #f8fafc;
-  border-radius: 0.75rem;
+  border-radius: 1rem;
   padding: 1rem;
   margin-bottom: 1rem;
   color: #475569;
 }
+
 .bulk-grid {
   margin-bottom: 1rem;
 }
+
 .file-input-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
 }
+
 .file-name {
   color: #475569;
   font-size: 0.9rem;
 }
+
 .bulk-actions-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1014,27 +1242,82 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 1rem;
 }
+
 .bulk-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
+
+.levels-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.levels-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .muted {
   color: #94a3b8;
   font-size: 0.9rem;
 }
-.mt-2 {
-  margin-top: 1rem;
+
+.user-table :deep(.p-datatable-wrapper) {
+  max-height: 420px;
 }
-.levels-card {
-  margin-top: 1rem;
+
+.user-table  > :deep(tr) {
+  font-size: 10px;
 }
-.levels-card .empty-state {
-  padding: 1rem 0;
+
+.user-table :deep(.p-datatable-thead > tr > th),
+.user-table :deep(.p-datatable-tbody > tr > td) {
+  font-size: 0.9rem;
 }
-.confirm-message {
-  margin: 0 0 1rem;
-  line-height: 1.4;
+
+.tab-content :deep(.p-datatable-tbody > tr):hover {
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .tabs-nav {
+    padding-bottom: 0;
+  }
+
+  .tabs-nav__item {
+    flex: 1;
+    white-space: nowrap;
+  }
+
+  .admin-main {
+    padding: 1rem;
+  }
+
+  .users-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .users-header__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card:hover,
+  .tab-content :deep(.p-datatable-tbody > tr):hover {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 </style>

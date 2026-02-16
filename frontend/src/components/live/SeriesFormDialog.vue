@@ -56,6 +56,17 @@
         />
         <small v-if="errors.dtstart" class="field-error">{{ errors.dtstart }}</small>
       </div>
+      <div class="form-field">
+        <label>{{ t('liveSessions.form.end') }}</label>
+        <Calendar
+          v-model="form.dtend"
+          showIcon
+          showTime
+          hourFormat="24"
+          :placeholder="t('liveSessions.form.endPlaceholder')"
+        />
+        <small v-if="errors.dtend" class="field-error">{{ errors.dtend }}</small>
+      </div>
       <div class="form-field-inline">
         <div>
           <label>{{ t('liveSessions.form.duration') }}</label>
@@ -240,6 +251,7 @@ const form = reactive({
   classTypeId: null,
   hostTeacherId: null,
   dtstart: null,
+  dtend: null,
   durationMinutes: 30,
   timezone: defaultTimezone,
   rrule: '',
@@ -253,6 +265,7 @@ const errors = reactive({
   hostTeacherId: '',
   dtstart: '',
   durationMinutes: '',
+  dtend: '',
   rrule: '',
 });
 
@@ -297,6 +310,7 @@ const fillForm = () => {
     form.classTypeId = props.editing.classTypeId || null;
     form.hostTeacherId = props.editing.hostTeacherId || null;
     form.dtstart = props.editing.dtstart ? new Date(props.editing.dtstart) : null;
+    form.dtend = props.editing.dtend ? new Date(props.editing.dtend) : null;
     form.durationMinutes = props.editing.durationMinutes || 30;
     form.timezone = props.editing.timezone || defaultTimezone;
     form.joinUrl = props.editing.joinUrl || '';
@@ -334,6 +348,10 @@ const validate = () => {
     errors.dtstart = t('liveSessions.validation.dtstart');
     valid = false;
   }
+  if (!form.dtend) {
+    errors.dtend = t('liveSessions.validation.dtend');
+    valid = false;
+  }
   if (!form.durationMinutes || form.durationMinutes <= 0) {
     errors.durationMinutes = t('liveSessions.validation.duration');
     valid = false;
@@ -354,6 +372,7 @@ const normalizePayload = () => ({
   classTypeId: form.classTypeId,
   hostTeacherId: form.hostTeacherId,
   dtstart: form.dtstart ? new Date(form.dtstart).toISOString() : null,
+  dtend: form.dtend ? new Date(form.dtend).toISOString() : null,
   timezone: form.timezone?.trim() || defaultTimezone,
   durationMinutes: Number(form.durationMinutes),
   rrule: form.rrule.trim(),

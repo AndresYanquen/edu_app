@@ -566,10 +566,22 @@ router.post('/live-series/:id/generate', async (req, res) => {
     const { series } = lookup;
 
     let window;
-    try {
-      window = parseWindow(req.body || {});
-    } catch (err) {
-      return res.status(400).json({ error: err.message || 'Invalid window' });
+    if (req.body?.dtend) {
+      const from = new Date(series.dtstart);
+      const to = new Date(req.body.dtend);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        return res.status(400).json({ error: 'Invalid dtend parameter' });
+      }
+      if (to <= from) {
+        return res.status(400).json({ error: 'dtend must be after the series start' });
+      }
+      window = { from, to };
+    } else {
+      try {
+        window = parseWindow(req.body || {});
+      } catch (err) {
+        return res.status(400).json({ error: err.message || 'Invalid window' });
+      }
     }
 
     const result = await generateSessionsForSeries(series, window);

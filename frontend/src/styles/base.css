@@ -27,6 +27,7 @@ a {
   padding: 1.5rem;
   min-height: calc(100vh - 4rem);
   background-color: var(--app-bg);
+  max-width: calc( 100% - 52px);
 }
 
 .p-card,

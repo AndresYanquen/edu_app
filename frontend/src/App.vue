@@ -3,7 +3,7 @@
   <div v-if="!auth.initialized" class="loading-screen">
     <ProgressSpinner />
   </div>
-  <div v-else>
+  <div id="app-container" v-else>
     <AppShell v-if="auth.isAuthenticated">
       <router-view />
     </AppShell>
@@ -24,5 +24,8 @@ const auth = useAuthStore();
   display: flex;
   align-items: center;
   justify-content: center;
+}
+#app-container{
+  font-size: 12px;
 }
 </style>

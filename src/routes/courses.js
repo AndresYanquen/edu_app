@@ -361,6 +361,9 @@ router.get(
     const percent =
       totalLessons === 0 ? 0 : Math.floor((completedLessons * 100) / totalLessons);
 
+    const completedLessonDetails = lessons
+      .filter((lesson) => doneLessonIds.has(lesson.id))
+      .map(({ id, title }) => ({ id, title }));
     const nextLesson = lessons.find((lesson) => !doneLessonIds.has(lesson.id)) || null;
 
     return res.json({
@@ -370,6 +373,7 @@ router.get(
       percent,
       nextLessonId: nextLesson ? nextLesson.id : null,
       nextLessonTitle: nextLesson ? nextLesson.title : null,
+      completedLessonDetails,
     });
   } catch (err) {
     console.error('Failed to load course progress', err);

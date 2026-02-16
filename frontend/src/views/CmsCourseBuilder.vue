@@ -60,515 +60,553 @@
         </template>
       </Card>
 
-      <div class="builder-grid" v-if="hasContentAccess">
-        <Card class="modules-card">
-          <template #title>
-            <div class="section-header">
-              <div>
-                <div class="section-title">Modules</div>
+      <TabView
+        v-model:activeIndex="activeTabIndex"
+        class="course-tabs"
+        :renderActiveOnly="false"
+      >
+        <TabPanel header="Build" v-if="hasContentAccess">
+          <Card class="build-card">
+            <template #title>
+              <div class="section-header">
+                <div>
+                  <div class="section-title">Build</div>
+                  <small class="muted">Manage modules and lessons inside each module</small>
+                </div>
+                <Button  label="Add module" icon="pi pi-plus" @click="openModuleDialog()" />
               </div>
-              <Button label="Add module" icon="pi pi-plus" @click="openModuleDialog()" />
-            </div>
-          </template>
-          <template #content>
-            <div v-if="loadingModules">
-              <Skeleton height="2rem" class="mb-2" />
-              <Skeleton height="2rem" class="mb-2" />
-            </div>
-            <div v-else-if="!modules.length" class="empty-state">No modules yet.</div>
-            <div v-else class="module-list">
-              <div
-                v-for="(module, index) in modules"
-                :key="module.id"
-                class="list-item module-item"
-                :class="{ 'is-active': module.id === selectedModuleId }"
-                @click="selectModule(module.id)"
+            </template>
+
+            <template #content>
+              <div v-if="loadingModules">
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" class="mb-2" />
+              </div>
+
+              <div v-else-if="!modules.length" class="empty-state">No modules yet.</div>
+
+              <Accordion
+                v-else
+                v-model:activeIndex="activeModuleTabs"
+                :multiple="true"
+                class="modules-accordion"
+                @tab-open="onModuleTabOpen"
               >
-                <div class="module-info">
-                  <div class="item-title">{{ module.title }}</div>
-                  <Tag
-                    :value="module.is_published ? 'Published' : 'Draft'"
-                    :severity="module.is_published ? 'success' : 'warning'"
-                  />
-                </div>
-                <div class="module-actions" @click.stop>
-                  <Button icon="pi pi-pencil" class="p-button-text" @click="openModuleDialog(module)" />
-                  <Button
-                    :icon="module.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                    class="p-button-text"
-                    @click="toggleModulePublish(module)"
-                  />
-                  <Button
-                    icon="pi pi-trash"
-                    class="p-button-text p-button-danger"
-                    severity="danger"
-                    :loading="deletingModuleId === module.id"
-                    :disabled="deletingModuleId === module.id"
-                    @click.stop="openDeleteModuleDialog(module)"
-                    aria-label="Delete module"
-                  />
-                  <Button
-                    icon="pi pi-arrow-up"
-                    class="p-button-text"
-                    :disabled="index === 0"
-                    @click="reorderModule(module, 'up')"
-                  />
-                  <Button
-                    icon="pi pi-arrow-down"
-                    class="p-button-text"
-                    :disabled="index === modules.length - 1"
-                    @click="reorderModule(module, 'down')"
-                  />
-                </div>
-              </div>
-            </div>
-          </template>
-        </Card>
-
-        <Card class="lessons-card">
-          <template #title>
-            <div class="section-header">
-              <div>
-                <div class="section-title">Lessons</div>
-                <small v-if="selectedModule" class="muted">{{ selectedModule.title }}</small>
-              </div>
-              <Button
-                label="Add lesson"
-                icon="pi pi-plus"
-                :disabled="!selectedModuleId"
-                @click="openLessonDialog()"
-              />
-            </div>
-          </template>
-          <template #content>
-            <div v-if="!selectedModuleId" class="empty-state">Select a module to view lessons.</div>
-            <div v-else-if="loadingLessons">
-              <Skeleton height="2rem" class="mb-2" />
-              <Skeleton height="2rem" class="mb-2" />
-            </div>
-            <div v-else-if="!lessons.length" class="empty-state">No lessons yet.</div>
-            <div v-else class="lesson-list">
-              <div v-for="(lesson, index) in lessons" :key="lesson.id" class="list-item lesson-item">
-                <div>
-                  <strong class="item-title">{{ lesson.title }}</strong>
-                  <p class="lesson-meta muted">{{ lesson.estimated_minutes || 0 }} min</p>
-                </div>
-                <div class="module-actions">
-                  <Tag
-                    :value="lesson.is_published ? 'Published' : 'Draft'"
-                    :severity="lesson.is_published ? 'success' : 'warning'"
-                  />
-                  <Button icon="pi pi-pencil" class="p-button-text" @click="editLesson(lesson)" />
-                  <Button
-                    :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                    class="p-button-text"
-                    @click="toggleLessonPublish(lesson)"
-                  />
-                  <Button
-                    icon="pi pi-trash"
-                    class="p-button-text p-button-danger"
-                    severity="danger"
-                    :loading="deletingLessonId === lesson.id"
-                    :disabled="deletingLessonId === lesson.id"
-                    @click.stop="openDeleteLessonDialog(lesson)"
-                    aria-label="Delete lesson"
-                  />
-                  <Button
-                    icon="pi pi-arrow-up"
-                    class="p-button-text"
-                    :disabled="index === 0"
-                    @click="reorderLesson(lesson, 'up')"
-                  />
-                  <Button
-                    icon="pi pi-arrow-down"
-                    class="p-button-text"
-                    :disabled="index === lessons.length - 1"
-                    @click="reorderLesson(lesson, 'down')"
-                  />
-                </div>
-              </div>
-            </div>
-          </template>
-        </Card>
-      </div>
-
-      <Card v-if="canManageEnrollments" class="groups-card">
-        <template #title>
-          <div class="section-header">
-            <div>
-              <div class="section-title">Groups</div>
-              <small class="muted">Manage cohorts and staff assignments</small>
-            </div>
-            <Button label="Create group" icon="pi pi-plus" @click="openGroupDialog()" />
-          </div>
-        </template>
-        <template #content>
-          <div v-if="loadingGroups">
-            <Skeleton height="2rem" class="mb-2" />
-            <Skeleton height="2rem" class="mb-2" />
-          </div>
-          <div v-else-if="!courseGroups.length" class="empty-state">
-            No groups yet.
-          </div>
-          <DataTable
-            v-else
-            :value="courseGroups"
-            responsiveLayout="scroll"
-            dataKey="id"
-            :paginator="courseGroups.length > 8"
-            :rows="8"
-          >
-            <Column field="code" header="Code" />
-            <Column field="name" header="Name" />
-            <Column field="startDate" header="Start date" />
-            <Column field="endDate" header="End date" />
-            <Column header="Capacity">
-              <template #body="{ data }">
-                {{ data.capacity ?? '-' }}
-              </template>
-            </Column>
-            <Column header="Status">
-              <template #body="{ data }">
-                <Tag
-                  :value="data.status"
-                  :severity="data.status === 'active' ? 'success' : 'warning'"
-                />
-              </template>
-            </Column>
-            <Column header="Teachers">
-              <template #body="{ data }">
-                <Tag
-                  :value="`${data.teachersCount} instructor${data.teachersCount === 1 ? '' : 's'}`"
-                  severity="info"
-                />
-              </template>
-            </Column>
-            <Column header="Actions" body-style="min-width: 12rem">
-              <template #body="{ data }">
-                <Button
-                  icon="pi pi-pencil"
-                  class="p-button-text"
-                  @click="openGroupDialog(data)"
-                  aria-label="Edit group"
-                />
-                <Button
-                  icon="pi pi-users"
-                  class="p-button-text"
-                  @click="openGroupTeacherDialog(data.id)"
-                  aria-label="Manage teachers"
-                />
-                <Button
-                  icon="pi pi-trash"
-                  class="p-button-text p-button-danger"
-                  severity="danger"
-                  :loading="deletingGroupId === data.id"
-                  :disabled="deletingGroupId === data.id"
-                  @click.stop="openDeleteGroupDialog(data)"
-                  aria-label="Delete group"
-                />
-              </template>
-            </Column>
-          </DataTable>
-        </template>
-      </Card>
-
-      <Card v-if="isAdmin" class="live-sessions-card">
-        <template #title>
-          <div class="section-header">
-            <div>
-              <div class="section-title">Live sessions</div>
-              <small class="muted">Manage recurring live meetings for each group</small>
-            </div>
-            <div class="live-session-controls">
-              <label>Select group</label>
-              <Dropdown
-                v-model="liveSessionGroupId"
-                :options="liveSessionGroupOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select group"
-                :disabled="!courseGroups.length"
-              />
-            </div>
-          </div>
-        </template>
-        <template #content>
-          <div v-if="liveSessionLoading" class="live-session-loading">
-            <Skeleton height="2rem" class="mb-2" />
-            <Skeleton height="2rem" class="mb-2" />
-            <Skeleton height="12rem" />
-          </div>
-          <div v-else-if="liveSessionError" class="empty-state">
-            <p>Unable to load live sessions right now.</p>
-            <Button
-              :label="'Reload live sessions'"
-              icon="pi pi-refresh"
-              class="p-button-text"
-              @click="loadLiveSessionData"
-            />
-          </div>
-          <div v-else>
-            <SeriesTable
-              :series="liveSessionSeries"
-              :modules="modules"
-              :loading="liveSessionSeriesLoading"
-              :publishLoadingId="liveSeriesPublishLoadingId"
-              :generatingId="liveSeriesGeneratingId"
-              :regeneratingId="liveSeriesRegeneratingId"
-              :deletingId="liveSeriesDeletingId"
-              @create="openLiveSeriesCreate"
-              @edit="openLiveSeriesEdit"
-              @toggle-publish="handleLiveSeriesPublishToggle"
-              @generate="handleLiveSeriesGenerate"
-              @regenerate="openRegenerateSeriesDialog"
-              @delete-series="handleLiveSeriesDelete"
-            />
-            <SessionsTable
-              :sessions="liveSessionSessions"
-              :loading="liveSessionSessionsLoading"
-              :classTypes="liveSessionClassTypes"
-              :modules="modules"
-              :teachers="liveSessionTeachers"
-              :range="liveSessionRange"
-              @refresh="handleLiveSessionsRefresh"
-              @edit="openLiveSessionEdit"
-              @range-change="handleLiveSessionsRangeChange"
-            />
-          </div>
-        </template>
-      </Card>
-
-      <Card v-if="canManageEnrollments && hasContentAccess" class="group-teachers-card">
-        <template #title>
-          <div class="section-header">
-            <div>
-              <h3>Group instructors</h3>
-              <small>Assign instructors to a specific group</small>
-            </div>
-            <Button
-              label="Add instructor"
-              icon="pi pi-user-plus"
-              :disabled="!selectedGroupForTeachers"
-              @click="openGroupTeacherDialog"
-            />
-          </div>
-        </template>
-        <template #content>
-          <div class="group-teachers-selector">
-            <label>Select group</label>
-            <Dropdown
-              v-model="selectedGroupForTeachers"
-              :options="groupTeacherOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="Select group"
-              :disabled="!courseGroups.length"
-            />
-          </div>
-          <div v-if="!courseGroups.length" class="empty-state">
-            Create a group to assign instructors.
-          </div>
-          <div v-else>
-            <div v-if="loadingGroupTeachers">
-              <Skeleton height="2.5rem" class="mb-2" />
-              <Skeleton height="2.5rem" class="mb-2" />
-            </div>
-            <div v-else-if="!groupTeachers.length" class="empty-state">
-              No instructors assigned yet.
-            </div>
-            <ul v-else class="group-teacher-list">
-              <li v-for="teacher in groupTeachers" :key="teacher.id" class="group-teacher-item">
-                <div>
-                  <strong>{{ teacher.fullName }}</strong>
-                  <small>{{ teacher.email }}</small>
-                </div>
-                <Button
-                  icon="pi pi-times"
-                  class="p-button-text p-button-danger"
-                  :loading="removingGroupTeacherId === teacher.id"
-                  @click="removeGroupInstructor(teacher.id)"
-                  aria-label="Remove instructor"
-                />
-              </li>
-            </ul>
-          </div>
-        </template>
-      </Card>
-
-      <Card v-if="canManageEnrollments" class="enrollments-card">
-        <template #title>
-          <div class="section-header">
-            <h3>Enrollments</h3>
-            <Button label="Enroll student" icon="pi pi-user-plus" @click="openEnrollDialog" />
-          </div>
-        </template>
-        <template #content>
-          <div v-if="loadingEnrollments">
-            <Skeleton height="2.5rem" class="mb-2" />
-            <Skeleton height="2.5rem" class="mb-2" />
-            <Skeleton height="2.5rem" />
-          </div>
-          <div v-else>
-            <div class="enrollment-filters">
-              <div class="filter-field">
-                <label>Search</label>
-                <InputText v-model="enrollmentFilter" placeholder="Name or email" />
-              </div>
-              <div class="filter-field">
-                <label>Group</label>
-                <Dropdown
-                  v-model="enrollmentGroupFilter"
-                  :options="enrollmentGroupOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="All groups"
-                  showClear
-                />
-              </div>
-            </div>
-            <div v-if="!enrollmentTotal" class="empty-state">
-              {{
-                enrollmentFilter || enrollmentGroupFilter
-                  ? 'No enrollments match your filters.'
-                  : 'No students enrolled yet.'
-              }}
-            </div>
-            <DataTable
-              v-else
-              :value="enrollments"
-              responsiveLayout="scroll"
-              :paginator="true"
-              :rows="enrollmentRows"
-              :totalRecords="enrollmentTotal"
-              :first="enrollmentPage * enrollmentRows"
-              :rowsPerPageOptions="enrollmentRowsOptions"
-              lazy
-              @page="onEnrollmentPage"
-            >
-              <Column field="fullName" header="Student" />
-              <Column field="email" header="Email" />
-              <Column header="Group" body-style="min-width:16rem">
-                <template #body="{ data }">
-                  <div class="group-cell">
-                    <Tag
-                      :value="data.groupName || 'No group'"
-                      :severity="data.groupName ? 'info' : 'warning'"
-                      class="group-tag"
-                    />
-                    <Dropdown
-                      :modelValue="data.groupId || null"
-                      :options="groupDropdownOptions"
-                      optionLabel="label"
-                      optionValue="value"
-                      placeholder="Select group"
-                      showClear
-                      class="group-dropdown"
-                      :loading="updatingGroupId === data.studentId"
-                      :disabled="updatingGroupId === data.studentId"
-                      @update:modelValue="(value) => updateStudentGroup(data.studentId, value)"
-                    />
-                  </div>
-                </template>
-              </Column>
-              <Column header="Actions" body-style="min-width:6rem">
-                <template #body="{ data }">
-                  <Button
-                    label="Remove"
-                    icon="pi pi-times"
-                    class="p-button-text p-button-danger"
-                    :loading="removingEnrollmentId === data.studentId"
-                    @click="removeEnrollmentRow(data)"
-                  />
-                </template>
-              </Column>
-            </DataTable>
-          </div>
-        </template>
-      </Card>
-
-
-
-      <Card v-if="isAdmin" class="staff-card">
-        <template #title>
-          <div class="section-header">
-            <h3>Staff</h3>
-            <small>Assign instructors, editors, and enrollment managers</small>
-          </div>
-        </template>
-        <template #content>
-          <div class="staff-form-grid">
-            <div class="dialog-field">
-              <label>User</label>
-              <Dropdown
-                v-model="staffForm.userId"
-                :options="staffCandidates"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select user"
-                filter
-                :loading="loadingStaffCandidates"
-                @show="ensureStaffCandidates"
-                @filter="handleStaffFilter"
-              />
-            </div>
-            <div class="dialog-field">
-              <label>Roles</label>
-              <MultiSelect
-                v-model="staffForm.roles"
-                :options="staffRoleOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select roles"
-                display="chip"
-              />
-            </div>
-            <div class="staff-form-actions">
-              <Button
-                label="Assign roles"
-                :loading="assigningStaff"
-                @click="submitStaffAssignment"
-              />
-            </div>
-          </div>
-
-          <div class="staff-list">
-            <div v-if="loadingStaff">
-              <Skeleton height="2.5rem" class="mb-2" />
-              <Skeleton height="2.5rem" />
-            </div>
-            <div v-else-if="!staffAssignments.length" class="empty-state">
-              No staff assigned yet.
-            </div>
-            <div v-else>
-              <DataTable :value="staffAssignments" responsiveLayout="scroll">
-                <Column field="fullName" header="Name" />
-                <Column field="email" header="Email" />
-                <Column header="Roles">
-                  <template #body="{ data }">
-                    <div class="staff-role-tags">
-                      <div
-                        v-for="role in data.roles"
-                        :key="`${data.userId}-${role}`"
-                        class="staff-role-tag"
-                      >
-                        <Tag :value="staffRoleLabels[role] || role" severity="info" />
-                        <Button
-                          icon="pi pi-times"
-                          class="p-button-text p-button-danger"
-                          :loading="removingStaffRoleKey === `${data.userId}:${role}`"
-                          @click="removeStaffRole(data.userId, role)"
+                <AccordionTab v-for="(module, index) in modules" :key="module.id">
+                  <template #header>
+                    <div class="module-tab-header" @click.stop="selectModuleFromTab(module.id)">
+                      <div class="module-tab-title">
+                        <span class="module-name">{{ module.title }}</span>
+                        <Tag
+                          :value="module.is_published ? 'Published' : 'Draft'"
+                          :severity="module.is_published ? 'success' : 'warning'"
+                          class="module-status"
                         />
+                      </div>
+
+                      <div class="module-tab-actions" @click.stop>
+                        <Button icon="pi pi-pencil" class="p-button-text" @click="openModuleDialog(module)" />
+                        <Button
+                          :icon="module.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
+                          class="p-button-text"
+                          @click="toggleModulePublish(module)"
+                        />
+                        <Button
+                          icon="pi pi-trash"
+                          class="p-button-text p-button-danger"
+                          severity="danger"
+                          :loading="deletingModuleId === module.id"
+                          :disabled="deletingModuleId === module.id"
+                          @click.stop="openDeleteModuleDialog(module)"
+                        />
+                        <Button icon="pi pi-arrow-up" class="p-button-text" :disabled="index === 0" @click="reorderModule(module, 'up')" />
+                        <Button icon="pi pi-arrow-down" class="p-button-text" :disabled="index === modules.length - 1" @click="reorderModule(module, 'down')" />
                       </div>
                     </div>
                   </template>
+
+                  <div class="module-lessons-wrap">
+                    <div class="lessons-head">
+                      <div>
+                        <div class="lessons-title">Lessons · {{ module.title }}</div>
+                        <small class="muted">
+                          {{ (lessonsByModuleId[module.id] || []).length }} lesson(s)
+                        </small>
+                      </div>
+
+                      <Button
+                        label="Add lesson"
+                        icon="pi pi-plus"
+                        @click="openLessonDialogForModule(module.id)"
+                      />
+                    </div>
+
+                    <div class="lessons-toolbar">
+                      <span class="p-input-icon-left lessons-search">
+                        <i class="pi pi-search" />
+                        <InputText
+                          v-model="lessonFiltersByModuleId[module.id].search"
+                          placeholder="Search lessons"
+                        />
+                      </span>
+
+                      <Dropdown
+                        v-model="lessonFiltersByModuleId[module.id].status"
+                        :options="lessonStatusOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="All"
+                        class="lessons-filter"
+                      />
+                    </div>
+
+                    <div v-if="lessonsLoadingByModuleId[module.id]" class="lessons-loading">
+                      <Skeleton height="2rem" class="mb-2" />
+                      <Skeleton height="2rem" class="mb-2" />
+                      <Skeleton height="2rem" class="mb-2" />
+                    </div>
+
+                    <div v-else-if="!filteredLessonsForModule(module.id).length" class="empty-state">
+                      No lessons yet for this module.
+                    </div>
+
+                    <div v-else class="lesson-list-scroll">
+                      <div
+                        v-for="(lesson, lIndex) in filteredLessonsForModule(module.id)"
+                        :key="lesson.id"
+                        class="list-item lesson-item lesson-item--nested"
+                      >
+                        <div class="lesson-info">
+                          <strong class="item-title">{{ lesson.title }}</strong>
+                          <p class="lesson-meta muted">{{ lesson.estimated_minutes || 0 }} min</p>
+                        </div>
+
+                        <div class="module-actions" @click.stop>
+                          <Tag
+                            :value="lesson.is_published ? 'Published' : 'Draft'"
+                            :severity="lesson.is_published ? 'success' : 'warning'"
+                          />
+                          <Button icon="pi pi-pencil" class="p-button-text" @click="editLesson(lesson)" />
+                          <Button
+                            :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
+                            class="p-button-text"
+                            @click="toggleLessonPublish(lesson, module.id)"
+                          />
+                          <Button
+                            icon="pi pi-trash"
+                            class="p-button-text p-button-danger"
+                            severity="danger"
+                            :loading="deletingLessonId === lesson.id"
+                            :disabled="deletingLessonId === lesson.id"
+                            @click.stop="openDeleteLessonDialogForModule(module.id, lesson)"
+                          />
+                          <Button
+                            icon="pi pi-arrow-up"
+                            class="p-button-text"
+                            :disabled="lIndex === 0"
+                            @click="reorderLessonForModule(module.id, lesson, 'up')"
+                          />
+                          <Button
+                            icon="pi pi-arrow-down"
+                            class="p-button-text"
+                            :disabled="lIndex === filteredLessonsForModule(module.id).length - 1"
+                            @click="reorderLessonForModule(module.id, lesson, 'down')"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </AccordionTab>
+              </Accordion>
+            </template>
+          </Card>
+        </TabPanel>
+
+        <TabPanel header="Groups" v-if="canManageEnrollments">
+          <Card class="groups-card">
+            <template #title>
+              <div class="section-header">
+                <div>
+                  <div class="section-title">Groups</div>
+                  <small class="muted">Manage cohorts and staff assignments</small>
+                </div>
+                <Button label="Create group" icon="pi pi-plus" @click="openGroupDialog()" />
+              </div>
+            </template>
+            <template #content>
+              <div v-if="loadingGroups">
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" class="mb-2" />
+              </div>
+              <div v-else-if="!courseGroups.length" class="empty-state">
+                No groups yet.
+              </div>
+              <DataTable
+                v-else
+                :value="courseGroups"
+                responsiveLayout="scroll"
+                dataKey="id"
+                :paginator="courseGroups.length > 8"
+                :rows="8"
+              >
+                <Column field="code" header="Code" />
+                <Column field="name" header="Name" />
+                <Column field="startDate" header="Start date" />
+                <Column field="endDate" header="End date" />
+                <Column header="Capacity">
+                  <template #body="{ data }">
+                    {{ data.capacity ?? '-' }}
+                  </template>
+                </Column>
+                <Column header="Status">
+                  <template #body="{ data }">
+                    <Tag
+                      :value="data.status"
+                      :severity="data.status === 'active' ? 'success' : 'warning'"
+                    />
+                  </template>
+                </Column>
+                <Column header="Teachers">
+                  <template #body="{ data }">
+                    <Tag
+                      :value="`${data.teachersCount} instructor${data.teachersCount === 1 ? '' : 's'}`"
+                      severity="info"
+                    />
+                  </template>
+                </Column>
+                <Column header="Actions" body-style="min-width: 12rem">
+                  <template #body="{ data }">
+                    <Button
+                      icon="pi pi-pencil"
+                      class="p-button-text"
+                      @click="openGroupDialog(data)"
+                      aria-label="Edit group"
+                    />
+                    <Button
+                      icon="pi pi-users"
+                      class="p-button-text"
+                      @click="openGroupTeacherDialog(data.id)"
+                      aria-label="Manage teachers"
+                    />
+                    <Button
+                      icon="pi pi-trash"
+                      class="p-button-text p-button-danger"
+                      severity="danger"
+                      :loading="deletingGroupId === data.id"
+                      :disabled="deletingGroupId === data.id"
+                      @click.stop="openDeleteGroupDialog(data)"
+                      aria-label="Delete group"
+                    />
+                  </template>
                 </Column>
               </DataTable>
-            </div>
-          </div>
-        </template>
-      </Card>
+            </template>
+          </Card>
+        </TabPanel>
+
+        <TabPanel header="Live sessions" v-if="isAdmin">
+          <Card class="live-sessions-card">
+            <template #title>
+              <div class="section-header">
+                <div>
+                  <div class="section-title">Live sessions</div>
+                  <small class="muted">Manage recurring live meetings for each group</small>
+                </div>
+                <div class="live-session-controls">
+                  <label>Select group</label>
+                  <Dropdown
+                    v-model="liveSessionGroupId"
+                    :options="liveSessionGroupOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select group"
+                    :disabled="!courseGroups.length"
+                  />
+                </div>
+              </div>
+            </template>
+            <template #content>
+              <div v-if="liveSessionLoading" class="live-session-loading">
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="12rem" />
+              </div>
+              <div v-else-if="liveSessionError" class="empty-state">
+                <p>Unable to load live sessions right now.</p>
+                <Button
+                  :label="'Reload live sessions'"
+                  icon="pi pi-refresh"
+                  class="p-button-text"
+                  @click="loadLiveSessionData"
+                />
+              </div>
+              <div v-else>
+                <SeriesTable
+                  :series="liveSessionSeries"
+                  :modules="modules"
+                  :loading="liveSessionSeriesLoading"
+                  :publishLoadingId="liveSeriesPublishLoadingId"
+                  :generatingId="liveSeriesGeneratingId"
+                  :regeneratingId="liveSeriesRegeneratingId"
+                  :deletingId="liveSeriesDeletingId"
+                  @create="openLiveSeriesCreate"
+                  @edit="openLiveSeriesEdit"
+                  @toggle-publish="handleLiveSeriesPublishToggle"
+                  @generate="handleLiveSeriesGenerate"
+                  @regenerate="openRegenerateSeriesDialog"
+                  @delete-series="handleLiveSeriesDelete"
+                />
+                <SessionsTable
+                  :sessions="liveSessionSessions"
+                  :loading="liveSessionSessionsLoading"
+                  :classTypes="liveSessionClassTypes"
+                  :modules="modules"
+                  :teachers="liveSessionTeachers"
+                  :range="liveSessionRange"
+                  @refresh="handleLiveSessionsRefresh"
+                  @edit="openLiveSessionEdit"
+                  @range-change="handleLiveSessionsRangeChange"
+                />
+              </div>
+            </template>
+          </Card>
+        </TabPanel>
+
+        <TabPanel header="Instructors" v-if="canManageEnrollments && hasContentAccess">
+          <Card class="group-teachers-card">
+            <template #title>
+              <div class="section-header">
+                <div>
+                  <h3>Group instructors</h3>
+                  <small>Assign instructors to a specific group</small>
+                </div>
+                <Button
+                  label="Add instructor"
+                  icon="pi pi-user-plus"
+                  :disabled="!selectedGroupForTeachers"
+                  @click="openGroupTeacherDialog"
+                />
+              </div>
+            </template>
+            <template #content>
+              <div class="group-teachers-selector">
+                <label>Select group</label>
+                <Dropdown
+                  v-model="selectedGroupForTeachers"
+                  :options="groupTeacherOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Select group"
+                  :disabled="!courseGroups.length"
+                />
+              </div>
+              <div v-if="!courseGroups.length" class="empty-state">
+                Create a group to assign instructors.
+              </div>
+              <div v-else>
+                <div v-if="loadingGroupTeachers">
+                  <Skeleton height="2.5rem" class="mb-2" />
+                  <Skeleton height="2.5rem" class="mb-2" />
+                </div>
+                <div v-else-if="!groupTeachers.length" class="empty-state">
+                  No instructors assigned yet.
+                </div>
+                <ul v-else class="group-teacher-list">
+                  <li v-for="teacher in groupTeachers" :key="teacher.id" class="group-teacher-item">
+                    <div>
+                      <strong>{{ teacher.fullName }}</strong>
+                      <small>{{ teacher.email }}</small>
+                    </div>
+                    <Button
+                      icon="pi pi-times"
+                      class="p-button-text p-button-danger"
+                      :loading="removingGroupTeacherId === teacher.id"
+                      @click="removeGroupInstructor(teacher.id)"
+                      aria-label="Remove instructor"
+                    />
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </Card>
+        </TabPanel>
+
+        <TabPanel header="Enrollments" v-if="canManageEnrollments">
+          <Card class="enrollments-card">
+            <template #title>
+              <div class="section-header">
+                <h3>Enrollments</h3>
+                <Button label="Enroll student" icon="pi pi-user-plus" @click="openEnrollDialog" />
+              </div>
+            </template>
+            <template #content>
+              <div v-if="loadingEnrollments">
+                <Skeleton height="2.5rem" class="mb-2" />
+                <Skeleton height="2.5rem" class="mb-2" />
+                <Skeleton height="2.5rem" />
+              </div>
+              <div v-else>
+                <div class="enrollment-filters">
+                  <div class="filter-field">
+                    <label>Search</label>
+                    <InputText v-model="enrollmentFilter" placeholder="Name or email" />
+                  </div>
+                  <div class="filter-field">
+                    <label>Group</label>
+                    <Dropdown
+                      v-model="enrollmentGroupFilter"
+                      :options="enrollmentGroupOptions"
+                      optionLabel="label"
+                      optionValue="value"
+                      placeholder="All groups"
+                      showClear
+                    />
+                  </div>
+                </div>
+                <div v-if="!enrollmentTotal" class="empty-state">
+                  {{
+                    enrollmentFilter || enrollmentGroupFilter
+                      ? 'No enrollments match your filters.'
+                      : 'No students enrolled yet.'
+                  }}
+                </div>
+                <DataTable
+                  v-else
+                  :value="enrollments"
+                  responsiveLayout="scroll"
+                  :paginator="true"
+                  :rows="enrollmentRows"
+                  :totalRecords="enrollmentTotal"
+                  :first="enrollmentPage * enrollmentRows"
+                  :rowsPerPageOptions="enrollmentRowsOptions"
+                  lazy
+                  @page="onEnrollmentPage"
+                >
+                  <Column field="fullName" header="Student" />
+                  <Column field="email" header="Email" />
+                  <Column header="Group" body-style="min-width:16rem">
+                    <template #body="{ data }">
+                      <div class="group-cell">
+                        <Tag
+                          :value="data.groupName || 'No group'"
+                          :severity="data.groupName ? 'info' : 'warning'"
+                          class="group-tag"
+                        />
+                        <Dropdown
+                          :modelValue="data.groupId || null"
+                          :options="groupDropdownOptions"
+                          optionLabel="label"
+                          optionValue="value"
+                          placeholder="Select group"
+                          showClear
+                          class="group-dropdown"
+                          :loading="updatingGroupId === data.studentId"
+                          :disabled="updatingGroupId === data.studentId"
+                          @update:modelValue="(value) => updateStudentGroup(data.studentId, value)"
+                        />
+                      </div>
+                    </template>
+                  </Column>
+                  <Column header="Actions" body-style="min-width:6rem">
+                    <template #body="{ data }">
+                      <Button
+                        label="Remove"
+                        icon="pi pi-times"
+                        class="p-button-text p-button-danger"
+                        :loading="removingEnrollmentId === data.studentId"
+                        @click="removeEnrollmentRow(data)"
+                      />
+                    </template>
+                  </Column>
+                </DataTable>
+              </div>
+            </template>
+          </Card>
+        </TabPanel>
+
+        <TabPanel header="Staff" v-if="isAdmin">
+          <Card class="staff-card">
+            <template #title>
+              <div class="section-header">
+                <h3>Staff</h3>
+                <small>Assign instructors, editors, and enrollment managers</small>
+              </div>
+            </template>
+            <template #content>
+              <div class="staff-form-grid">
+                <div class="dialog-field">
+                  <label>User</label>
+                  <Dropdown
+                    v-model="staffForm.userId"
+                    :options="staffCandidates"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select user"
+                    filter
+                    :loading="loadingStaffCandidates"
+                    @show="ensureStaffCandidates"
+                    @filter="handleStaffFilter"
+                  />
+                </div>
+                <div class="dialog-field">
+                  <label>Roles</label>
+                  <MultiSelect
+                    v-model="staffForm.roles"
+                    :options="staffRoleOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select roles"
+                    display="chip"
+                  />
+                </div>
+                <div class="staff-form-actions">
+                  <Button
+                    label="Assign roles"
+                    :loading="assigningStaff"
+                    @click="submitStaffAssignment"
+                  />
+                </div>
+              </div>
+
+              <div class="staff-list">
+                <div v-if="loadingStaff">
+                  <Skeleton height="2.5rem" class="mb-2" />
+                  <Skeleton height="2.5rem" />
+                </div>
+                <div v-else-if="!staffAssignments.length" class="empty-state">
+                  No staff assigned yet.
+                </div>
+                <div v-else>
+                  <DataTable :value="staffAssignments" responsiveLayout="scroll">
+                    <Column field="fullName" header="Name" />
+                    <Column field="email" header="Email" />
+                    <Column header="Roles">
+                      <template #body="{ data }">
+                        <div class="staff-role-tags">
+                          <div
+                            v-for="role in data.roles"
+                            :key="`${data.userId}-${role}`"
+                            class="staff-role-tag"
+                          >
+                            <Tag :value="staffRoleLabels[role] || role" severity="info" />
+                            <Button
+                              icon="pi pi-times"
+                              class="p-button-text p-button-danger"
+                              :loading="removingStaffRoleKey === `${data.userId}:${role}`"
+                              @click="removeStaffRole(data.userId, role)"
+                            />
+                          </div>
+                        </div>
+                      </template>
+                    </Column>
+                  </DataTable>
+                </div>
+              </div>
+            </template>
+          </Card>
+        </TabPanel>
+      </TabView>
     </template>
-    <div v-else class="empty-state">Course not found.</div>
 
     <Dialog v-model:visible="showModuleDialog" header="Module" modal :style="{ width: '25rem' }">
       <div class="dialog-field">
@@ -811,6 +849,10 @@ import SeriesTable from '../components/live/SeriesTable.vue';
 import SessionsTable from '../components/live/SessionsTable.vue';
 import SessionEditDialog from '../components/live/SessionEditDialog.vue';
 import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
+import TabView from 'primevue/tabview';
+import TabPanel from 'primevue/tabpanel';
+import Accordion from 'primevue/accordion';
+import AccordionTab from 'primevue/accordiontab';
 import { useAuthStore } from '../stores/auth';
 import {
   listCourses,
@@ -882,6 +924,82 @@ const enrollmentOnlyMode = computed(
 const canManageEnrollments = computed(
   () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'enrollment_manager'])),
 );
+const activeTabIndex = ref(0);
+const tabs = computed(() => {
+  const list = [];
+  if (hasContentAccess.value) {
+    list.push({ key: 'build', label: 'Build' });
+  }
+  if (canManageEnrollments.value) {
+    list.push({ key: 'groups', label: 'Groups' });
+  }
+  if (isAdmin.value) {
+    list.push({ key: 'live', label: 'Live sessions' });
+  }
+  if (canManageEnrollments.value && hasContentAccess.value) {
+    list.push({ key: 'instructors', label: 'Instructors' });
+  }
+  if (canManageEnrollments.value) {
+    list.push({ key: 'enrollments', label: 'Enrollments' });
+  }
+  if (isAdmin.value) {
+    list.push({ key: 'staff', label: 'Staff' });
+  }
+  return list;
+});
+
+const hasTab = (key) => tabs.value.some((tab) => tab.key === key);
+const determineDefaultTabKey = () => {
+  if (enrollmentOnlyMode.value && hasTab('enrollments')) {
+    return 'enrollments';
+  }
+  if (hasContentAccess.value && hasTab('build')) {
+    return 'build';
+  }
+  if (canManageEnrollments.value && hasTab('groups')) {
+    return 'groups';
+  }
+  if (canManageEnrollments.value && hasTab('enrollments')) {
+    return 'enrollments';
+  }
+  if (isAdmin.value && hasTab('live')) {
+    return 'live';
+  }
+  if (isAdmin.value && hasTab('staff')) {
+    return 'staff';
+  }
+  return tabs.value[0]?.key ?? null;
+};
+
+const setActiveTabByKey = (key) => {
+  const index = tabs.value.findIndex((tab) => tab.key === key);
+  if (index === -1) {
+    if (activeTabIndex.value >= tabs.value.length) {
+      activeTabIndex.value = Math.max(0, tabs.value.length - 1);
+    }
+    return;
+  }
+  activeTabIndex.value = index;
+};
+
+const ensureActiveTabInRange = () => {
+  if (!tabs.value.length) {
+    activeTabIndex.value = 0;
+    return;
+  }
+  if (activeTabIndex.value >= tabs.value.length) {
+    activeTabIndex.value = tabs.value.length - 1;
+  }
+};
+
+const updateActiveTabBasedOnPermissions = () => {
+  const defaultKey = determineDefaultTabKey();
+  if (defaultKey) {
+    setActiveTabByKey(defaultKey);
+  } else {
+    ensureActiveTabInRange();
+  }
+};
 
 const courseId = route.params.id;
 const course = ref(null);
@@ -889,7 +1007,15 @@ const loadingCourse = ref(true);
 
 const modules = ref([]);
 const selectedModuleId = ref(null);
-const lessons = ref([]);
+const activeModuleTabs = ref([]);
+const lessonsByModuleId = ref({});
+const lessonsLoadingByModuleId = ref({});
+const lessonFiltersByModuleId = ref({});
+const lessonStatusOptions = [
+  { label: 'All', value: 'all' },
+  { label: 'Published', value: 'published' },
+  { label: 'Draft', value: 'draft' },
+];
 const loadingModules = ref(true);
 const loadingLessons = ref(false);
 
@@ -1924,6 +2050,15 @@ const loadCourse = async () => {
   }
 };
 
+const ensureLessonFilterForModule = (moduleId) => {
+  if (!lessonFiltersByModuleId.value[moduleId]) {
+    lessonFiltersByModuleId.value = {
+      ...lessonFiltersByModuleId.value,
+      [moduleId]: { search: '', status: 'all' },
+    };
+  }
+};
+
 const loadModules = async () => {
   if (!hasContentAccess.value) {
     modules.value = [];
@@ -1935,13 +2070,16 @@ const loadModules = async () => {
   loadingModules.value = true;
   try {
     modules.value = await getModules(courseId);
+    modules.value.forEach((module) => ensureLessonFilterForModule(module.id));
     if (!selectedModuleId.value && modules.value.length) {
       selectedModuleId.value = modules.value[0].id;
     }
+    if (modules.value.length) {
+      activeModuleTabs.value = [0];
+      await ensureLessonsForModule(modules.value[0].id);
+    }
     if (selectedModuleId.value) {
-      await loadLessons(selectedModuleId.value);
-    } else {
-      lessons.value = [];
+      await ensureLessonsForModule(selectedModuleId.value);
     }
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load modules', life: 3000 });
@@ -1963,6 +2101,51 @@ const loadLessons = async (moduleId) => {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lessons', life: 3000 });
   } finally {
     loadingLessons.value = false;
+  }
+};
+
+const ensureLessonsForModule = async (moduleId) => {
+  if (lessonsByModuleId.value[moduleId]) {
+    return;
+  }
+  lessonsLoadingByModuleId.value = {
+    ...lessonsLoadingByModuleId.value,
+    [moduleId]: true,
+  };
+  try {
+    const data = await getLessons(moduleId);
+    lessonsByModuleId.value = {
+      ...lessonsByModuleId.value,
+      [moduleId]: data,
+    };
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lessons', life: 3000 });
+  } finally {
+    lessonsLoadingByModuleId.value = {
+      ...lessonsLoadingByModuleId.value,
+      [moduleId]: false,
+    };
+  }
+};
+
+const reloadLessonsForModule = async (moduleId) => {
+  lessonsLoadingByModuleId.value = {
+    ...lessonsLoadingByModuleId.value,
+    [moduleId]: true,
+  };
+  try {
+    const data = await getLessons(moduleId);
+    lessonsByModuleId.value = {
+      ...lessonsByModuleId.value,
+      [moduleId]: data,
+    };
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to reload lessons', life: 3000 });
+  } finally {
+    lessonsLoadingByModuleId.value = {
+      ...lessonsLoadingByModuleId.value,
+      [moduleId]: false,
+    };
   }
 };
 
@@ -2206,7 +2389,25 @@ const loadAvailableStudents = async () => {
 
 const selectModule = async (moduleId) => {
   selectedModuleId.value = moduleId;
-  await loadLessons(moduleId);
+  await ensureLessonsForModule(moduleId);
+};
+
+const selectModuleFromTab = async (moduleId) => {
+  selectedModuleId.value = moduleId;
+  await ensureLessonsForModule(moduleId);
+};
+
+const onModuleTabOpen = async (event) => {
+  const idx = event?.index;
+  if (typeof idx !== 'number') {
+    return;
+  }
+  const module = modules.value[idx];
+  if (!module) {
+    return;
+  }
+  selectedModuleId.value = module.id;
+  await ensureLessonsForModule(module.id);
 };
 
 const toggleCoursePublish = async () => {
@@ -2492,7 +2693,7 @@ const toggleLessonPublish = async (lesson) => {
       await publishLesson(lesson.id);
       toast.add({ severity: 'success', summary: 'Lesson published', life: 2000 });
     }
-    await loadLessons(selectedModuleId.value);
+    await reloadLessonsForModule(selectedModuleId.value);
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -2504,16 +2705,17 @@ const toggleLessonPublish = async (lesson) => {
 };
 
 const reorderLesson = async (lesson, direction) => {
-  const index = lessons.value.findIndex((l) => l.id === lesson.id);
+  const moduleLessons = lessonsByModuleId.value[selectedModuleId.value] || [];
+  const index = moduleLessons.findIndex((l) => l.id === lesson.id);
   const targetIndex = direction === 'up' ? index - 1 : index + 1;
-  const swapWith = lessons.value[targetIndex];
+  const swapWith = moduleLessons[targetIndex];
   if (!swapWith) return;
   try {
     await Promise.all([
       updateLesson(lesson.id, { orderIndex: swapWith.order_index }),
       updateLesson(swapWith.id, { orderIndex: lesson.order_index }),
     ]);
-    await loadLessons(selectedModuleId.value);
+    await reloadLessonsForModule(selectedModuleId.value);
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to reorder lessons', life: 3000 });
   }
@@ -2523,6 +2725,26 @@ const editLesson = (lesson) => {
   router.push({
     path: `/cms/lessons/${lesson.id}/edit`,
     query: { courseId, moduleId: selectedModuleId.value },
+  });
+};
+
+const lessonFiltersForModule = (moduleId) =>
+  lessonFiltersByModuleId.value[moduleId] || { search: '', status: 'all' };
+
+const filteredLessonsForModule = (moduleId) => {
+  const list = lessonsByModuleId.value[moduleId] || [];
+  const filter = lessonFiltersForModule(moduleId);
+  return list.filter((lesson) => {
+    const matchesSearch = (lesson.title || '')
+      .toLowerCase()
+      .includes((filter.search || '').toLowerCase());
+    const matchesStatus =
+      filter.status === 'all'
+        ? true
+        : filter.status === 'published'
+        ? lesson.is_published
+        : !lesson.is_published;
+    return matchesSearch && matchesStatus;
   });
 };
 
@@ -2660,6 +2882,18 @@ watch(
   { immediate: true },
 );
 
+watch(
+  [enrollmentOnlyMode, hasContentAccess, canManageEnrollments, isAdmin],
+  () => {
+    updateActiveTabBasedOnPermissions();
+  },
+  { immediate: true },
+);
+
+watch(tabs, () => {
+  ensureActiveTabInRange();
+});
+
 onBeforeUnmount(() => {
   if (staffFilterTimeout) {
     clearTimeout(staffFilterTimeout);
@@ -2756,6 +2990,28 @@ init();
   display: flex;
   gap: 0.35rem;
   align-items: center;
+}
+
+.module-tab-header {
+  width: 80%;
+}
+
+.lessons-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 1rem 0px;
+}
+
+.lessons-toolbar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+
+
+.module-tab-title{
+  display: flex;
+  justify-content: space-between;
 }
 
 .lesson-meta {

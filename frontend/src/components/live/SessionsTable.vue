@@ -16,7 +16,7 @@
       </div>
     </div>
 
-    <div class="filters">
+    <!-- <div class="filters">
       <div class="filter-field">
         <label>{{ t('liveSessions.filters.range') }}</label>
         <Calendar
@@ -68,7 +68,7 @@
           showClear
         />
       </div>
-    </div>
+    </div> -->
 
     <DataTable
       :value="filteredSessions"

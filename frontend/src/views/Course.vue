@@ -26,7 +26,7 @@
             <h2>{{ course.title }}</h2>
             <p class="description">{{ course.description }}</p>
           </div>
-          <div class="progress">
+          <div class="progress" v-show="activeTabIndex !== 1">
             <span>{{ t('course.progressLabel') }}</span>
             <ProgressBar :value="progress?.percent ?? 0" />
             <small>{{ progressSummaryText }}</small>
@@ -34,135 +34,250 @@
               {{ nextLessonText }}
             </small>
           </div>
+              <div class="live-session-image-card" v-if="activeTabIndex === 1">
+                <div class="live-session-image-card__text">
+                  <h3>Live Sessions</h3>
+                  <p>Upcoming and past live sessions</p>
+                </div>
+                <div class="live-session-image-card__media">
+                  <img
+                    src="/assets/3dIcons/schedule_live.png"
+                    alt="Live schedule"
+                  />
+                </div>
+              </div>
         </div>
       </template>
       <template #content>
-        <TabView class="course-tabs">
+        <TabView class="course-tabs" v-model:activeIndex="activeTabIndex">
+          <p>{{ activeTabIndex }}</p>
           <TabPanel :header="t('course.tabs.lessons')">
-            <div class="continue-card">
-              <template v-if="!isCourseCompleted">
-                <p>{{ t('course.continueLabel') }}</p>
-                <h4>{{ progress?.nextLessonTitle }}</h4>
-                <Button
-                  :label="t('course.continueButton')"
-                  icon="pi pi-arrow-right"
-                  :disabled="!progress?.nextLessonId"
-                  @click="openLesson(progress?.nextLessonId)"
+            <section class="student-course-hero">
+              <div class="continue-card">
+                <div class="continue-content">
+                  <h2>Continue with</h2>
+                  <h3>{{ nextLessonTitle || t('course.courseCompleted') }}</h3>
+                  <Button
+                    class="btn-primary"
+                    icon="pi pi-arrow-right"
+                    label="Continue"
+                    :disabled="!nextLesson"
+                    @click="openNextLesson"
+                  />
+                </div>
+                <img
+                  src="/assets/3dIcons/laptop_reports.png"
+                  alt="Continue lesson"
+                  class="continue-image"
                 />
-              </template>
-              <template v-else>
-                <p>{{ t('course.courseCompleted') }}</p>
-                <Tag :value="t('course.completedTag')" severity="success" />
-              </template>
-            </div>
-            <div class="modules">
-              <Panel v-for="module in course.modules" :key="module.id" :header="module.title">
-                <ul class="lessons">
-                  <li v-for="lesson in module.lessons" :key="lesson.id">
-                    <div>
-                      <div class="lesson-title">{{ lesson.title }}</div>
-                      <small class="badge">{{ lesson.contentType }}</small>
+              </div>
+
+              <div class="progress-card">
+                <img
+                  src="/assets/3dIcons/orTrophy.png"
+                  alt="Progress trophy"
+                  class="progress-image"
+                />
+
+                <div class="progress-info">
+                  <label>Progress</label>
+                  <ProgressBar :value="progressPercentage" />
+                  <p>Completed {{ completedCount }} / {{ totalCount }}</p>
+                  <small>Next: {{ nextLessonTitle || t('course.courseCompleted') }}</small>
+                </div>
+              </div>
+            </section>
+
+            <section class="student-modules-list">
+              <div
+                v-for="module in courseModules"
+                :key="module.id"
+                class="module-card"
+              >
+                <div class="module-header" @click="toggleModule(module.id)">
+                  <div class="module-info">
+                    <i class="pi pi-book module-icon"></i>
+                    <h4>{{ module.title }}</h4>
+                  </div>
+
+                  <Button
+                    :icon="expandedModules.includes(module.id)
+                      ? 'pi pi-chevron-up'
+                      : 'pi pi-chevron-down'"
+                    class="p-button-text"
+                  />
+                </div>
+
+                <div
+                  v-if="expandedModules.includes(module.id)"
+                  class="module-lessons"
+                >
+                  <div
+                    v-for="lesson in module.lessons"
+                    :key="lesson.id"
+                    class="lesson-row"
+                  >
+
+                    <div class="lesson-title-group">
+                      <span>{{ lesson.title }}</span>
+                      <small>{{ lesson.estimated_minutes }} min</small>
                     </div>
+
                     <div class="lesson-actions">
                       <Button
-                        :label="t('course.lessonOpen')"
                         icon="pi pi-external-link"
                         class="p-button-text"
                         @click="openLesson(lesson.id)"
                       />
+
                       <Button
-                        :label="t('course.markDone')"
-                        icon="pi pi-check"
-                        class="p-button-sm"
-                        :disabled="isLessonCompleted(lesson.id) || isPreview"
-                        :loading="updatingLesson === lesson.id"
-                        @click="markDone(lesson.id)"
+                        label="Open"
+                        class="btn-open"
+                        @click="openLesson(lesson.id)"
                       />
-                      <Tag
-                        v-if="isLessonCompleted(lesson.id)"
-                        :value="t('course.doneTag')"
-                        severity="success"
+
+                      <Button
+                        :label="isLessonDone(lesson) ? 'Done' : 'Mark done'"
+                        class="btn-done"
+                        :severity="isLessonDone(lesson) ? 'success' : 'secondary'"
+                        icon="pi pi-check"
+                        :disabled="isLessonDone(lesson) || isPreview"
+                        :loading="!isLessonDone(lesson) && updatingLesson === lesson.id"
+                        @click="!isLessonDone(lesson) && markDone(lesson.id)"
                       />
                     </div>
-                  </li>
-                </ul>
-              </Panel>
-            </div>
+                  </div>
+                </div>
+              </div>
+            </section>
           </TabPanel>
 
           <TabPanel :header="t('course.tabs.liveSessions')">
-            <div class="live-sessions-tab">
-              <div v-if="liveSessionsLoading" class="live-tab-skeleton">
-                <Skeleton height="2rem" class="mb-2" />
-                <Skeleton height="2rem" class="mb-2" />
-                <Skeleton height="2rem" />
-              </div>
-              <div v-else-if="liveSessionsError" class="live-tab-error">
-                <p>{{ t('course.liveSessions.error') }}</p>
-                <Button
-                  :label="t('common.reload')"
-                  icon="pi pi-refresh"
-                  class="p-button-text"
-                  @click="loadLiveSessions(course.id)"
+            <div v-if="liveSessionsLoading" class="live-tab-skeleton">
+              <Skeleton height="2rem" class="mb-2" />
+              <Skeleton height="2rem" class="mb-2" />
+              <Skeleton height="2rem" />
+            </div>
+            <div v-else-if="liveSessionsError" class="live-tab-error">
+              <p>{{ t('course.liveSessions.error') }}</p>
+              <Button
+                :label="t('common.reload')"
+                icon="pi pi-refresh"
+                class="p-button-text"
+                @click="loadLiveSessions(course.id)"
+              />
+            </div>
+            <div v-else>
+              <section class="live-sessions-hero">
+                <div class="hero-icon">
+                  <i class="pi pi-calendar" />
+                </div>
+                <div class="hero-info">
+                  <h2>Live Sessions</h2>
+                  <small>Upcoming and past live meetings</small>
+                </div>
+                <div class="hero-badge">
+                  <Tag :value="`${liveSessionsThisWeek} sessions this week`" severity="info" />
+                </div>
+              </section>
+
+              <div class="live-session-filters">
+                <Dropdown
+                  v-model="selectedLiveGroup"
+                  :options="liveSessionGroupOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Filter by group"
+                  showClear
+                  class="filter-dropdown"
                 />
+                <Dropdown
+                  v-model="selectedLiveInstructor"
+                  :options="liveSessionInstructorOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Filter by instructor"
+                  showClear
+                  class="filter-dropdown"
+                />
+                <div class="session-chip-row">
+                  <Button
+                    v-for="filter in sessionStatusFilters"
+                    :key="filter.key"
+                    :label="filter.label"
+                    class="session-chip"
+                    :class="{ 'is-active': activeSessionFilters.includes(filter.key) }"
+                    severity="secondary"
+                    text
+                    @click="toggleSessionFilter(filter.key)"
+                  />
+                </div>
               </div>
-              <div v-else-if="!liveSessions.length">
-                <p class="muted-text">{{ t('course.liveSessions.empty') }}</p>
+
+              <div v-if="!groupedLiveSessions.length" class="empty-state">
+                {{ t('course.liveSessions.empty') }}
               </div>
-              <div v-else class="session-schedule">
-                <template v-for="week in liveSessionWeekGroups" :key="week.key">
-                  <div class="week-group">
-                    <div class="week-header">
-                      <div>
-                        <h3 class="week-title">{{ week.label }}</h3>
-                        <small class="week-meta muted">{{ week.meta }}</small>
+
+              <Accordion
+                v-else
+                multiple
+                class="live-sessions-accordion"
+              >
+                <AccordionTab
+                  v-for="(block, index) in groupedLiveSessions"
+                  :key="block.key"
+                  :header="`${block.weekRange.text} — ${block.sessions.length} session(s)`"
+                >
+                  <div class="session-block">
+                    <div
+                      v-for="session in block.sessions"
+                      :key="session.id"
+                      class="session-card"
+                      :class="{
+                        'bg-live': session.status === 'live',
+                        'bg-upcoming': session.status === 'upcoming',
+                        'bg-past': session.status === 'past',
+                      }"
+                    >
+                      <div class="session-left">
+                        <div class="session-day">{{ session.dayLabel }}</div>
+                        <div class="session-date">{{ session.dateLabel }}</div>
+                        <div class="session-time">{{ session.timeLabel }}</div>
                       </div>
-                    </div>
-                    <div class="session-list">
-                      <div
-                        v-for="session in week.sessions"
-                        :key="session.id"
-                        class="session-row"
-                      >
-                        <div class="session-time">
-                          <strong>{{ formatSessionDate(session.startsAt) }}</strong>
-                          <small>{{ formatSessionRange(session.startsAt, session.endsAt) }}</small>
-                          <small
-                            class="muted countdown-text"
-                            v-if="formatCountdown(session.startsAt)"
-                          >
-                            {{ formatCountdown(session.startsAt) }}
-                          </small>
-                        </div>
-                        <div class="session-details">
-                          <div class="session-title">{{ session.title }}</div>
-                          <div class="session-meta">
-                            <Tag
-                              :value="session.classTypeName || t('course.liveSessions.unknownType')"
-                              severity="info"
-                            />
-                            <span v-if="session.hostTeacherName">{{ session.hostTeacherName }}</span>
-                            <Divider
-                              v-if="session.hostTeacherName && session.groupName"
-                              layout="vertical"
-                            />
-                            <span v-if="session.groupName">{{ session.groupName }}</span>
-                          </div>
-                        </div>
-                        <div class="session-action">
-                          <Button
-                            :label="t('course.liveSessions.join')"
-                            icon="pi pi-external-link"
-                            class="p-button-text"
-                            :disabled="!isSessionJoinable(session)"
-                            @click="joinSession(session.joinUrl)"
+
+                      <div class="session-body">
+                        <div class="session-meta">
+                          <Tag
+                            :value="session.typeLabel || 'Live'"
+                            severity="info"
+                            class="session-type-tag"
                           />
+                          <span class="session-instructor">
+                            <i class="pi pi-user"></i>
+                            {{ session.instructorName }}
+                          </span>
+                          <span v-if="session.groupName" class="session-group">
+                            • {{ session.groupName }}
+                          </span>
                         </div>
+                      </div>
+
+                      <div class="session-actions">
+                        <Button
+                          icon="pi pi-sign-in"
+                          label="Join"
+                          class="btn-join"
+                          :disabled="!isSessionJoinable(session)"
+                          @click="joinSession(session.joinUrl)"
+                        />
+                        <small v-if="session.startsIn" class="session-starts-in">
+                          Starts in {{ session.startsIn }}
+                        </small>
                       </div>
                     </div>
                   </div>
-                </template>
-              </div>
+                </AccordionTab>
+              </Accordion>
             </div>
           </TabPanel>
         </TabView>
@@ -179,6 +294,8 @@ import { useAuthStore } from '../stores/auth';
 import { useI18n } from 'vue-i18n';
 import TabPanel from 'primevue/tabpanel';
 import TabView from 'primevue/tabview';
+import Accordion from 'primevue/accordion';
+import AccordionTab from 'primevue/accordiontab';
 import PreviewBanner from '../components/PreviewBanner.vue';
 import api from '../api/axios';
 import { mySessions } from '../api/liveSessions';
@@ -198,6 +315,12 @@ const completedLessons = ref(new Set());
 const isPreview = computed(
   () => route.query.preview === '1' || route.query.preview === 'true',
 );
+const markLessonCompleted = (lessonId) => {
+  const nextSet = new Set(completedLessons.value);
+  nextSet.add(lessonId);
+  completedLessons.value = nextSet;
+};
+const isLessonCompleted = (lessonId) => completedLessons.value.has(lessonId);
 const showPreviewBanner = computed(
   () => isPreview.value && auth.hasAnyRole(['admin', 'instructor', 'content_editor']),
 );
@@ -222,6 +345,51 @@ const defaultProgress = {
   nextLessonTitle: null,
 };
 
+const selectedLiveGroup = ref(null);
+const selectedLiveInstructor = ref(null);
+const activeSessionFilters = ref(['this-week', 'upcoming', 'past']);
+const sessionStatusFilters = [
+  { key: 'this-week', label: 'This week' },
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'past', label: 'Past' },
+];
+
+const expandedModules = ref([]);
+const courseModules = computed(() => course.value?.modules || []);
+const toggleModule = (id) => {
+  const idx = expandedModules.value.indexOf(id);
+  if (idx > -1) {
+    expandedModules.value.splice(idx, 1);
+    return;
+  }
+  expandedModules.value.push(id);
+};
+
+const totalCount = computed(() =>
+  progress.value?.totalLessons ?? courseModules.value.reduce((sum, m) => sum + (m.lessons?.length || 0), 0),
+);
+
+const isLessonDone = (lesson) => lesson.completed || isLessonCompleted(lesson.id);
+
+const completedCount = computed(
+  () => progress.value?.completedLessons ?? courseModules.value.reduce(
+    (sum, m) => sum + (m.lessons?.filter((lesson) => isLessonDone(lesson)).length || 0),
+    0,
+  ),
+);
+
+const progressPercentage = computed(() => progress.value?.percent ?? 0);
+
+const nextLesson = computed(() => {
+  for (const module of courseModules.value) {
+    const next = (module.lessons || []).find((lesson) => !isLessonDone(lesson));
+    if (next) return next;
+  }
+  return null;
+});
+
+const nextLessonTitle = computed(() => nextLesson.value?.title || '');
+
 const fetchProgress = async (id) => {
   if (isPreview.value) {
     progress.value = { ...defaultProgress };
@@ -229,7 +397,13 @@ const fetchProgress = async (id) => {
   }
   const { data } = await api.get(`/courses/${id}/progress`);
   progress.value = data;
+  if (Array.isArray(data.completedLessonDetails)) {
+    const doneSet = new Set(data.completedLessonDetails.map((lesson) => lesson.id));
+    completedLessons.value = doneSet;
+  }
 };
+
+const activeTabIndex = ref(0);
 
 const loadLiveSessions = async (courseId) => {
   if (!courseId) {
@@ -288,8 +462,16 @@ const fetchData = async (id) => {
     const url = isPreview.value ? `/courses/${id}?preview=1` : `/courses/${id}`;
     const courseRes = await api.get(url);
     course.value = courseRes.data;
+    const doneSet = new Set();
+    (course.value?.modules || []).forEach((module) => {
+      (module.lessons || []).forEach((lesson) => {
+        if (lesson.completed || lesson.is_completed) {
+          doneSet.add(lesson.id);
+        }
+      });
+    });
+    completedLessons.value = doneSet;
     loadLiveSessions(id);
-    completedLessons.value = new Set();
     await fetchProgress(id);
   } catch (err) {
     error.value = true;
@@ -311,13 +493,11 @@ const openLesson = (lessonId) => {
   router.push({ path: `/student/course/${route.params.id}/lesson/${lessonId}`, query });
 };
 
-const markLessonCompleted = (lessonId) => {
-  const nextSet = new Set(completedLessons.value);
-  nextSet.add(lessonId);
-  completedLessons.value = nextSet;
+const openNextLesson = () => {
+  if (nextLesson.value) {
+    openLesson(nextLesson.value.id);
+  }
 };
-
-const isLessonCompleted = (lessonId) => completedLessons.value.has(lessonId);
 
 const markDone = async (lessonId) => {
   if (isPreview.value) {
@@ -398,7 +578,7 @@ const formatCountdown = (value) => {
   if (!parts.length) {
     parts.push('moments');
   }
-  return `Starts in ${parts.join(' ')}`;
+  return `${parts.join(' ')}`;
 };
 
 const formatWeekDateLabel = (value) => {
@@ -444,48 +624,149 @@ const formatWeekMeta = (count) =>
     ? t('course.liveSessions.weekMetaSingle')
     : t('course.liveSessions.weekMetaMany', { count });
 
-const liveSessionWeekGroups = computed(() => {
-  const sortedSessions = [...liveSessions.value]
-    .filter((session) => session.startsAt)
-    .map((session) => ({
-      ...session,
-      startsAtDate: new Date(session.startsAt),
-    }))
-    .filter((session) => !Number.isNaN(session.startsAtDate.getTime()))
-    .sort((a, b) => a.startsAtDate - b.startsAtDate);
+const liveSessionGroupOptions = computed(() => {
+  const values = liveSessions.value
+    .map((session) => session.groupName || session.group_name || '')
+    .filter(Boolean);
+  return Array.from(new Set(values)).map((value) => ({ label: value, value }));
+});
 
-  const weekMap = new Map();
-  sortedSessions.forEach((session) => {
-    const bounds = getWeekBounds(session.startsAtDate);
-    if (!bounds) {
-      return;
-    }
-    const key = bounds.start.toISOString();
-    const existing = weekMap.get(key);
-    if (existing) {
-      existing.sessions.push(session);
-    } else {
-      weekMap.set(key, {
-        key,
-        weekStart: bounds.start,
-        weekEnd: bounds.end,
-        sessions: [session],
+const liveSessionInstructorOptions = computed(() => {
+  const values = liveSessions.value
+    .map((session) => session.hostTeacherName || session.host_teacher_name || '')
+    .filter(Boolean);
+  return Array.from(new Set(values)).map((value) => ({ label: value, value }));
+});
+
+const liveSessionsThisWeek = computed(() =>
+  liveSessions.value.filter((session) => isSessionInWeek(session, now.value)).length,
+);
+
+const getSessionDate = (session) => {
+  if (!session?.startsAt) return null;
+  const date = new Date(session.startsAt);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getSessionStatus = (session) => {
+  const start = getSessionDate(session);
+  if (!start) return 'upcoming';
+  const end = session.endsAt ? new Date(session.endsAt) : null;
+  if (start <= now.value && (!end || end >= now.value)) {
+    return 'live';
+  }
+  if (start > now.value) {
+    return 'upcoming';
+  }
+  return 'past';
+};
+
+const isSessionInWeek = (session, reference) => {
+  const date = getSessionDate(session);
+  if (!date) return false;
+  const bounds = getWeekBounds(reference);
+  if (!bounds) return false;
+  return date >= bounds.start && date <= bounds.end;
+};
+
+const filteredLiveSessions = computed(() => {
+  const statuses = activeSessionFilters.value;
+  return liveSessions.value
+    .filter((session) => {
+      if (selectedLiveGroup.value) {
+        const groupName = session.groupName || session.group_name;
+        if (groupName !== selectedLiveGroup.value) {
+          return false;
+        }
+      }
+      if (selectedLiveInstructor.value) {
+        const instructor =
+          session.hostTeacherName || session.host_teacher_name || '';
+        if (instructor !== selectedLiveInstructor.value) {
+          return false;
+        }
+      }
+      if (!statuses.length) {
+        return true;
+      }
+      return statuses.some((status) => {
+        if (status === 'this-week') {
+          return isSessionInWeek(session, now.value);
+        }
+        if (status === 'upcoming') {
+          return getSessionStatus(session) === 'upcoming';
+        }
+        if (status === 'past') {
+          return getSessionStatus(session) === 'past';
+        }
+        return false;
       });
-    }
-  });
+    })
+    .map((session) => {
+      const sessionDate = getSessionDate(session);
+      return {
+        ...session,
+        startsAtDate: sessionDate,
+        status: getSessionStatus(session),
+        dayLabel: sessionDate
+          ? sessionDate.toLocaleDateString(undefined, { weekday: 'long' })
+          : '',
+        dateLabel: formatSessionDate(session.startsAt),
+        timeLabel: formatSessionRange(session.startsAt, session.endsAt),
+        instructorName: session.hostTeacherName || session.host_teacher_name || '',
+        groupName: session.groupName || session.group_name || '',
+        typeLabel: session.classTypeName || session.class_type_name || 'Live',
+        startsIn: formatCountdown(session.startsAt),
+      };
+    });
+});
 
+const groupedLiveSessions = computed(() => {
+  const weekMap = new Map();
+  filteredLiveSessions.value
+    .filter((session) => session.startsAtDate)
+    .sort((a, b) => a.startsAtDate - b.startsAtDate)
+    .forEach((session) => {
+      const bounds = getWeekBounds(session.startsAtDate);
+      if (!bounds) return;
+      const key = bounds.start.toISOString();
+      const existing = weekMap.get(key);
+      if (existing) {
+        existing.sessions.push(session);
+      } else {
+        weekMap.set(key, {
+          key,
+          weekStart: bounds.start,
+          weekEnd: bounds.end,
+          sessions: [session],
+        });
+      }
+    });
   return Array.from(weekMap.values()).map((group, index) => {
     const orderedSessions = [...group.sessions].sort(
       (a, b) => a.startsAtDate - b.startsAtDate,
     );
     return {
       key: `${group.key}-${index}`,
-      label: formatWeekLabel(group.weekStart, group.weekEnd),
-      meta: formatWeekMeta(orderedSessions.length),
+      weekRange: {
+        text: formatWeekLabel(group.weekStart, group.weekEnd),
+        meta: formatWeekMeta(orderedSessions.length),
+      },
       sessions: orderedSessions,
     };
   });
 });
+
+const toggleSessionFilter = (key) => {
+  const current = [...activeSessionFilters.value];
+  const index = current.indexOf(key);
+  if (index > -1) {
+    current.splice(index, 1);
+  } else {
+    current.push(key);
+  }
+  activeSessionFilters.value = current;
+};
 
 const isSessionJoinable = (session) => {
   if (!session?.joinUrl || !session.startsAt) {
@@ -519,6 +800,16 @@ watch(
     }
   },
 );
+
+watch(courseModules, (modules) => {
+  if (!modules.length) {
+    expandedModules.value = [];
+    return;
+  }
+  if (!expandedModules.value.length) {
+    expandedModules.value = [modules[0].id];
+  }
+});
 
 const isCourseCompleted = computed(
   () => !!(progress.value && !progress.value.nextLessonId),
@@ -616,6 +907,145 @@ const nextLessonText = computed(() =>
   text-transform: capitalize;
   font-size: 0.85rem;
   color: #64748b;
+}
+
+.student-course-hero {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.continue-card,
+.progress-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  flex: 1;
+}
+
+.continue-image,
+.progress-image {
+  width: 140px;
+  height: auto;
+}
+
+.student-course-hero .continue-card {
+  background-color: #EAF4FE;
+}
+
+.student-course-hero .progress-card {
+  background: linear-gradient(
+    135deg,
+    #e8f6f1 0%,
+    #e3f0fb 50%,
+    #f7fbff 100%
+  );
+  box-shadow: 
+    0 10px 30px rgba(16, 185, 129, 0.08),
+    0 20px 60px rgba(59, 130, 246, 0.08);
+  border-radius: 20px;
+}
+
+
+
+.continue-content h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.continue-content h3 {
+  font-size: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.btn-primary {
+  background: #1d4ed8;
+  color: #fff;
+  border: none;
+}
+
+.progress-info {
+  flex: 1;
+}
+
+.progress-info label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.student-modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.module-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.module-header {
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.module-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.module-icon {
+  font-size: 1.5rem;
+  color: #1d4ed8;
+}
+
+.module-lessons {
+  display: flex;
+  flex-direction: column;
+}
+
+.lesson-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.lesson-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.lesson-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-open {
+  background: #1e3a8a;
+  color: #ffffff;
+  border: none;
+}
+
+.btn-done {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
 }
 
 .mb-2 {
@@ -725,5 +1155,166 @@ const nextLessonText = computed(() =>
 .muted-text {
   color: #6b7280;
   margin: 0;
+}
+
+.live-sessions-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #fff;
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 1.5rem;
+}
+
+.live-sessions-hero .hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  background: rgba(var(--brand-primary-rgb), 0.08);
+  border-radius: 50%;
+  font-size: 1.5rem;
+}
+
+.live-sessions-hero h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.live-sessions-hero small {
+  color: var(--text-secondary);
+}
+
+.live-session-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.filter-dropdown {
+  min-width: 200px;
+  max-width: 260px;
+}
+
+.session-chip-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.session-chip {
+  border-radius: 999px;
+}
+
+.session-chip.is-active {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.live-sessions-accordion .p-accordion-header {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.session-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.session-card {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  align-items: center;
+  background: #fff;
+  margin-bottom: 0.75rem;
+}
+
+.session-left {
+  text-align: left;
+  min-width: 6.5rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.session-body {
+  flex: 1;
+}
+
+.session-meta {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.session-instructor i {
+  margin-right: 0.35rem;
+}
+
+.session-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.btn-join {
+  background: var(--brand-primary);
+  color: #fff;
+  border: none;
+}
+
+.session-starts-in {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.bg-live {
+  /* aquí puedes aplicar fondo con imagen o gradiente */
+}
+
+.bg-upcoming {
+  /* aquí puedes aplicar otro fondo */
+}
+
+.bg-past {
+  /* aquí puedes aplicar otro */
+}
+.live-session-image-card {
+  margin-bottom: 1rem;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  justify-content: center;
+  background:
+  radial-gradient(
+    circle at 80% 50%,
+    rgba(59, 130, 246, 0.18),
+    transparent 45%
+  ),
+  radial-gradient(
+    circle at 65% 40%,
+    rgba(34, 197, 94, 0.12),
+    transparent 50%
+  ),
+  linear-gradient(
+    135deg,
+    #eef6ff 0%,
+    #e9f3ff 40%,
+    #f5faff 100%
+  );
+}
+
+.live-session-image-card img {
+  max-width: 200px;
+  height: auto;
 }
 </style>
