@@ -286,6 +286,11 @@
                 >
                   <Column field="orderIndex" header="#" style="width: 5rem" />
                   <Column field="questionText" header="Question" />
+                  <Column header="Points" style="width: 6rem">
+                    <template #body="{ data }">
+                      {{ data.points ?? 1 }}
+                    </template>
+                  </Column>
                   <Column header="Type" style="width: 10rem">
                     <template #body="{ data }">
                       <Tag :value="questionTypeLabel(data.questionType)" severity="info" />
@@ -323,74 +328,20 @@
                 </DataTable>
               </div>
 
-              <div v-if="selectedQuestion" class="options-panel">
-                <div class="options-header">
-                  <div>
-                    <h4>Options</h4>
-                    <small>{{ selectedQuestion.questionText }}</small>
-                  </div>
-                  <div>
-                    <Button
-                      label="Add option"
-                      icon="pi pi-plus"
-                      @click="openOptionDialog()"
-                      :disabled="selectedQuestion.questionType === 'true_false'"
-                    />
-                  </div>
-                </div>
-
-                <p v-if="selectedQuestion.questionType === 'true_false'" class="muted">
-                  True/False options are generated automatically. Use "Mark correct" to set the answer.
-                </p>
-
-                <DataTable :value="sortedOptions" dataKey="id">
-                  <Column field="orderIndex" header="#" style="width: 4rem" />
-                  <Column field="optionText" header="Option" />
-                  <Column header="Correct" style="width: 8rem">
-                    <template #body="{ data }">
-                      <Tag :value="data.isCorrect ? 'Correct' : 'Pending'" :severity="data.isCorrect ? 'success' : 'secondary'" />
-                    </template>
-                  </Column>
-                  <Column header="Actions" style="width: 16rem">
-                    <template #body="{ data }">
-                      <div class="question-actions">
-                        <Button
-                          icon="pi pi-check"
-                          class="p-button-text"
-                          @click="markOptionCorrect(data)"
-                          :disabled="data.isCorrect"
-                        />
-                        <Button
-                          icon="pi pi-arrow-up"
-                          class="p-button-text"
-                          @click="moveOption(data, -1)"
-                          :disabled="!canMoveOption(data, -1)"
-                        />
-                        <Button
-                          icon="pi pi-arrow-down"
-                          class="p-button-text"
-                          @click="moveOption(data, 1)"
-                          :disabled="!canMoveOption(data, 1)"
-                        />
-                        <Button icon="pi pi-pencil" class="p-button-text" @click="openOptionDialog(data)" />
-                        <Button
-                          icon="pi pi-trash"
-                          class="p-button-text p-button-danger"
-                          @click="removeOption(data)"
-                          :disabled="selectedQuestion.questionType === 'true_false'"
-                        />
-                      </div>
-                    </template>
-                  </Column>
-                </DataTable>
-              </div>
             </div>
           </div>
         </div>
       </template>
     </Card>
 
-    <Dialog v-model:visible="questionDialogVisible" :header="questionDialogTitle" modal class="dialog">
+    <Dialog
+      v-model:visible="questionDialogVisible"
+      :header="questionDialogTitle"
+      modal
+      class="dialog"
+      maximizable
+      maximized
+    >
       <div class="dialog-field">
         <label>Question text</label>
         <InputText v-model="questionForm.questionText" placeholder="What is...?" />
@@ -404,26 +355,111 @@
           optionValue="value"
         />
       </div>
+      <div v-if="questionDialogUsesOptions" class="dialog-field">
+        <label>Options</label>
+
+        <div class="options-editor">
+          <div
+            v-for="(opt, idx) in questionForm.draftOptions"
+            :key="opt.id || idx"
+            class="option-row"
+          >
+            <div class="option-order question-actions">
+              <Button
+                icon="pi pi-arrow-up"
+                class="p-button-text"
+                @click="moveQuestionFormOption(idx, -1)"
+                :disabled="idx === 0"
+              />
+              <Button
+                icon="pi pi-arrow-down"
+                class="p-button-text"
+                @click="moveQuestionFormOption(idx, 1)"
+                :disabled="idx === questionForm.draftOptions.length - 1"
+              />
+            </div>
+
+            <InputText v-model="opt.optionText" placeholder="Option text" class="option-input" />
+
+            <div class="option-correct checkbox-row">
+              <template v-if="questionForm.questionType === 'single_choice'">
+                <RadioButton
+                  :inputId="`opt-correct-${idx}`"
+                  name="correct-option"
+                  :value="idx"
+                  v-model="singleChoiceCorrectIndex"
+                  @update:modelValue="setSingleCorrect(idx)"
+                />
+                <label :for="`opt-correct-${idx}`" class="muted">Correct</label>
+              </template>
+
+              <template v-else>
+                <Checkbox :binary="true" v-model="opt.isCorrect" :inputId="`opt-cb-${idx}`" />
+                <label :for="`opt-cb-${idx}`" class="muted">Correct</label>
+              </template>
+            </div>
+
+            <Button
+              icon="pi pi-trash"
+              class="p-button-text p-button-danger"
+              @click="removeQuestionFormOption(idx)"
+              :disabled="questionForm.draftOptions.length <= 2"
+            />
+          </div>
+
+          <Button
+            icon="pi pi-plus"
+            label="Add option"
+            class="p-button-text"
+            @click="addQuestionFormOption()"
+          />
+        </div>
+
+        <small class="muted">
+          Single choice: select exactly one correct option. Multiple choice: select one or more.
+        </small>
+      </div>
+      <div v-if="questionDialogShowsTrueFalseSelector" class="dialog-field">
+        <label>Correct answer</label>
+        <Dropdown
+          v-model="questionForm.trueFalseCorrect"
+          :options="trueFalseCorrectOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Select correct answer"
+        />
+        <small class="muted">
+          True/False options are generated automatically; choose the correct answer here.
+        </small>
+      </div>
+      <div class="dialog-field">
+        <label>Points</label>
+        <InputNumber v-model.number="questionForm.points" :min="0" step="0.5" showButtons />
+      </div>
+      <div class="dialog-field">
+        <label>Explanation</label>
+        <Textarea v-model="questionForm.explanation" autoResize />
+      </div>
+      <Button
+        class="p-button-text"
+        icon="pi pi-chevron-down"
+        label="Advanced"
+        @click="questionAdvancedOpen = !questionAdvancedOpen"
+      />
+      <div v-if="questionAdvancedOpen" class="dialog-field">
+        <label>Meta (JSON)</label>
+        <Textarea
+          v-model="questionForm.metaJson"
+          autoResize
+          placeholder='{"hint":"Hint text","regex":"^\\d+$"}'
+        />
+      </div>
       <div class="dialog-actions">
         <Button label="Cancel" class="p-button-text" @click="closeQuestionDialog" />
         <Button label="Save" :loading="questionSaving" @click="saveQuestion" />
       </div>
     </Dialog>
 
-    <Dialog v-model:visible="optionDialogVisible" :header="optionDialogTitle" modal class="dialog">
-      <div class="dialog-field">
-        <label>Option text</label>
-        <InputText v-model="optionForm.optionText" placeholder="Describe the option" />
-      </div>
-      <div class="checkbox-row">
-        <Checkbox inputId="option-correct" v-model="optionForm.isCorrect" :binary="true" />
-        <label for="option-correct">Mark as correct</label>
-      </div>
-      <div class="dialog-actions">
-        <Button label="Cancel" class="p-button-text" @click="closeOptionDialog" />
-        <Button label="Save" :loading="optionSaving" @click="saveOption" />
-      </div>
-    </Dialog>
   </div>
 </template>
 
@@ -436,6 +472,8 @@ import ProgressSpinner from 'primevue/progressspinner';
 import { uploadLessonAsset } from '../lib/storageAssets';
 import DOMPurify from 'dompurify';
 import Editor from '@tinymce/tinymce-vue';
+import Textarea from 'primevue/textarea';
+
 
 // theme
 
@@ -504,49 +542,202 @@ const quizLoading = ref(true);
 const quizError = ref(false);
 const selectedQuestion = ref(null);
 const questionDialogVisible = ref(false);
-const questionForm = ref({ questionText: '', questionType: 'single_choice' });
+const questionForm = ref({
+  questionText: '',
+  questionType: 'single_choice',
+  points: 1,
+  explanation: '',
+  metaJson: '',
+  draftOptions: [
+    { optionText: '', isCorrect: true },
+    { optionText: '', isCorrect: false },
+  ],
+  trueFalseCorrect: '',
+});
 const questionSaving = ref(false);
 const editingQuestionId = ref(null);
-const optionDialogVisible = ref(false);
-const optionForm = ref({ optionText: '', isCorrect: false });
-const optionSaving = ref(false);
-const editingOptionId = ref(null);
 
 const questionTypeOptions = [
   { label: 'Single choice', value: 'single_choice' },
+  { label: 'Multiple choice', value: 'multiple_choice' },
   { label: 'True/False', value: 'true_false' },
+  { label: 'Short text', value: 'short_text' },
+  { label: 'Long text', value: 'long_text' },
+  { label: 'Numeric', value: 'numeric' },
 ];
 
 const sortedQuestions = computed(() =>
   [...quizQuestions.value].sort((a, b) => a.orderIndex - b.orderIndex),
 );
 
-const sortedOptions = computed(() => {
-  if (!selectedQuestion.value) return [];
-  return [...(selectedQuestion.value.options || [])].sort((a, b) => a.orderIndex - b.orderIndex);
-});
+const questionReady = (question) => {
+  if (!question.questionText?.trim()) return false;
+  const options = question.options || [];
+  const correctCount = options.filter((opt) => opt.isCorrect).length;
+  switch (question.questionType) {
+    case 'single_choice':
+      return options.length >= 2 && correctCount === 1;
+    case 'multiple_choice':
+      return options.length >= 2 && correctCount >= 1;
+    case 'true_false':
+      return options.length === 2 && correctCount === 1;
+    case 'short_text':
+    case 'long_text':
+    case 'numeric':
+      return true;
+    default:
+      return false;
+  }
+};
 
 const quizReady = computed(() => {
   if (!quizQuestions.value.length) return false;
-  return quizQuestions.value.every((question) => {
-    if (!question.options || question.options.length < 2) {
-      return false;
-    }
-    const correctCount = question.options.filter((opt) => opt.isCorrect).length;
-    if (question.questionType === 'single_choice') return correctCount === 1;
-    if (question.questionType === 'true_false') return correctCount === 1;
-    return true;
-  });
+  return quizQuestions.value.every((question) => questionReady(question));
 });
 
 const questionDialogTitle = computed(() =>
   editingQuestionId.value ? 'Edit question' : 'Add question',
 );
-const optionDialogTitle = computed(() =>
-  editingOptionId.value ? 'Edit option' : 'Add option',
+const createQuestionOptionTypes = ['single_choice', 'multiple_choice'];
+const syncQuestionOptionTypes = ['single_choice', 'multiple_choice', 'true_false'];
+const questionTypeUsesOptions = (type) => syncQuestionOptionTypes.includes(type);
+const questionDialogUsesOptions = computed(() =>
+  createQuestionOptionTypes.includes(questionForm.value.questionType),
 );
+const questionDialogShowsTrueFalseSelector = computed(
+  () => questionForm.value.questionType === 'true_false',
+);
+const trueFalseCorrectOptions = [
+  { label: 'True', value: 'true' },
+  { label: 'False', value: 'false' },
+];
 
-const questionTypeLabel = (type) => (type === 'true_false' ? 'True/False' : 'Single choice');
+const buildEmptyQuestionOption = () => ({ optionText: '', isCorrect: false });
+const normalizeDraftOrder = (options = []) =>
+  options.map((option, index) => ({
+    ...option,
+    orderIndex: index + 1,
+  }));
+
+const initializeQuestionFormOptionsByType = (type) => {
+  questionForm.value.draftOptions = normalizeDraftOrder([
+    { optionText: '', isCorrect: type === 'single_choice' },
+    { optionText: '', isCorrect: false },
+  ]);
+};
+
+const addQuestionFormOption = () => {
+  questionForm.value.draftOptions = normalizeDraftOrder([
+    ...questionForm.value.draftOptions,
+    buildEmptyQuestionOption(),
+  ]);
+};
+
+const removeQuestionFormOption = (index) => {
+  if (questionForm.value.draftOptions.length <= 2) return;
+  const copy = [...questionForm.value.draftOptions];
+  copy.splice(index, 1);
+  if (questionForm.value.questionType === 'single_choice' && !copy.some((option) => option.isCorrect)) {
+    copy[0].isCorrect = true;
+  }
+  questionForm.value.draftOptions = normalizeDraftOrder(copy);
+};
+
+const moveQuestionFormOption = (index, dir) => {
+  const nextIndex = index + dir;
+  if (nextIndex < 0 || nextIndex >= questionForm.value.draftOptions.length) return;
+  const copy = [...questionForm.value.draftOptions];
+  const [item] = copy.splice(index, 1);
+  copy.splice(nextIndex, 0, item);
+  questionForm.value.draftOptions = normalizeDraftOrder(copy);
+};
+
+const setSingleCorrect = (index) => {
+  if (questionForm.value.questionType !== 'single_choice') return;
+  questionForm.value.draftOptions = normalizeDraftOrder(
+    questionForm.value.draftOptions.map((option, optionIndex) => ({
+      ...option,
+      isCorrect: optionIndex === index,
+    })),
+  );
+};
+
+const singleChoiceCorrectIndex = computed({
+  get() {
+    if (questionForm.value.questionType !== 'single_choice') return null;
+    return questionForm.value.draftOptions.findIndex((option) => option.isCorrect);
+  },
+  set(nextIndex) {
+    if (typeof nextIndex !== 'number') return;
+    setSingleCorrect(nextIndex);
+  },
+});
+
+const normalizeDraftOptions = (type, draftOptions) => {
+  const normalizedOptions = (draftOptions || [])
+    .map((option) => ({
+      id: option.id || null,
+      optionText: (option.optionText || '').trim(),
+      isCorrect: Boolean(option.isCorrect),
+    }))
+    .filter((option) => option.optionText !== '');
+
+  if (!createQuestionOptionTypes.includes(type)) {
+    return { normalizedOptions };
+  }
+
+  if (normalizedOptions.length < 2) {
+    return {
+      normalizedOptions,
+      validationError: 'Add at least 2 options',
+    };
+  }
+
+  if (type === 'single_choice') {
+    const firstCorrectIndex = normalizedOptions.findIndex((option) => option.isCorrect);
+    if (firstCorrectIndex === -1) {
+      normalizedOptions[0].isCorrect = true;
+    } else {
+      normalizedOptions.forEach((option, index) => {
+        option.isCorrect = index === firstCorrectIndex;
+      });
+    }
+  }
+
+  if (type === 'multiple_choice') {
+    const hasCorrect = normalizedOptions.some((option) => option.isCorrect);
+    if (!hasCorrect) normalizedOptions[0].isCorrect = true;
+  }
+
+  return {
+    normalizedOptions: normalizedOptions.map((option, index) => ({
+      ...option,
+      orderIndex: index + 1,
+    })),
+  };
+};
+
+const fetchQuestionFromServer = async (questionId) => {
+  const data = await getLessonQuiz(lessonId);
+  return (data.questions || []).find((question) => question.id === questionId || String(question.id) === String(questionId));
+};
+
+const questionTypeLabel = (type) => {
+  switch (type) {
+    case 'multiple_choice':
+      return 'Multiple choice';
+    case 'true_false':
+      return 'True/False';
+    case 'short_text':
+      return 'Short text';
+    case 'long_text':
+      return 'Long text';
+    case 'numeric':
+      return 'Numeric';
+    default:
+      return 'Single choice';
+  }
+};
 
 const syncSelectedQuestion = () => {
   if (!selectedQuestion.value) return;
@@ -880,6 +1071,10 @@ const loadQuiz = async () => {
     const data = await getLessonQuiz(lessonId);
     quizQuestions.value = (data.questions || []).map((question) => ({
       ...question,
+      points: question.points ?? 1,
+      explanation: question.explanation || '',
+      meta: question.meta ?? null,
+      quizId: question.quizId || null,
       options: question.options || [],
     }));
     syncSelectedQuestion();
@@ -973,19 +1168,79 @@ const openVideo = () => {
   }
 };
 
+const questionAdvancedOpen = ref(false);
+
 const openQuestionDialog = (question) => {
   editingQuestionId.value = question?.id || null;
+  let draftOptions = [
+    { optionText: '', isCorrect: true },
+    { optionText: '', isCorrect: false },
+  ];
+  let trueFalseCorrect = '';
+  const questionType = question?.questionType || 'single_choice';
+
+  if (question) {
+    const sortedQuestionOptions = [...(question.options || [])].sort(
+      (a, b) => (a.orderIndex || 0) - (b.orderIndex || 0),
+    );
+    draftOptions = sortedQuestionOptions.map((option) => ({
+      id: option.id || null,
+      optionText: option.optionText || '',
+      isCorrect: Boolean(option.isCorrect),
+      orderIndex: option.orderIndex || null,
+    }));
+
+    if (!draftOptions.length && createQuestionOptionTypes.includes(questionType)) {
+      draftOptions = [
+        { optionText: '', isCorrect: questionType === 'single_choice' },
+        { optionText: '', isCorrect: false },
+      ];
+    }
+
+    const options = question?.options || [];
+    const trueOption = options.find(
+      (option) => String(option.optionText || '').trim().toLowerCase() === 'true',
+    );
+    const falseOption = options.find(
+      (option) => String(option.optionText || '').trim().toLowerCase() === 'false',
+    );
+    if (trueOption?.isCorrect) trueFalseCorrect = 'true';
+    else if (falseOption?.isCorrect) trueFalseCorrect = 'false';
+  } else if (questionType === 'multiple_choice') {
+    draftOptions = [buildEmptyQuestionOption(), buildEmptyQuestionOption()];
+  } else if (!createQuestionOptionTypes.includes(questionType)) {
+    draftOptions = [];
+  }
+
   questionForm.value = {
     questionText: question?.questionText || '',
-    questionType: question?.questionType || 'single_choice',
+    questionType,
+    points: question?.points ?? 1,
+    explanation: question?.explanation || '',
+    metaJson: question?.meta ? JSON.stringify(question.meta, null, 2) : '',
+    draftOptions: normalizeDraftOrder(draftOptions),
+    trueFalseCorrect,
   };
+  questionAdvancedOpen.value = false;
   questionDialogVisible.value = true;
 };
 
 const closeQuestionDialog = () => {
   questionDialogVisible.value = false;
-  questionForm.value = { questionText: '', questionType: 'single_choice' };
+  questionForm.value = {
+    questionText: '',
+    questionType: 'single_choice',
+    points: 1,
+    explanation: '',
+    metaJson: '',
+    draftOptions: [
+      { optionText: '', isCorrect: true },
+      { optionText: '', isCorrect: false },
+    ],
+    trueFalseCorrect: '',
+  };
   editingQuestionId.value = null;
+  questionAdvancedOpen.value = false;
 };
 
 const saveQuestion = async () => {
@@ -994,22 +1249,169 @@ const saveQuestion = async () => {
     return;
   }
 
-  questionSaving.value = true;
-  try {
-    if (editingQuestionId.value) {
-      await updateQuizQuestion(editingQuestionId.value, {
-        questionText: questionForm.value.questionText,
-        questionType: questionForm.value.questionType,
+  if (questionForm.value.points < 0) {
+    toast.add({ severity: 'warn', summary: 'Points invalid', detail: 'Points must be 0 or greater', life: 2500 });
+    return;
+  }
+
+  const questionType = questionForm.value.questionType;
+  const { normalizedOptions, validationError } = normalizeDraftOptions(
+    questionType,
+    questionForm.value.draftOptions,
+  );
+  if (createQuestionOptionTypes.includes(questionType)) {
+    if (validationError) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Options required',
+        detail: validationError,
+        life: 2500,
       });
-    } else {
-      await createQuizQuestion(lessonId, {
-        questionText: questionForm.value.questionText,
-        questionType: questionForm.value.questionType,
-      });
+      return;
     }
+    questionForm.value.draftOptions = normalizedOptions.map(({ id, optionText, isCorrect }) => ({
+      id: id || null,
+      optionText,
+      isCorrect,
+    }));
+  } else if (questionType === 'true_false' && !questionForm.value.trueFalseCorrect) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Pending setup',
+      detail: 'No correct True/False answer selected yet',
+      life: 2500,
+    });
+  } else {
+    questionForm.value.draftOptions = [];
+  }
+
+  questionSaving.value = true;
+  let savedQuestionId = null;
+  try {
+    const payload = {
+      questionText: questionForm.value.questionText,
+      questionType,
+      points: questionForm.value.points,
+      explanation: questionForm.value.explanation,
+    };
+    if (questionForm.value.metaJson.trim()) {
+      try {
+        payload.meta = JSON.parse(questionForm.value.metaJson);
+      } catch (parseErr) {
+        toast.add({
+          severity: 'warn',
+          summary: 'Invalid JSON',
+          detail: 'Meta must be valid JSON',
+          life: 2500,
+        });
+        return;
+      }
+    }
+
+    if (editingQuestionId.value) {
+      await updateQuizQuestion(editingQuestionId.value, payload);
+      savedQuestionId = editingQuestionId.value;
+    } else {
+      const created = await createQuizQuestion(lessonId, payload);
+      savedQuestionId = created?.id || created?.question?.id || null;
+      if (!savedQuestionId) {
+        throw new Error('Failed to resolve created question id');
+      }
+    }
+
+    const existingQuestion =
+      quizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
+    const existingOptions = existingQuestion?.options || [];
+
+    if (createQuestionOptionTypes.includes(questionType)) {
+      const next = normalizedOptions;
+      const originalById = new Map(existingOptions.map((option) => [option.id, option]));
+      const nextIds = new Set(next.filter((option) => option.id).map((option) => option.id));
+
+      // a) deletes
+      for (const option of existingOptions) {
+        if (option?.id && !nextIds.has(option.id)) {
+          await deleteQuizOption(option.id);
+        }
+      }
+
+      // b) creates
+      for (let index = 0; index < next.length; index += 1) {
+        const option = next[index];
+        if (option.id) continue;
+        const optionPayload = {
+          optionText: option.optionText,
+          isCorrect: option.isCorrect,
+          orderIndex: index + 1,
+        };
+        await createQuizOption(savedQuestionId, optionPayload);
+      }
+
+      // c) updates
+      for (let index = 0; index < next.length; index += 1) {
+        const option = next[index];
+        if (!option.id) continue;
+        const original = originalById.get(option.id);
+        if (!original) continue;
+        const trimmedOriginalText = (original.optionText || '').trim();
+        const originalIsCorrect = Boolean(original.isCorrect);
+        const originalOrderIndex = Number(original.orderIndex || index + 1);
+        const nextOrderIndex = index + 1;
+
+        if (
+          trimmedOriginalText !== option.optionText ||
+          originalIsCorrect !== option.isCorrect ||
+          originalOrderIndex !== nextOrderIndex
+        ) {
+          await updateQuizOption(option.id, {
+            optionText: option.optionText,
+            isCorrect: option.isCorrect,
+            orderIndex: nextOrderIndex,
+          });
+        }
+      }
+    } else if (questionType === 'true_false') {
+      const draftCorrectFromOptions = (questionForm.value.draftOptions || []).find(
+        (option) => Boolean(option.isCorrect),
+      );
+      const desiredCorrect =
+        questionForm.value.trueFalseCorrect ||
+        (draftCorrectFromOptions
+          ? String(draftCorrectFromOptions.optionText || '').trim().toLowerCase()
+          : '');
+
+      if (desiredCorrect) {
+        let currentOptions = existingOptions;
+        if (!currentOptions.length) {
+          const freshQuestion = await fetchQuestionFromServer(savedQuestionId);
+          currentOptions = freshQuestion?.options || [];
+        }
+
+        const trueOption = currentOptions.find(
+          (option) => String(option.optionText || '').trim().toLowerCase() === 'true',
+        );
+        const falseOption = currentOptions.find(
+          (option) => String(option.optionText || '').trim().toLowerCase() === 'false',
+        );
+        if (trueOption && falseOption) {
+          if (desiredCorrect === 'true') {
+            await updateQuizOption(trueOption.id, { isCorrect: true });
+            await updateQuizOption(falseOption.id, { isCorrect: false });
+          } else if (desiredCorrect === 'false') {
+            await updateQuizOption(trueOption.id, { isCorrect: false });
+            await updateQuizOption(falseOption.id, { isCorrect: true });
+          }
+        }
+      }
+    } else {
+      questionForm.value.draftOptions = [];
+    }
+
+    await loadQuiz();
+    selectedQuestion.value =
+      quizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
     toast.add({ severity: 'success', summary: 'Question saved', life: 2000 });
     closeQuestionDialog();
-    await loadQuiz();
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -1021,6 +1423,41 @@ const saveQuestion = async () => {
     questionSaving.value = false;
   }
 };
+
+watch(
+  () => questionForm.value.questionType,
+  (nextType) => {
+    if (!questionDialogVisible.value) return;
+    if (nextType === 'true_false') {
+      questionForm.value.trueFalseCorrect = '';
+      questionForm.value.draftOptions = [];
+      return;
+    }
+
+    if (questionTypeUsesOptions(nextType)) {
+      if (!questionForm.value.draftOptions.length) {
+        initializeQuestionFormOptionsByType(nextType);
+      } else if (nextType === 'single_choice') {
+        const firstCorrectIndex = questionForm.value.draftOptions.findIndex((option) => option.isCorrect);
+        if (firstCorrectIndex === -1) {
+          questionForm.value.draftOptions = questionForm.value.draftOptions.map((option, index) => ({
+            ...option,
+            isCorrect: index === 0,
+          }));
+        } else {
+          questionForm.value.draftOptions = questionForm.value.draftOptions.map((option, index) => ({
+            ...option,
+            isCorrect: index === firstCorrectIndex,
+          }));
+        }
+      }
+      return;
+    }
+
+    questionForm.value.draftOptions = [];
+    questionForm.value.trueFalseCorrect = '';
+  },
+);
 
 const removeQuestion = async (question) => {
   if (!window.confirm('Delete this question? This cannot be undone.')) return;
@@ -1066,120 +1503,6 @@ const canMoveQuestion = (question, direction) => {
   const index = list.findIndex((item) => item.id === question.id);
   const targetIndex = index + direction;
   return targetIndex >= 0 && targetIndex < list.length;
-};
-
-const openOptionDialog = (option) => {
-  if (!selectedQuestion.value) return;
-  editingOptionId.value = option?.id || null;
-  optionForm.value = {
-    optionText: option?.optionText || '',
-    isCorrect: option?.isCorrect || false,
-  };
-  optionDialogVisible.value = true;
-};
-
-const closeOptionDialog = () => {
-  optionDialogVisible.value = false;
-  optionForm.value = { optionText: '', isCorrect: false };
-  editingOptionId.value = null;
-};
-
-const saveOption = async () => {
-  if (!selectedQuestion.value) return;
-  if (!optionForm.value.optionText.trim()) {
-    toast.add({ severity: 'warn', summary: 'Text required', detail: 'Option text is required', life: 2500 });
-    return;
-  }
-
-  optionSaving.value = true;
-  try {
-    if (editingOptionId.value) {
-      await updateQuizOption(editingOptionId.value, {
-        optionText: optionForm.value.optionText,
-        isCorrect: optionForm.value.isCorrect,
-      });
-    } else {
-      await createQuizOption(selectedQuestion.value.id, {
-        optionText: optionForm.value.optionText,
-        isCorrect: optionForm.value.isCorrect,
-      });
-    }
-    toast.add({ severity: 'success', summary: 'Option saved', life: 2000 });
-    closeOptionDialog();
-    await loadQuiz();
-  } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to save option',
-      life: 3500,
-    });
-  } finally {
-    optionSaving.value = false;
-  }
-};
-
-const removeOption = async (option) => {
-  if (!selectedQuestion.value || selectedQuestion.value.questionType === 'true_false') return;
-  if (!window.confirm('Delete this option?')) return;
-
-  try {
-    await deleteQuizOption(option.id);
-    toast.add({ severity: 'info', summary: 'Option deleted', life: 2000 });
-    await loadQuiz();
-  } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to delete option',
-      life: 3500,
-    });
-  }
-};
-
-const moveOption = async (option, direction) => {
-  if (!selectedQuestion.value) return;
-  const options = sortedOptions.value;
-  const index = options.findIndex((item) => item.id === option.id);
-  const targetIndex = index + direction;
-  if (targetIndex < 0 || targetIndex >= options.length) return;
-
-  const target = options[targetIndex];
-  try {
-    await updateQuizOption(option.id, { orderIndex: target.orderIndex });
-    await updateQuizOption(target.id, { orderIndex: option.orderIndex });
-    await loadQuiz();
-  } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to reorder option',
-      life: 3500,
-    });
-  }
-};
-
-const canMoveOption = (option, direction) => {
-  const options = sortedOptions.value;
-  const index = options.findIndex((item) => item.id === option.id);
-  const targetIndex = index + direction;
-  return targetIndex >= 0 && targetIndex < options.length;
-};
-
-const markOptionCorrect = async (option) => {
-  if (!selectedQuestion.value || option.isCorrect) return;
-  try {
-    await updateQuizOption(option.id, { isCorrect: true });
-    toast.add({ severity: 'success', summary: 'Correct answer updated', life: 2000 });
-    await loadQuiz();
-  } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to update option',
-      life: 3500,
-    });
-  }
 };
 
 onMounted(async () => {
@@ -1365,6 +1688,35 @@ onMounted(async () => {
   gap: 0.35rem;
 }
 
+.options-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.option-row {
+  display: grid;
+  grid-template-columns: 4rem 1fr 8rem 3rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.option-order {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: flex-start;
+}
+
+.option-input {
+  width: 100%;
+}
+
+.option-correct {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .mb-2 {
   margin-bottom: 0.75rem;
 }
@@ -1388,17 +1740,6 @@ onMounted(async () => {
 .question-actions {
   display: flex;
   gap: 0.25rem;
-}
-
-.options-panel {
-  margin-top: 1.5rem;
-}
-
-.options-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
 }
 
 .muted {

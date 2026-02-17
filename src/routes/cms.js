@@ -258,6 +258,28 @@ const mapGroupRow = (row) => ({
 });
 
 
+const QUIZ_WITH_OPTIONS_SELECT = `
+  SELECT
+    qq.id AS question_id,
+    qq.lesson_id,
+    qq.question_text,
+    qq.question_type,
+    qq.order_index,
+    qq.quiz_id AS question_quiz_id,
+    qq.points AS question_points,
+    qq.explanation AS question_explanation,
+    qq.meta AS question_meta,
+    qo.id AS option_id,
+    qo.option_text,
+    qo.is_correct,
+    qo.order_index AS option_order,
+    qo.points AS option_points,
+    qo.feedback AS option_feedback,
+    qo.meta AS option_meta
+  FROM quiz_questions qq
+  LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+`;
+
 const mapQuizRowsToQuestions = (rows) => {
   const map = new Map();
   for (const row of rows) {
@@ -269,6 +291,10 @@ const mapQuizRowsToQuestions = (rows) => {
         questionType: row.question_type,
         orderIndex: row.order_index,
         options: [],
+        points: row.question_points !== null ? Number(row.question_points) : 1,
+        explanation: row.question_explanation || null,
+        meta: row.question_meta || null,
+        quizId: row.question_quiz_id || null,
       });
     }
     if (row.option_id) {
@@ -277,10 +303,21 @@ const mapQuizRowsToQuestions = (rows) => {
         optionText: row.option_text,
         isCorrect: row.is_correct,
         orderIndex: row.option_order,
+        points: row.option_points !== null ? Number(row.option_points) : 0,
+        feedback: row.option_feedback || null,
+        meta: row.option_meta || null,
       });
     }
   }
   return Array.from(map.values());
+};
+
+const getQuizIdByLesson = async (lessonId) => {
+  const { rows } = await pool.query(
+    'SELECT id FROM quizzes WHERE lesson_id = $1 LIMIT 1',
+    [lessonId],
+  );
+  return rows[0]?.id || null;
 };
 
 router.get('/courses', async (req, res) => {
@@ -917,18 +954,7 @@ router.get(
     try {
       const { rows } = await pool.query(
         `
-          SELECT
-            qq.id AS question_id,
-            qq.lesson_id,
-            qq.question_text,
-            qq.question_type,
-            qq.order_index,
-            qo.id AS option_id,
-            qo.option_text,
-            qo.is_correct,
-            qo.order_index AS option_order
-          FROM quiz_questions qq
-          LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+          ${QUIZ_WITH_OPTIONS_SELECT}
           WHERE qq.lesson_id = $1
           ORDER BY qq.order_index ASC, qo.order_index ASC
         `,
@@ -973,14 +999,36 @@ router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
     }
 
     const questionType = parsed.data.questionType || 'single_choice';
+    const explicitQuizId = parsed.data.quizId;
+    const lessonQuizId = explicitQuizId || (await getQuizIdByLesson(lessonId));
 
+    const columns = ['lesson_id', 'question_text', 'question_type', 'order_index'];
+    const values = [lessonId, parsed.data.questionText, questionType, orderIndex];
+    if (lessonQuizId) {
+      columns.push('quiz_id');
+      values.push(lessonQuizId);
+    }
+    if (parsed.data.points !== undefined) {
+      columns.push('points');
+      values.push(parsed.data.points);
+    }
+    if (parsed.data.explanation !== undefined) {
+      columns.push('explanation');
+      values.push(parsed.data.explanation);
+    }
+    if (parsed.data.meta !== undefined) {
+      columns.push('meta');
+      values.push(parsed.data.meta);
+    }
+
+    const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
     const insertRes = await pool.query(
       `
-        INSERT INTO quiz_questions (lesson_id, question_text, question_type, order_index)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO quiz_questions (${columns.join(', ')})
+        VALUES (${placeholders})
         RETURNING id
       `,
-      [lessonId, parsed.data.questionText, questionType, orderIndex],
+      values,
     );
     const questionId = insertRes.rows[0].id;
 
@@ -988,7 +1036,7 @@ router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
       await pool.query(
         `
           INSERT INTO quiz_options (question_id, option_text, is_correct, order_index)
-          VALUES
+            VALUES
             ($1, 'True', false, 1),
             ($1, 'False', false, 2)
         `,
@@ -998,20 +1046,9 @@ router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
 
     const questionRows = await pool.query(
       `
-        SELECT
-          qq.id AS question_id,
-          qq.lesson_id,
-          qq.question_text,
-          qq.question_type,
-          qq.order_index,
-          qo.id AS option_id,
-          qo.option_text,
-          qo.is_correct,
-          qo.order_index AS option_order
-        FROM quiz_questions qq
-        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        ${QUIZ_WITH_OPTIONS_SELECT}
         WHERE qq.id = $1
-        ORDER BY qo.order_index ASC
+        ORDER BY qq.order_index ASC, qo.order_index ASC
       `,
       [questionId],
     );
@@ -1066,6 +1103,22 @@ router.patch('/quiz/questions/:id', async (req, res) => {
       values.push(parsed.data.orderIndex);
       updates.push(`order_index = $${values.length}`);
     }
+    if (parsed.data.points !== undefined) {
+      values.push(parsed.data.points);
+      updates.push(`points = $${values.length}`);
+    }
+    if (parsed.data.explanation !== undefined) {
+      values.push(parsed.data.explanation);
+      updates.push(`explanation = $${values.length}`);
+    }
+    if (parsed.data.meta !== undefined) {
+      values.push(parsed.data.meta);
+      updates.push(`meta = $${values.length}`);
+    }
+    if (parsed.data.quizId !== undefined) {
+      values.push(parsed.data.quizId);
+      updates.push(`quiz_id = $${values.length}`);
+    }
 
     if (!updates.length) {
       return res.status(400).json({ error: 'No updates provided' });
@@ -1084,35 +1137,28 @@ router.patch('/quiz/questions/:id', async (req, res) => {
       return res.status(404).json({ error: 'Question not found' });
     }
 
-    if (parsed.data.questionType === 'true_false') {
+    const finalType = parsed.data.questionType || question.question_type;
+    if (finalType === 'true_false') {
       await pool.query('DELETE FROM quiz_options WHERE question_id = $1', [questionId]);
       await pool.query(
         `
           INSERT INTO quiz_options (question_id, option_text, is_correct, order_index)
-          VALUES
+            VALUES
             ($1, 'True', false, 1),
             ($1, 'False', false, 2)
         `,
         [questionId],
       );
+    } else if (['short_text', 'long_text', 'numeric'].includes(finalType)) {
+      // Text/numeric questions do not use options, so remove any stale ones after the type change.
+      await pool.query('DELETE FROM quiz_options WHERE question_id = $1', [questionId]);
     }
 
     const questionRows = await pool.query(
       `
-        SELECT
-          qq.id AS question_id,
-          qq.lesson_id,
-          qq.question_text,
-          qq.question_type,
-          qq.order_index,
-          qo.id AS option_id,
-          qo.option_text,
-          qo.is_correct,
-          qo.order_index AS option_order
-        FROM quiz_questions qq
-        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        ${QUIZ_WITH_OPTIONS_SELECT}
         WHERE qq.id = $1
-        ORDER BY qo.order_index ASC
+        ORDER BY qq.order_index ASC, qo.order_index ASC
       `,
       [questionId],
     );
@@ -1198,13 +1244,28 @@ router.post('/quiz/questions/:id/options', async (req, res) => {
       orderIndex = rows[0].next;
     }
 
+    const optionColumns = ['question_id', 'option_text', 'is_correct', 'order_index'];
+    const optionValues = [questionId, parsed.data.optionText, parsed.data.isCorrect || false, orderIndex];
+    if (parsed.data.points !== undefined) {
+      optionColumns.push('points');
+      optionValues.push(parsed.data.points);
+    }
+    if (parsed.data.feedback !== undefined) {
+      optionColumns.push('feedback');
+      optionValues.push(parsed.data.feedback);
+    }
+    if (parsed.data.meta !== undefined) {
+      optionColumns.push('meta');
+      optionValues.push(parsed.data.meta);
+    }
+    const optionPlaceholders = optionColumns.map((_, index) => `$${index + 1}`).join(', ');
     const optionRes = await pool.query(
       `
-        INSERT INTO quiz_options (question_id, option_text, is_correct, order_index)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO quiz_options (${optionColumns.join(', ')})
+        VALUES (${optionPlaceholders})
         RETURNING id
       `,
-      [questionId, parsed.data.optionText, parsed.data.isCorrect || false, orderIndex],
+      optionValues,
     );
 
     if (parsed.data.isCorrect) {
@@ -1224,7 +1285,10 @@ router.post('/quiz/questions/:id/options', async (req, res) => {
           qo.id,
           qo.option_text,
           qo.is_correct,
-          qo.order_index
+          qo.order_index AS option_order,
+          qo.points AS points,
+          qo.feedback AS feedback,
+          qo.meta AS meta
         FROM quiz_options qo
         WHERE qo.question_id = $1
         ORDER BY qo.order_index ASC
@@ -1283,6 +1347,18 @@ router.patch('/quiz/options/:id', async (req, res) => {
       values.push(parsed.data.orderIndex);
       updates.push(`order_index = $${values.length}`);
     }
+    if (parsed.data.points !== undefined) {
+      values.push(parsed.data.points);
+      updates.push(`points = $${values.length}`);
+    }
+    if (parsed.data.feedback !== undefined) {
+      values.push(parsed.data.feedback);
+      updates.push(`feedback = $${values.length}`);
+    }
+    if (parsed.data.meta !== undefined) {
+      values.push(parsed.data.meta);
+      updates.push(`meta = $${values.length}`);
+    }
 
     if (!updates.length) {
       return res.status(400).json({ error: 'No updates provided' });
@@ -1314,7 +1390,10 @@ router.patch('/quiz/options/:id', async (req, res) => {
           qo.id,
           qo.option_text,
           qo.is_correct,
-          qo.order_index
+          qo.order_index AS option_order,
+          qo.points AS points,
+          qo.feedback AS feedback,
+          qo.meta AS meta
         FROM quiz_options qo
         WHERE qo.question_id = $1
         ORDER BY qo.order_index ASC

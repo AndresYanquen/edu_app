@@ -60,14 +60,31 @@ const uuidSchema = z
   .trim()
   .uuid({ message: 'studentId must be a valid UUID' });
 
+const quizAttemptAnswerSchema = z
+  .object({
+    questionId: z.string().uuid({ message: 'questionId must be a valid UUID' }),
+    optionId: z.string().uuid({ message: 'optionId must be a valid UUID' }).optional(),
+    optionIds: z
+      .array(z.string().uuid({ message: 'optionIds must contain valid UUIDs' }))
+      .optional(),
+    textAnswer: z.string().trim().min(1).optional(),
+    numericAnswer: z.number().optional(),
+  })
+  .refine((value) => {
+    const provided = [
+      Boolean(value.optionId),
+      Boolean(value.optionIds && value.optionIds.length),
+      Boolean(value.textAnswer),
+      value.numericAnswer !== undefined && value.numericAnswer !== null,
+    ];
+    return provided.filter(Boolean).length === 1;
+  }, {
+    message: 'Provide exactly one answer type per question',
+  });
+
 const quizAttemptSchema = z.object({
   answers: z
-    .array(
-      z.object({
-        questionId: z.string().uuid({ message: 'questionId must be a valid UUID' }),
-        optionId: z.string().uuid({ message: 'optionId must be a valid UUID' }),
-      }),
-    )
+    .array(quizAttemptAnswerSchema)
     .min(1, 'At least one answer is required'),
 });
 
@@ -97,7 +114,14 @@ const activationSchema = z.object({
   password: passwordSchema,
 });
 
-const questionTypeEnum = z.enum(['single_choice', 'true_false']);
+const questionTypeEnum = z.enum([
+  'single_choice',
+  'multiple_choice',
+  'true_false',
+  'short_text',
+  'long_text',
+  'numeric',
+]);
 
 const preprocessInt = (min = 1) =>
   z.preprocess((val) => {
@@ -117,6 +141,10 @@ const quizQuestionCreateSchema = z.object({
     .trim()
     .min(1, 'questionText is required'),
   questionType: questionTypeEnum.optional(),
+  points: z.number().min(0).optional(),
+  explanation: z.string().trim().optional(),
+  meta: z.record(z.any()).optional(),
+  quizId: z.string().uuid({ message: 'quizId must be a valid UUID' }).optional(),
   orderIndex: preprocessInt().optional(),
 });
 
@@ -124,6 +152,10 @@ const quizQuestionUpdateSchema = z
   .object({
     questionText: z.string().trim().min(1).optional(),
     questionType: questionTypeEnum.optional(),
+    points: z.number().min(0).optional(),
+    explanation: z.string().trim().optional(),
+    meta: z.record(z.any()).optional(),
+    quizId: z.string().uuid({ message: 'quizId must be a valid UUID' }).optional(),
     orderIndex: preprocessInt().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
@@ -137,6 +169,9 @@ const quizOptionCreateSchema = z.object({
     .min(1, 'optionText is required'),
   isCorrect: z.boolean().optional(),
   orderIndex: preprocessInt().optional(),
+  points: z.number().min(0).optional(),
+  feedback: z.string().trim().optional(),
+  meta: z.record(z.any()).optional(),
 });
 
 const quizOptionUpdateSchema = z
@@ -144,6 +179,9 @@ const quizOptionUpdateSchema = z
     optionText: z.string().trim().min(1).optional(),
     isCorrect: z.boolean().optional(),
     orderIndex: preprocessInt().optional(),
+    points: z.number().min(0).optional(),
+    feedback: z.string().trim().optional(),
+    meta: z.record(z.any()).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided',
