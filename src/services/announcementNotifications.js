@@ -60,41 +60,58 @@ function buildVisibleAnnouncementsWhereClause({
   announcementAlias = 'a',
   userIdParam = '$1',
 } = {}) {
+  // Compose lifecycle + visibility branches separately to avoid parenthesis drift.
+  const lifecycleRules = [
+    `${announcementAlias}.status = 'published'`,
+    `(${announcementAlias}.starts_at IS NULL OR ${announcementAlias}.starts_at <= now())`,
+    `(${announcementAlias}.expires_at IS NULL OR ${announcementAlias}.expires_at > now())`,
+  ];
+
+  const scopeRules = [
+    `(
+      ${announcementAlias}.scope = 'academy'
+    )`,
+    `(
+      ${announcementAlias}.scope = 'course'
+      AND EXISTS (
+        SELECT 1
+        FROM enrollments e
+        WHERE e.course_id = ${announcementAlias}.course_id
+          AND e.user_id = ${userIdParam}
+          AND e.status = 'active'
+      )
+    )`,
+    `(
+      ${announcementAlias}.scope = 'group'
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM group_students gs
+          WHERE gs.group_id = ${announcementAlias}.group_id
+            AND gs.user_id = ${userIdParam}
+            AND gs.status = 'active'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM group_teachers gt
+          WHERE gt.group_id = ${announcementAlias}.group_id
+            AND gt.user_id = ${userIdParam}
+        )
+      )
+    )`,
+  ];
+
   return `(
-    (${announcementAlias}.scope = 'academy' AND EXISTS (
-      SELECT 1
-      FROM academy_memberships am
-      WHERE am.user_id = ${userIdParam}
-        AND am.status = 'active'
-    ))
-    OR
-    (${announcementAlias}.scope = 'course' AND EXISTS (
-      SELECT 1
-      FROM enrollments e
-      WHERE e.course_id = ${announcementAlias}.course_id
-        AND e.user_id = ${userIdParam}
-        AND e.status = 'active'
-    ))
-    OR
-    (${announcementAlias}.scope = 'group' AND (
-      EXISTS (
-        SELECT 1
-        FROM group_students gs
-        WHERE gs.group_id = ${announcementAlias}.group_id
-          AND gs.user_id = ${userIdParam}
-          AND gs.status = 'active'
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM group_teachers gt
-        WHERE gt.group_id = ${announcementAlias}.group_id
-          AND gt.user_id = ${userIdParam}
-      )
-    ))
+    ${lifecycleRules.join('\n    AND ')}
+    AND
+    (
+      ${scopeRules.join('\n      OR ')}
+    )
   )`;
 }
 
-function buildVisibleAnnouncementsBaseQuery(userId) {
+function buildVisibleAnnouncementsBaseQuery(knexOrUserId, maybeUserId) {
+  const userId = maybeUserId || knexOrUserId;
   const visibilityClause = buildVisibleAnnouncementsWhereClause({
     announcementAlias: 'a',
     userIdParam: '$1',
@@ -123,9 +140,30 @@ function buildVisibleAnnouncementsBaseQuery(userId) {
   };
 }
 
+async function isAnnouncementVisibleToUser(knex, { userId, announcementId }) {
+  const visibilityClause = buildVisibleAnnouncementsWhereClause({
+    announcementAlias: 'a',
+    userIdParam: '$1',
+  });
+
+  const { rowCount } = await knex.query(
+    `
+      SELECT 1
+      FROM announcements a
+      WHERE a.id = $2
+        AND ${visibilityClause}
+      LIMIT 1
+    `,
+    [userId, announcementId],
+  );
+
+  return rowCount > 0;
+}
+
 module.exports = {
   buildVisibleAnnouncementsBaseQuery,
   buildVisibleAnnouncementsWhereClause,
+  isAnnouncementVisibleToUser,
   isUuid,
   parseBoolean,
   parseInteger,

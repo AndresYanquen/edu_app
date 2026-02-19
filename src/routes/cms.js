@@ -29,6 +29,8 @@ const {
   groupTeacherAssignSchema,
   groupCreateSchema,
   groupUpdateSchema,
+  announcementCreateSchema,
+  announcementUpdateSchema,
   bulkEnrollSchema,
   formatZodError,
   uuidSchema,
@@ -391,6 +393,575 @@ router.get('/course-levels', async (req, res) => {
   } catch (err) {
     console.error('Failed to list CMS course levels', err);
     return res.status(500).json({ error: 'Failed to load course levels' });
+  }
+});
+
+router.get('/announcements', async (req, res) => {
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  const status = req.query.status ? String(req.query.status).trim() : null;
+  const scope = req.query.scope ? String(req.query.scope).trim() : null;
+  const courseId = req.query.courseId ? String(req.query.courseId).trim() : null;
+  const groupId = req.query.groupId ? String(req.query.groupId).trim() : null;
+  const pageRaw = Number.parseInt(req.query.page, 10);
+  const pageSizeRaw = Number.parseInt(req.query.pageSize, 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const pageSize = Number.isFinite(pageSizeRaw)
+    ? Math.min(Math.max(pageSizeRaw, 1), 100)
+    : 20;
+  const offset = (page - 1) * pageSize;
+
+  try {
+    let editableCourseIds = [];
+    if (!isAdmin) {
+      const editableCourses = await pool.query(
+        `
+          SELECT id AS course_id
+          FROM courses
+          WHERE owner_user_id = $1
+          UNION
+          SELECT DISTINCT cur.course_id
+          FROM course_user_roles cur
+          JOIN roles r ON r.id = cur.role_id
+          WHERE cur.user_id = $1
+            AND r.name IN ('instructor', 'content_editor')
+        `,
+        [req.user.id],
+      );
+      editableCourseIds = editableCourses.rows.map((row) => row.course_id);
+
+      if (scope === 'academy' || !editableCourseIds.length) {
+        return res.json({
+          data: [],
+          page,
+          pageSize,
+          total: 0,
+        });
+      }
+    }
+
+    const whereParts = [];
+    const params = [];
+    const pushParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    if (status) {
+      whereParts.push(`a.status = ${pushParam(status)}`);
+    }
+    if (scope) {
+      whereParts.push(`a.scope = ${pushParam(scope)}`);
+    }
+    if (courseId) {
+      whereParts.push(`a.course_id = ${pushParam(courseId)}`);
+    }
+    if (groupId) {
+      whereParts.push(`a.group_id = ${pushParam(groupId)}`);
+    }
+
+    if (!isAdmin) {
+      const editableCourseIdsParam = pushParam(editableCourseIds);
+      whereParts.push(`
+        (
+          (a.scope = 'course' AND a.course_id = ANY(${editableCourseIdsParam}::uuid[]))
+          OR
+          (
+            a.scope = 'group'
+            AND EXISTS (
+              SELECT 1
+              FROM groups g
+              WHERE g.id = a.group_id
+                AND g.course_id = ANY(${editableCourseIdsParam}::uuid[])
+            )
+          )
+        )
+      `);
+    }
+
+    const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    const countResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM announcements a
+        ${whereClause}
+      `,
+      params,
+    );
+
+    const dataParams = [...params, pageSize, offset];
+    const limitParam = `$${params.length + 1}`;
+    const offsetParam = `$${params.length + 2}`;
+    const dataResult = await pool.query(
+      `
+        SELECT
+          a.id,
+          a.scope,
+          a.course_id,
+          a.group_id,
+          a.created_by_user_id,
+          a.title,
+          a.body,
+          a.status,
+          a.priority,
+          a.starts_at,
+          a.expires_at,
+          a.created_at
+        FROM announcements a
+        ${whereClause}
+        ORDER BY a.created_at DESC
+        LIMIT ${limitParam} OFFSET ${offsetParam}
+      `,
+      dataParams,
+    );
+
+    return res.json({
+      data: dataResult.rows.map((row) => ({
+        id: row.id,
+        scope: row.scope,
+        courseId: row.course_id || null,
+        groupId: row.group_id || null,
+        createdByUserId: row.created_by_user_id || null,
+        title: row.title,
+        body: row.body,
+        status: row.status,
+        priority: Number(row.priority),
+        startsAt: row.starts_at || null,
+        expiresAt: row.expires_at || null,
+        createdAt: row.created_at,
+      })),
+      page,
+      pageSize,
+      total: Number(countResult.rows[0]?.total || 0),
+    });
+  } catch (err) {
+    console.error('Failed to list CMS announcements', err);
+    return res.status(500).json({ error: 'Failed to list announcements' });
+  }
+});
+
+router.post('/announcements', async (req, res) => {
+  const parsed = announcementCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  const { scope, title, body } = parsed.data;
+  let courseId = parsed.data.courseId || null;
+  let groupId = parsed.data.groupId || null;
+  const status = parsed.data.status || 'published';
+  const priority = parsed.data.priority ?? 2;
+  const startsAt = parsed.data.startsAt ? new Date(parsed.data.startsAt) : null;
+  const expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
+
+  try {
+    if (scope === 'academy') {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Only admins can create academy announcements' });
+      }
+      courseId = null;
+      groupId = null;
+    }
+
+    if (scope === 'course') {
+      const course = await ensureCourseExists(courseId);
+      if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+
+      if (!isAdmin) {
+        const allowed = await canEditCourse(courseId, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot create announcements for this course' });
+        }
+      }
+      groupId = null;
+    }
+
+    if (scope === 'group') {
+      const group = await fetchGroupById(groupId);
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      courseId = group.course_id;
+      if (!isAdmin) {
+        const allowed = await canEditCourse(courseId, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot create announcements for this group' });
+        }
+      }
+    }
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO announcements (
+          scope,
+          course_id,
+          group_id,
+          created_by_user_id,
+          title,
+          body,
+          status,
+          priority,
+          starts_at,
+          expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING
+          id,
+          scope,
+          course_id,
+          group_id,
+          created_by_user_id,
+          title,
+          body,
+          status,
+          priority,
+          starts_at,
+          expires_at,
+          created_at
+      `,
+      [scope, courseId, groupId, req.user.id, title, body, status, priority, startsAt, expiresAt],
+    );
+
+    const announcement = rows[0];
+    return res.status(201).json({
+      id: announcement.id,
+      scope: announcement.scope,
+      courseId: announcement.course_id || null,
+      groupId: announcement.group_id || null,
+      createdByUserId: announcement.created_by_user_id || null,
+      title: announcement.title,
+      body: announcement.body,
+      status: announcement.status,
+      priority: Number(announcement.priority),
+      startsAt: announcement.starts_at || null,
+      expiresAt: announcement.expires_at || null,
+      createdAt: announcement.created_at,
+    });
+  } catch (err) {
+    console.error('Failed to create announcement', err);
+    return res.status(500).json({ error: 'Failed to create announcement' });
+  }
+});
+
+router.patch('/announcements/:id', async (req, res) => {
+  const parsedId = uuidSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    return res.status(400).json({ error: formatZodError(parsedId.error) });
+  }
+
+  const parsed = announcementUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+  const announcementId = parsedId.data;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+
+  try {
+    const updatedAtColumnCheck = await pool.query(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'announcements'
+            AND column_name = 'updated_at'
+        ) AS exists
+      `,
+    );
+    const hasUpdatedAtColumn = Boolean(updatedAtColumnCheck.rows[0]?.exists);
+
+    const existingResult = await pool.query(
+      `
+        SELECT
+          id,
+          scope,
+          course_id,
+          group_id,
+          title,
+          body,
+          status,
+          priority,
+          starts_at,
+          expires_at,
+          created_by_user_id,
+          created_at
+        FROM announcements
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [announcementId],
+    );
+
+    if (!existingResult.rows.length) {
+      return res.status(404).json({ error: 'Announcement not found' });
+    }
+
+    const existing = existingResult.rows[0];
+
+    if (!isAdmin) {
+      if (existing.scope === 'academy') {
+        return res.status(403).json({ error: 'You cannot edit academy announcements' });
+      }
+
+      if (existing.scope === 'course') {
+        const allowed = await canEditCourse(existing.course_id, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot edit this announcement' });
+        }
+      }
+
+      if (existing.scope === 'group') {
+        const groupResult = await pool.query(
+          `
+            SELECT course_id
+            FROM groups
+            WHERE id = $1
+            LIMIT 1
+          `,
+          [existing.group_id],
+        );
+        if (!groupResult.rows.length) {
+          return res.status(404).json({ error: 'Group not found' });
+        }
+        const allowed = await canEditCourse(groupResult.rows[0].course_id, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot edit this announcement' });
+        }
+      }
+    }
+
+    const hasScope = Object.prototype.hasOwnProperty.call(parsed.data, 'scope');
+    const hasCourseId = Object.prototype.hasOwnProperty.call(parsed.data, 'courseId');
+    const hasGroupId = Object.prototype.hasOwnProperty.call(parsed.data, 'groupId');
+    const hasStartsAt = Object.prototype.hasOwnProperty.call(parsed.data, 'startsAt');
+    const hasExpiresAt = Object.prototype.hasOwnProperty.call(parsed.data, 'expiresAt');
+
+    const targetScope = hasScope ? parsed.data.scope : existing.scope;
+    let targetCourseId = existing.course_id;
+    let targetGroupId = existing.group_id;
+    let resolvedGroup = null;
+
+    if (targetScope === 'academy') {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Only admins can edit academy announcements' });
+      }
+      if (hasCourseId && parsed.data.courseId !== null) {
+        return res.status(400).json({ error: 'courseId must be empty for academy scope' });
+      }
+      if (hasGroupId && parsed.data.groupId !== null) {
+        return res.status(400).json({ error: 'groupId must be empty for academy scope' });
+      }
+      targetCourseId = null;
+      targetGroupId = null;
+    }
+
+    if (targetScope === 'course') {
+      if (hasGroupId && parsed.data.groupId !== null) {
+        return res.status(400).json({ error: 'groupId must be empty for course scope' });
+      }
+      targetCourseId = hasCourseId ? parsed.data.courseId : existing.course_id;
+      if (!targetCourseId) {
+        return res.status(400).json({ error: 'courseId is required for course scope' });
+      }
+      targetGroupId = null;
+
+      const course = await ensureCourseExists(targetCourseId);
+      if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+      }
+      if (!isAdmin) {
+        const allowed = await canEditCourse(targetCourseId, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot edit this announcement target' });
+        }
+      }
+    }
+
+    if (targetScope === 'group') {
+      targetGroupId = hasGroupId ? parsed.data.groupId : existing.group_id;
+      if (!targetGroupId) {
+        return res.status(400).json({ error: 'groupId is required for group scope' });
+      }
+
+      resolvedGroup = await fetchGroupById(targetGroupId);
+      if (!resolvedGroup) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      targetCourseId = resolvedGroup.course_id;
+
+      if (!isAdmin) {
+        const allowed = await canEditCourse(targetCourseId, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot edit this announcement target' });
+        }
+      }
+    }
+
+    const finalStartsAt = hasStartsAt
+      ? (parsed.data.startsAt === null ? null : new Date(parsed.data.startsAt))
+      : existing.starts_at;
+    const finalExpiresAt = hasExpiresAt
+      ? (parsed.data.expiresAt === null ? null : new Date(parsed.data.expiresAt))
+      : existing.expires_at;
+
+    if (finalStartsAt && finalExpiresAt && new Date(finalExpiresAt) <= new Date(finalStartsAt)) {
+      return res.status(400).json({ error: 'expiresAt must be later than startsAt' });
+    }
+
+    const updates = [];
+    const values = [];
+    const addUpdate = (column, value) => {
+      values.push(value);
+      updates.push(`${column} = $${values.length}`);
+    };
+
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'title')) {
+      addUpdate('title', parsed.data.title);
+    }
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'body')) {
+      addUpdate('body', parsed.data.body);
+    }
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'status')) {
+      addUpdate('status', parsed.data.status);
+    }
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'priority')) {
+      addUpdate('priority', parsed.data.priority);
+    }
+    if (targetScope !== existing.scope) {
+      addUpdate('scope', targetScope);
+    }
+    if (targetCourseId !== existing.course_id) {
+      addUpdate('course_id', targetCourseId);
+    }
+    if (targetGroupId !== existing.group_id) {
+      addUpdate('group_id', targetGroupId);
+    }
+    if (hasStartsAt) {
+      addUpdate('starts_at', finalStartsAt);
+    }
+    if (hasExpiresAt) {
+      addUpdate('expires_at', finalExpiresAt);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+    if (hasUpdatedAtColumn) {
+      updates.push('updated_at = now()');
+    }
+
+    values.push(announcementId);
+    const { rows } = await pool.query(
+      `
+        UPDATE announcements
+        SET ${updates.join(', ')}
+        WHERE id = $${values.length}
+        RETURNING
+          id,
+          scope,
+          course_id,
+          group_id,
+          created_by_user_id,
+          title,
+          body,
+          status,
+          priority,
+          starts_at,
+          expires_at,
+          created_at,
+          ${hasUpdatedAtColumn ? 'updated_at' : 'NULL::timestamptz AS updated_at'}
+      `,
+      values,
+    );
+
+    const updated = rows[0];
+    return res.json({
+      id: updated.id,
+      scope: updated.scope,
+      courseId: updated.course_id || null,
+      groupId: updated.group_id || null,
+      createdByUserId: updated.created_by_user_id || null,
+      title: updated.title,
+      body: updated.body,
+      status: updated.status,
+      priority: Number(updated.priority),
+      startsAt: updated.starts_at || null,
+      expiresAt: updated.expires_at || null,
+      createdAt: updated.created_at,
+      updatedAt: updated.updated_at || null,
+    });
+  } catch (err) {
+    console.error('Failed to update announcement', err);
+    return res.status(500).json({ error: 'Failed to update announcement' });
+  }
+});
+
+router.delete('/announcements/:id', async (req, res) => {
+  const parsedId = uuidSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    return res.status(400).json({ error: formatZodError(parsedId.error) });
+  }
+
+  const announcementId = parsedId.data;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+
+  try {
+    const existingResult = await pool.query(
+      `
+        SELECT id, scope, course_id, group_id
+        FROM announcements
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [announcementId],
+    );
+
+    if (!existingResult.rows.length) {
+      return res.status(404).json({ error: 'Announcement not found' });
+    }
+
+    const existing = existingResult.rows[0];
+
+    if (!isAdmin) {
+      if (existing.scope === 'academy') {
+        return res.status(403).json({ error: 'You cannot delete academy announcements' });
+      }
+
+      if (existing.scope === 'course') {
+        const allowed = await canEditCourse(existing.course_id, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot delete this announcement' });
+        }
+      }
+
+      if (existing.scope === 'group') {
+        const group = await fetchGroupById(existing.group_id);
+        if (!group) {
+          return res.status(404).json({ error: 'Group not found' });
+        }
+        const allowed = await canEditCourse(group.course_id, req.user);
+        if (!allowed) {
+          return res.status(403).json({ error: 'You cannot delete this announcement' });
+        }
+      }
+    }
+
+    await pool.query(
+      `
+        DELETE FROM announcements
+        WHERE id = $1
+      `,
+      [announcementId],
+    );
+
+    return res.status(204).send();
+  } catch (err) {
+    console.error('Failed to delete announcement', err);
+    return res.status(500).json({ error: 'Failed to delete announcement' });
   }
 });
 

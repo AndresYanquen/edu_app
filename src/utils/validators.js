@@ -434,6 +434,163 @@ const groupUpdateSchema = z
     message: 'At least one field must be provided',
   });
 
+const announcementCreateSchema = z
+  .object({
+    scope: z.enum(['academy', 'course', 'group'], {
+      errorMap: () => ({ message: 'Invalid scope value' }),
+    }),
+    courseId: uuidSchema.optional().nullable(),
+    groupId: uuidSchema.optional().nullable(),
+    title: z
+      .string({ required_error: 'title is required' })
+      .trim()
+      .min(3, 'title must be at least 3 characters')
+      .max(200, 'title must be at most 200 characters'),
+    body: z
+      .string({ required_error: 'body is required' })
+      .trim()
+      .min(1, 'body is required')
+      .max(20000, 'body must be at most 20000 characters'),
+    status: z.enum(['draft', 'published', 'archived']).optional(),
+    priority: z.number().int().min(1).max(3).optional(),
+    startsAt: z.string().datetime().optional().nullable(),
+    expiresAt: z.string().datetime().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.scope === 'academy') {
+      if (data.courseId !== undefined && data.courseId !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['courseId'],
+          message: 'courseId must be empty for academy scope',
+        });
+      }
+      if (data.groupId !== undefined && data.groupId !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['groupId'],
+          message: 'groupId must be empty for academy scope',
+        });
+      }
+    }
+
+    if (data.scope === 'course') {
+      if (!data.courseId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['courseId'],
+          message: 'courseId is required for course scope',
+        });
+      }
+      if (data.groupId !== undefined && data.groupId !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['groupId'],
+          message: 'groupId must be empty for course scope',
+        });
+      }
+    }
+
+    if (data.scope === 'group' && !data.groupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['groupId'],
+        message: 'groupId is required for group scope',
+      });
+    }
+
+    if (data.startsAt && data.expiresAt) {
+      const startsAtTime = new Date(data.startsAt).getTime();
+      const expiresAtTime = new Date(data.expiresAt).getTime();
+      if (expiresAtTime <= startsAtTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['expiresAt'],
+          message: 'expiresAt must be later than startsAt',
+        });
+      }
+    }
+  });
+
+const announcementUpdateSchema = z
+  .object({
+    scope: z.enum(['academy', 'course', 'group'], {
+      errorMap: () => ({ message: 'Invalid scope value' }),
+    }).optional(),
+    courseId: uuidSchema.optional().nullable(),
+    groupId: uuidSchema.optional().nullable(),
+    title: z.string().trim().min(3, 'title must be at least 3 characters').max(200, 'title must be at most 200 characters').optional(),
+    body: z.string().trim().min(1, 'body is required').max(20000, 'body must be at most 20000 characters').optional(),
+    status: z.enum(['draft', 'published', 'archived']).optional(),
+    priority: z.number().int().min(1).max(3).optional(),
+    startsAt: z.string().datetime().optional().nullable(),
+    expiresAt: z.string().datetime().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (!Object.keys(data).length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: 'No updates provided',
+      });
+      return;
+    }
+
+    if (data.scope === 'academy') {
+      if (data.courseId !== undefined && data.courseId !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['courseId'],
+          message: 'courseId must be empty for academy scope',
+        });
+      }
+      if (data.groupId !== undefined && data.groupId !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['groupId'],
+          message: 'groupId must be empty for academy scope',
+        });
+      }
+    }
+
+    if (data.scope === 'course') {
+      if (!data.courseId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['courseId'],
+          message: 'courseId is required for course scope',
+        });
+      }
+      if (data.groupId !== undefined && data.groupId !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['groupId'],
+          message: 'groupId must be empty for course scope',
+        });
+      }
+    }
+
+    if (data.scope === 'group' && !data.groupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['groupId'],
+        message: 'groupId is required for group scope',
+      });
+    }
+
+    if (data.startsAt !== undefined && data.expiresAt !== undefined && data.startsAt && data.expiresAt) {
+      const startsAtTime = new Date(data.startsAt).getTime();
+      const expiresAtTime = new Date(data.expiresAt).getTime();
+      if (expiresAtTime <= startsAtTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['expiresAt'],
+          message: 'expiresAt must be later than startsAt',
+        });
+      }
+    }
+  });
+
 module.exports = {
   loginSchema,
   lessonProgressSchema,
@@ -462,6 +619,8 @@ module.exports = {
   groupTeacherAssignSchema,
   groupCreateSchema,
   groupUpdateSchema,
+  announcementCreateSchema,
+  announcementUpdateSchema,
   bulkEnrollSchema,
   formatZodError,
 };

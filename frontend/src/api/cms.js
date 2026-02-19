@@ -11,6 +11,14 @@ export const unpublishCourse = (id) => unwrap(api.post(`/cms/courses/${id}/unpub
 export const deleteCourse = (courseId) => unwrap(api.delete(`/cms/courses/${courseId}`));
 export const assignInstructors = (id, payload) =>
   unwrap(api.post(`/cms/courses/${id}/instructors`, payload));
+export const createAnnouncement = (payload) =>
+  unwrap(api.post('/cms/announcements', payload));
+export const updateAnnouncement = (id, payload) =>
+  unwrap(api.patch(`/cms/announcements/${id}`, payload));
+export const deleteAnnouncement = (id) =>
+  unwrap(api.delete(`/cms/announcements/${id}`));
+export const getCmsAnnouncements = (params = {}) =>
+  unwrap(api.get('/cms/announcements', { params }));
 
 export const getModules = (courseId) => unwrap(api.get(`/cms/courses/${courseId}/modules`));
 export const createModule = (courseId, payload) =>
@@ -90,6 +98,10 @@ export default {
   publishCourse,
   unpublishCourse,
   assignInstructors,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  getCmsAnnouncements,
   getModules,
   createModule,
   updateModule,

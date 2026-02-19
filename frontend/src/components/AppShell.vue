@@ -25,6 +25,17 @@
 
         <div class="sidebar-section">
           <small v-if="!collapsed">{{ t('sidebar.workspace') }}</small>
+          <div v-if="canShowNotifications" class="notifications-trigger">
+            <Button
+              class="nav-item bell-button"
+              :label="collapsed ? '' : 'Notificaciones'"
+              icon="pi pi-bell"
+              :outlined="true"
+              @click="openNotifications = true"
+              :aria-label="'Notificaciones'"
+            />
+            <span v-if="unreadBadge" class="bell-badge">{{ unreadBadge }}</span>
+          </div>
           <div class="nav-list">
             <Button
               v-for="link in navLinks"
@@ -86,19 +97,39 @@
     <main class="shell-content">
       <slot />
     </main>
+
+    <AppSidebar
+      v-model="openNotifications"
+      title="Notificaciones"
+      position="right"
+      width="440px"
+      @hide="handleNotificationsHide"
+    >
+      <NotificationsPanel
+        v-if="canShowNotifications && openNotifications"
+        :key="notificationsPanelKey"
+        @unread-change="handleUnreadChange"
+      />
+    </AppSidebar>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
+import { useNotificationsStore } from '../stores/notifications';
+import AppSidebar from './ui/AppSidebar.vue';
+import NotificationsPanel from './notifications/NotificationsPanel.vue';
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const notifications = useNotificationsStore();
 const collapsed = ref(true);
+const openNotifications = ref(false);
+const notificationsPanelKey = ref(0);
 
 const { t, locale } = useI18n();
 
@@ -162,6 +193,14 @@ const toggleSidebar = () => {
 };
 
 const showSidebar = computed(() => !route.meta?.hideSidebar);
+const canShowNotifications = computed(
+  () => Boolean(auth.isAuthenticated) && auth.hasRole && auth.hasRole('student'),
+);
+const unreadBadge = computed(() => {
+  const count = Number(notifications.unreadCount || 0);
+  if (!count) return '';
+  return count > 99 ? '99+' : String(count);
+});
 
 const languageToggle = computed({
   get: () => locale.value === 'es',
@@ -193,6 +232,26 @@ const initials = computed(() => {
 const toggleIcon = computed(() =>
   collapsed.value ? 'pi pi-chevron-right' : 'pi pi-chevron-left',
 );
+
+const handleUnreadChange = (count) => {
+  notifications.setUnreadCount(count);
+};
+
+const handleNotificationsHide = async () => {
+  await notifications.refreshUnreadCount();
+};
+
+watch(openNotifications, (isOpen) => {
+  if (isOpen) {
+    notificationsPanelKey.value += 1;
+  }
+});
+
+onMounted(async () => {
+  if (canShowNotifications.value) {
+    await notifications.refreshUnreadCount();
+  }
+});
 </script>
 
 <style scoped>
@@ -301,6 +360,38 @@ const toggleIcon = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.notifications-trigger {
+  position: relative;
+  margin-bottom: 0.5rem;
+}
+
+.bell-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.sidebar.collapsed .bell-button {
+  justify-content: center;
+}
+
+.bell-badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.2rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
 }
 
 .nav-item {
