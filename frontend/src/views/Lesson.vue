@@ -64,7 +64,13 @@
           <Card v-if="hasRichContent || lesson?.contentUrl" class="lesson-card">
             <template #title>{{ t('lesson.sections.text') }}</template>
             <template #content>
-              <RichContent v-if="hasRichContent" :content="richContentSource" />
+              <RichContent
+                v-if="hasRichContent"
+                :content="richContentSource"
+                :quiz-questions="inlineQuizQuestions"
+                :answers-by-question-id="myAnswersByQuestionId"
+                @inline-quiz-attempted="handleInlineQuizAttempted"
+              />
               <p v-else class="lesson-text muted">{{ t('lesson.labels.noContent') }}</p>
               <a v-if="lesson?.contentUrl" :href="lesson.contentUrl" target="_blank" rel="noopener">
                 {{ t('lesson.labels.referenceLink') }}
@@ -139,18 +145,27 @@
           />
         </div>
 
-        <div v-else-if="quiz && quiz.questions?.length">
-          <div v-for="(question, index) in quiz.questions" :key="question.id" class="quiz-question">
+        <div v-else-if="finalQuestions.length">
+          <div v-for="(question, index) in finalQuestions" :key="question.id" class="quiz-question">
             <h4>{{ t('lesson.labels.question', { number: index + 1 }) }}</h4>
             <p>{{ question.questionText }}</p>
 
             <div class="quiz-options">
               <div v-for="option in question.options" :key="option.id" class="quiz-option">
+                <Checkbox
+                  v-if="question.questionType === 'multiple_choice'"
+                  :inputId="`option-${option.id}`"
+                  :binary="true"
+                  :modelValue="isOptionSelected(question.id, option.id)"
+                  @update:modelValue="(checked) => updateSelection(question, option.id, checked)"
+                  :disabled="quizPassed || quizSubmitting"
+                />
                 <RadioButton
+                  v-else
                   :inputId="`option-${option.id}`"
                   :value="option.id"
                   :modelValue="quizSelections[question.id] || null"
-                  @update:modelValue="(value) => updateSelection(question.id, value)"
+                  @update:modelValue="(value) => updateSelection(question, value)"
                   :disabled="quizPassed || quizSubmitting"
                 />
                 <label :for="`option-${option.id}`">{{ option.optionText }}</label>
@@ -167,6 +182,10 @@
               @click="submitQuiz"
             />
           </div>
+        </div>
+
+        <div v-else-if="quiz && quiz.questions?.length" class="empty-state">
+          El quiz ya está incluido dentro del contenido.
         </div>
 
         <div v-else class="empty-state">
@@ -208,7 +227,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
@@ -216,6 +235,7 @@ import api from '../api/axios';
 import PreviewBanner from '../components/PreviewBanner.vue';
 import RichContent from '../components/RichContent.vue';
 import { useAuthStore } from '../stores/auth';
+import { extractInlineQuestionIds } from '../utils/richContent';
 
 const route = useRoute();
 const router = useRouter();
@@ -235,6 +255,17 @@ const richContentSource = computed(() => {
   return source ? source.trim() : '';
 });
 const hasRichContent = computed(() => richContentSource.value.length > 0);
+const inlineQuestionIds = computed(() => extractInlineQuestionIds(richContentSource.value));
+const finalQuestions = computed(() =>
+  (quiz.value?.questions || []).filter((q) => !inlineQuestionIds.value.has(String(q.id))),
+);
+const inlineQuizQuestions = computed(() =>
+  (quiz.value?.questions || []).map((question) => ({
+    ...question,
+    id: question.id || question.questionId || question.question_id || null,
+    options: question.options || [],
+  })),
+);
 
 const loading = ref(true);
 const error = ref(false);
@@ -244,11 +275,13 @@ const updating = ref(null);
 // Quiz state
 const quiz = ref(null);
 const quizSelections = ref({});
+const myAnswersByQuestionId = ref({});
 const quizLoading = ref(false);
 const quizSubmitting = ref(false);
 const quizError = ref(false);
 const quizExists = ref(false);
 const quizPassed = ref(false);
+let inlineQuizScoreRefreshTimer = null;
 
 // Quiz score card state
 const quizScore = ref(null);
@@ -441,12 +474,36 @@ const loadQuiz = async () => {
     const { data } = await api.get(endpoint);
     quiz.value = data;
     quizExists.value = Boolean(data?.questions?.length);
+    myAnswersByQuestionId.value =
+      data?.myAnswersByQuestionId && typeof data.myAnswersByQuestionId === 'object'
+        ? data.myAnswersByQuestionId
+        : {};
     // Do NOT reset quizPassed here (it comes from fetchQuizScore)
-    quizSelections.value = {};
+    const inlineIds = extractInlineQuestionIds(richContentSource.value);
+    const initialSelections = {};
+    for (const question of data?.questions || []) {
+      if (inlineIds.has(String(question.id))) continue;
+      const preloaded = myAnswersByQuestionId.value[String(question.id)];
+      if (!preloaded) continue;
+      if (question.questionType === 'multiple_choice') {
+        const ids = Array.isArray(preloaded.optionIds)
+          ? preloaded.optionIds.filter(Boolean)
+          : [];
+        if (ids.length) initialSelections[question.id] = ids;
+        continue;
+      }
+      const optionId =
+        preloaded.optionId ||
+        (Array.isArray(preloaded.optionIds) ? preloaded.optionIds[0] : null);
+      if (optionId) initialSelections[question.id] = optionId;
+    }
+    quizSelections.value = initialSelections;
   } catch (err) {
     // If no quiz, just hide the section (do not show error)
     quiz.value = null;
     quizExists.value = false;
+    myAnswersByQuestionId.value = {};
+    quizSelections.value = {};
 
     // If you want to show errors for real failures (non-404), you can do:
     // if (err?.response?.status && err.response.status !== 404) quizError.value = true;
@@ -457,25 +514,57 @@ const loadQuiz = async () => {
 
 const showQuizSection = computed(() => quizLoading.value || quizError.value || quizExists.value);
 
-const updateSelection = (questionId, optionId) => {
-  quizSelections.value = { ...quizSelections.value, [questionId]: optionId };
+const isOptionSelected = (questionId, optionId) => {
+  const selected = quizSelections.value[questionId];
+  return Array.isArray(selected) ? selected.includes(optionId) : false;
+};
+
+const updateSelection = (question, value, checked = undefined) => {
+  const questionId = question.id;
+  if (question.questionType === 'multiple_choice') {
+    const current = Array.isArray(quizSelections.value[questionId])
+      ? [...quizSelections.value[questionId]]
+      : [];
+    const next = checked
+      ? Array.from(new Set([...current, value]))
+      : current.filter((optionId) => optionId !== value);
+    quizSelections.value = { ...quizSelections.value, [questionId]: next };
+    return;
+  }
+
+  quizSelections.value = { ...quizSelections.value, [questionId]: value };
 };
 
 const canSubmitQuiz = computed(() => {
-  const questions = quiz.value?.questions || [];
+  const questions = finalQuestions.value;
   if (!questions.length) return false;
-  return questions.every((q) => Boolean(quizSelections.value[q.id]));
+  return questions.every((q) => {
+    const selected = quizSelections.value[q.id];
+    if (q.questionType === 'multiple_choice') {
+      return Array.isArray(selected) && selected.length > 0;
+    }
+    return Boolean(selected);
+  });
 });
 
 const submitQuiz = async () => {
-  if (!quiz.value?.questions?.length) return;
+  if (!finalQuestions.value.length) return;
 
   quizSubmitting.value = true;
   try {
-    const answers = quiz.value.questions.map((q) => ({
-      questionId: q.id,
-      optionId: quizSelections.value[q.id],
-    }));
+    const answers = finalQuestions.value.map((q) => {
+      const selected = quizSelections.value[q.id];
+      if (q.questionType === 'multiple_choice') {
+        return {
+          questionId: q.id,
+          optionIds: Array.isArray(selected) ? selected : [],
+        };
+      }
+      return {
+        questionId: q.id,
+        optionId: selected,
+      };
+    });
 
     const { data } = await api.post(`/lessons/${lessonId.value}/quiz/attempt`, { answers });
 
@@ -507,8 +596,24 @@ const submitQuiz = async () => {
   }
 };
 
+const handleInlineQuizAttempted = () => {
+  if (inlineQuizScoreRefreshTimer) {
+    clearTimeout(inlineQuizScoreRefreshTimer);
+  }
+  inlineQuizScoreRefreshTimer = setTimeout(async () => {
+    await fetchQuizScore();
+  }, 250);
+};
+
 onMounted(() => {
   loadLesson();
+});
+
+onBeforeUnmount(() => {
+  if (inlineQuizScoreRefreshTimer) {
+    clearTimeout(inlineQuizScoreRefreshTimer);
+    inlineQuizScoreRefreshTimer = null;
+  }
 });
 
 watch(

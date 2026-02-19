@@ -42,8 +42,29 @@
                 <InputText v-model="form.videoUrl" placeholder="https://..." />
               </div>
 
+              <div class="assets-inline-hint">
+                <small>Assets are managed in Media Library.</small>
+                <Button
+                  icon="pi pi-images"
+                  label="Open Media Library"
+                  class="p-button-text"
+                  @click="openMediaLibrary"
+                  aria-label="Open Media Library"
+                />
+              </div>
               <div class="dialog-field">
-                <label>Content</label>
+                <div class="content-header-row">
+                  <label>Content</label>
+                    <!-- <Button
+                      icon="pi pi-images"
+                      label="Media Library"
+                      class="p-button-text"
+                      :badge="String(recentAssets.length)"
+                      badgeClass="p-badge-info"
+                      @click="openMediaLibrary"
+                      aria-label="Open Media Library"
+                    /> -->
+                </div>
 
                 <div class="editor-wrapper">
                   <Editor
@@ -61,162 +82,31 @@
                   Paste YouTube, Vimeo, Loom, or image URLs on their own lines to render rich embeds.
                 </small>
 
-                <div class="assets-section">
-                  <div class="assets-header">
-                    <div>
-                      <h4>Assets (images/audio/files)</h4>
-                      <small class="muted">
-                        Upload staff media and insert the public URL directly into markdown.
-                      </small>
-                    </div>
-                    <Button
-                      class="p-button-text"
-                      icon="pi pi-paperclip"
-                      :label="assetsSectionExpanded ? 'Hide assets' : 'Show assets'"
-                      @click="assetsSectionExpanded = !assetsSectionExpanded"
-                    />
-                  </div>
-
-                  <div v-if="assetsSectionExpanded" class="assets-body">
-                    <div class="asset-upload-actions">
-                      <Button
-                        label="Insert Image"
-                        icon="pi pi-image"
-                        :disabled="assetsUploadProcessing"
-                        class="p-button-outlined"
-                        @click="triggerAssetInput('image')"
-                      />
-                      <Button
-                        label="Insert Audio"
-                        icon="pi pi-music"
-                        :disabled="assetsUploadProcessing"
-                        class="p-button-outlined"
-                        @click="triggerAssetInput('audio')"
-                      />
-                      <Button
-                        label="Attach File"
-                        icon="pi pi-paperclip"
-                        :disabled="assetsUploadProcessing"
-                        class="p-button-outlined"
-                        @click="triggerAssetInput('file')"
-                      />
-                    </div>
-
-                    <div v-if="assetsUploadProcessing" class="assets-uploading">
-                      <ProgressSpinner strokeWidth="5" class="assets-spinner" />
-                      <small>Uploading asset…</small>
-                    </div>
-
-                    <div class="assets-hint">
-                      <small>
-                        Supported PNG/JPG/WEBP/GIF images, MP3/WAV/OGG/MP4/M4A audio, and PDF/DOC/DOCX/PPT/PPTX/ZIP (max
-                        25 MB).
-                      </small>
-                    </div>
-
-                    <div class="asset-file-inputs">
-                      <input
-                        ref="imageInputRef"
-                        type="file"
-                        accept="image/*"
-                        class="asset-file-input"
-                        style="display: none"
-                        @change="handleAssetSelection('image', $event)"
-                      />
-                      <input
-                        ref="audioInputRef"
-                        type="file"
-                        accept="audio/*"
-                        class="asset-file-input"
-                        style="display: none"
-                        @change="handleAssetSelection('audio', $event)"
-                      />
-                      <input
-                        ref="fileInputRef"
-                        type="file"
-                        accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
-                        class="asset-file-input"
-                        style="display: none"
-                        @change="handleAssetSelection('file', $event)"
-                      />
-                    </div>
-
-                    <div class="assets-filters">
-                      <Dropdown
-                        v-model="assetsKindFilter"
-                        :options="assetKindOptions"
-                        optionLabel="label"
-                        optionValue="value"
-                      />
-                      <InputText
-                        v-model="assetsSearchTerm"
-                        placeholder="Search by filename"
-                        @keyup.enter="refreshAssets"
-                      />
-                      <Button
-                        label="Refresh"
-                        icon="pi pi-refresh"
-                        class="p-button-text"
-                        @click="refreshAssets"
-                      />
-                    </div>
-                  </div>
-
-                  <div class="assets-list-wrapper">
-                    <div v-if="assetsUploadProcessing" class="assets-loading">
-                      Uploading file...
-                    </div>
-
-                    <div v-if="assetsLoading" class="assets-loading">
-                      <Skeleton height="2rem" class="mb-2" />
-                      <Skeleton height="2rem" />
-                    </div>
-
-                    <div v-else-if="assetsError" class="assets-error">
-                      Unable to load assets.
-                      <Button
-                        label="Retry"
-                        class="p-button-text"
-                        icon="pi pi-refresh"
-                        @click="refreshAssets"
-                      />
-                    </div>
-
-                    <div v-else-if="recentAssets.length" class="assets-list">
-                      <div v-for="asset in recentAssets" :key="asset.assetId" class="asset-row">
-                        <div class="asset-preview">
-                          <img v-if="asset.kind === 'image'" :src="asset.url" alt="" />
-                          <div v-else class="asset-icon">{{ asset.kind?.charAt(0)?.toUpperCase() || '?' }}</div>
-                        </div>
-                        <div class="asset-info">
-                          <div class="asset-title">{{ asset.originalName || asset.assetId }}</div>
-                          <div class="asset-meta">
-                            <Tag :value="asset.kind" severity="info" />
-                            <small>{{ asset.mimeType }}</small>
-                            <small>{{ formatTimestamp(asset.createdAt) }}</small>
-                          </div>
-                        </div>
-                        <div class="asset-actions">
-                          <Button
-                            icon="pi pi-copy"
-                            class="p-button-text"
-                            label="Copy"
-                            @click="copyAssetUrl(asset.url)"
-                          />
-                          <Button
-                            icon="pi pi-arrow-down"
-                            class="p-button-text"
-                            label="Insert"
-                            @click="handleInsertAsset(asset)"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div v-else class="assets-empty">
-                      No assets uploaded yet.
-                    </div>
-                  </div>
+                <div class="asset-file-inputs">
+                  <input
+                    ref="imageInputRef"
+                    type="file"
+                    accept="image/*"
+                    class="asset-file-input"
+                    style="display: none"
+                    @change="handleAssetSelection('image', $event)"
+                  />
+                  <input
+                    ref="audioInputRef"
+                    type="file"
+                    accept="audio/*"
+                    class="asset-file-input"
+                    style="display: none"
+                    @change="handleAssetSelection('audio', $event)"
+                  />
+                  <input
+                    ref="fileInputRef"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
+                    class="asset-file-input"
+                    style="display: none"
+                    @change="handleAssetSelection('file', $event)"
+                  />
                 </div>
               </div>
 
@@ -230,15 +120,6 @@
                 <Button label="Save" :loading="saving" @click="saveLesson" />
               </div>
             </div>
-
-            <!-- <div class="lesson-preview">
-              <h4>Preview</h4>
-              <RichContent v-if="form.contentHtml" :content="form.contentHtml" />
-              <p v-else class="empty-state">Content will appear here.</p>
-              <div v-if="form.videoUrl" class="preview-actions">
-                <Button label="Open video" icon="pi pi-external-link" class="p-button-text" @click="openVideo" />
-              </div>
-            </div> -->
           </div>
 
           <Divider />
@@ -460,11 +341,273 @@
       </div>
     </Dialog>
 
+    <Dialog
+      v-model:visible="mediaLibraryVisible"
+      modal
+      :dismissableMask="true"
+      :closeOnEscape="true"
+      :draggable="false"
+      :blockScroll="true"
+      class="media-library-dialog"
+      :style="{ width: 'min(98vw, 1100px)' }"
+    >
+      <template #header>
+        <div class="media-library-header">
+          <div>
+            <strong>Media Library</strong>
+            <small class="muted">Browse and insert existing assets</small>
+          </div>
+        </div>
+      </template>
+
+      <div class="media-library-content">
+        <div class="media-library-toolbar">
+          <InputText
+            v-model="mediaLibrarySearch"
+            placeholder="Search assets..."
+            aria-label="Search assets"
+          />
+          <div class="media-library-tabs">
+            <Button
+              label="Imágenes"
+              :class="['p-button-sm', mediaLibraryTab === 'image' ? '' : 'p-button-outlined']"
+              @click="mediaLibraryTab = 'image'"
+            />
+            <Button
+              label="Audio"
+              :class="['p-button-sm', mediaLibraryTab === 'audio' ? '' : 'p-button-outlined']"
+              @click="mediaLibraryTab = 'audio'"
+            />
+            <Button
+              label="Archivos"
+              :class="['p-button-sm', mediaLibraryTab === 'file' ? '' : 'p-button-outlined']"
+              @click="mediaLibraryTab = 'file'"
+            />
+          </div>
+          <div class="media-library-upload">
+            <Button
+              label="Upload Image"
+              icon="pi pi-image"
+              class="p-button-text p-button-sm"
+              :disabled="assetsUploadProcessing"
+              @click="triggerAssetInput('image')"
+            />
+            <Button
+              label="Upload Audio"
+              icon="pi pi-music"
+              class="p-button-text p-button-sm"
+              :disabled="assetsUploadProcessing"
+              @click="triggerAssetInput('audio')"
+            />
+            <Button
+              label="Upload File"
+              icon="pi pi-upload"
+              class="p-button-text p-button-sm"
+              :disabled="assetsUploadProcessing"
+              @click="triggerAssetInput('file')"
+            />
+            <Button
+              label="Refresh"
+              icon="pi pi-refresh"
+              class="p-button-text p-button-sm"
+              @click="refreshAssets"
+            />
+          </div>
+        </div>
+
+        <div class="media-library-list">
+          <div v-if="assetsUploadProcessing" class="assets-loading">
+            Uploading file...
+          </div>
+
+          <div v-if="assetsLoading" class="assets-loading">
+            <Skeleton height="2rem" class="mb-2" />
+            <Skeleton height="2rem" />
+          </div>
+
+          <div v-else-if="assetsError" class="assets-error">
+            Unable to load assets.
+            <Button
+              label="Retry"
+              class="p-button-text"
+              icon="pi pi-refresh"
+              @click="refreshAssets"
+            />
+          </div>
+
+          <div v-else-if="filteredAssets.length" class="assets-list">
+            <div v-for="asset in filteredAssets" :key="asset.assetId" class="asset-row">
+              <div class="asset-preview">
+                <img v-if="assetKindValue(asset) === 'image'" :src="resolveAssetUrl(asset.url)" alt="" />
+                <div v-else class="asset-icon">{{ asset.kind?.charAt(0)?.toUpperCase() || '?' }}</div>
+              </div>
+              <div class="asset-info">
+                <div class="asset-title">{{ asset.originalName || asset.assetId }}</div>
+                <div class="asset-meta">
+                  <Tag :value="asset.kind" severity="info" />
+                  <small>{{ asset.mimeType }}</small>
+                  <small>{{ formatTimestamp(asset.createdAt) }}</small>
+                </div>
+              </div>
+              <div class="asset-actions">
+                <Button
+                  icon="pi pi-copy"
+                  class="p-button-text p-button-sm"
+                  label="Copy"
+                  @click="copyAssetUrl(resolveAssetUrl(asset.url))"
+                  aria-label="Copy asset URL"
+                />
+                <Button
+                  icon="pi pi-arrow-down"
+                  class="p-button-text p-button-sm"
+                  label="Insert"
+                  @click="handleInsertAsset(asset)"
+                  aria-label="Insert asset into editor"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="assets-empty">
+            No assets found for this filter.
+          </div>
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="insertQuizDialogVisible"
+      header="Insert quiz marker"
+      modal
+      :style="{ width: '34rem', maxWidth: '95vw' }"
+    >
+      <div class="dialog-field">
+        <label>Question</label>
+        <Dropdown
+          v-model="insertQuizQuestionId"
+          :options="insertQuizQuestionOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Select a question"
+          filter
+        />
+        <small class="muted">
+          This inserts <code>data-lesson-id</code> and <code>data-question-id</code> marker HTML.
+        </small>
+      </div>
+      <div class="dialog-actions">
+        <Button label="Cancel" class="p-button-text" @click="insertQuizDialogVisible = false" />
+        <Button label="Insert" :disabled="!isEditorReady" @click="insertQuizMarker" />
+      </div>
+      <small v-if="!isEditorReady" class="muted">Loading editor…</small>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="inlineQuizDialogVisible"
+      modal
+      class="dialog"
+      :style="{ width: '80vw', maxWidth: '1100px' }"
+    >
+      <template #header>
+        <div class="inline-quiz-header">
+          <div>
+            <strong>Quiz (inline)</strong>
+            <small v-if="currentQuizId" class="muted">ID: {{ inlineQuizShortId }}</small>
+          </div>
+          <div class="question-actions">
+            <Button
+              label="Reload"
+              icon="pi pi-refresh"
+              class="p-button-text"
+              @click="loadInlineQuiz"
+              :disabled="inlineQuizLoading || !currentQuizId"
+            />
+            <Button
+              label="Add question"
+              icon="pi pi-plus"
+              @click="openInlineQuestionDialog()"
+              :disabled="!currentQuizId"
+            />
+          </div>
+        </div>
+      </template>
+
+      <div class="dialog-field">
+        <label>Quizzes in lesson: {{ discoveredQuizIds.length }}</label>
+        <Dropdown
+          v-model="currentQuizId"
+          :options="discoveredQuizIds"
+          placeholder="Select a quiz id"
+          :disabled="!discoveredQuizIds.length"
+        />
+      </div>
+
+      <div v-if="inlineQuizLoading">
+        <Skeleton height="3rem" class="mb-2" />
+        <Skeleton height="3rem" class="mb-2" />
+      </div>
+
+      <div v-else-if="inlineQuizError" class="empty-state">
+        Failed to load inline quiz.
+        <Button label="Retry" class="p-button-text" @click="loadInlineQuiz" />
+      </div>
+
+      <div v-else-if="!inlineQuizQuestions.length" class="empty-state">
+        No questions yet for this quiz.
+      </div>
+
+      <DataTable
+        v-else
+        :value="sortedInlineQuestions"
+        v-model:selection="inlineSelectedQuestion"
+        selectionMode="single"
+        dataKey="id"
+      >
+        <Column field="orderIndex" header="#" style="width: 5rem" />
+        <Column field="questionText" header="Question" />
+        <Column header="Type" style="width: 10rem">
+          <template #body="{ data }">
+            <Tag :value="questionTypeLabel(data.questionType)" severity="info" />
+          </template>
+        </Column>
+        <Column header="Options" style="width: 8rem">
+          <template #body="{ data }">
+            {{ data.options?.length || 0 }}
+          </template>
+        </Column>
+        <Column header="Actions" style="width: 14rem">
+          <template #body="{ data }">
+            <div class="question-actions">
+              <Button
+                icon="pi pi-arrow-up"
+                class="p-button-text"
+                @click.stop="moveQuestion(data, -1)"
+                :disabled="!canMoveQuestion(data, -1)"
+              />
+              <Button
+                icon="pi pi-arrow-down"
+                class="p-button-text"
+                @click.stop="moveQuestion(data, 1)"
+                :disabled="!canMoveQuestion(data, 1)"
+              />
+              <Button icon="pi pi-pencil" class="p-button-text" @click.stop="openInlineQuestionDialog(data)" />
+              <Button
+                icon="pi pi-trash"
+                class="p-button-text p-button-danger"
+                @click.stop="removeQuestion(data)"
+              />
+            </div>
+          </template>
+        </Column>
+      </DataTable>
+      <small class="muted">Options are edited in the question dialog.</small>
+    </Dialog>
+
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import RichContent from '../components/RichContent.vue';
@@ -485,7 +628,9 @@ import {
   publishLesson,
   unpublishLesson,
   getLessonQuiz,
+  getQuizById,
   createQuizQuestion,
+  createQuizQuestionByQuiz,
   updateQuizQuestion,
   deleteQuizQuestion,
   createQuizOption,
@@ -515,32 +660,27 @@ const form = ref({
   estimatedMinutes: 0,
 });
 
-const assetsSectionExpanded = ref(true);
+const mediaLibraryVisible = ref(false);
 const assetsLoaded = ref(false);
 const assetsLoading = ref(false);
 const assetsError = ref(false);
 const recentAssets = ref([]);
-const assetsKindFilter = ref(null);
-const assetsSearchTerm = ref('');
+const mediaLibraryTab = ref('image');
+const mediaLibrarySearch = ref('');
 const assetsUploadProcessing = ref(false);
 const MAX_ASSET_FILE_SIZE = 25 * 1024 * 1024;
-
-const assetKindOptions = [
-  { label: 'All kinds', value: null },
-  { label: 'Images', value: 'image' },
-  { label: 'Audio', value: 'audio' },
-  { label: 'Files', value: 'file' },
-];
 
 const imageInputRef = ref(null);
 const audioInputRef = ref(null);
 const fileInputRef = ref(null);
 const editorRef = ref(null);
+const tinymceEditor = ref(null);
 
 const quizQuestions = ref([]);
 const quizLoading = ref(true);
 const quizError = ref(false);
 const selectedQuestion = ref(null);
+const inlineQuizDialogVisible = ref(false);
 const questionDialogVisible = ref(false);
 const questionForm = ref({
   questionText: '',
@@ -556,6 +696,18 @@ const questionForm = ref({
 });
 const questionSaving = ref(false);
 const editingQuestionId = ref(null);
+const insertQuizDialogVisible = ref(false);
+const insertQuizQuestionId = ref('');
+const currentQuizId = ref(null);
+const editingQuizId = ref(null);
+const insertingQuiz = ref(false);
+const inlineQuizQuestions = ref([]);
+const inlineQuizLoading = ref(false);
+const inlineQuizError = ref(false);
+const inlineSelectedQuestion = ref(null);
+const questionDialogContext = ref('lesson');
+const discoveredQuizIds = ref([]);
+let scanQuizDebounceTimer = null;
 
 const questionTypeOptions = [
   { label: 'Single choice', value: 'single_choice' },
@@ -568,6 +720,44 @@ const questionTypeOptions = [
 
 const sortedQuestions = computed(() =>
   [...quizQuestions.value].sort((a, b) => a.orderIndex - b.orderIndex),
+);
+const sortedInlineQuestions = computed(() =>
+  [...inlineQuizQuestions.value].sort((a, b) => a.orderIndex - b.orderIndex),
+);
+const inlineQuizShortId = computed(() =>
+  currentQuizId.value ? String(currentQuizId.value).slice(0, 8) : '',
+);
+const isEditorReady = computed(() => Boolean(tinymceEditor.value));
+const insertedInlineQuestionIds = computed(() => {
+  const ids = new Set();
+  const body = editorRef.value?.editor?.getBody?.();
+
+  if (body) {
+    const nodes = body.querySelectorAll('.cms-quiz[data-question-id]');
+    nodes.forEach((node) => {
+      const value = String(node.getAttribute('data-question-id') || '').trim();
+      if (value) ids.add(value);
+    });
+    return ids;
+  }
+
+  if (typeof document === 'undefined') return ids;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = form.value.contentHtml || '';
+  const nodes = wrapper.querySelectorAll('.cms-quiz[data-question-id]');
+  nodes.forEach((node) => {
+    const value = String(node.getAttribute('data-question-id') || '').trim();
+    if (value) ids.add(value);
+  });
+  return ids;
+});
+const insertQuizQuestionOptions = computed(() =>
+  sortedQuestions.value
+    .filter((question) => !insertedInlineQuestionIds.value.has(String(question.id)))
+    .map((question) => ({
+      label: `${question.orderIndex}. ${question.questionText}`,
+      value: question.id,
+    })),
 );
 
 const questionReady = (question) => {
@@ -611,6 +801,42 @@ const trueFalseCorrectOptions = [
   { label: 'True', value: 'true' },
   { label: 'False', value: 'false' },
 ];
+const normalizedMediaLibrarySearch = computed(() =>
+  String(mediaLibrarySearch.value || '').trim().toLowerCase(),
+);
+const resolveAssetUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+  const base = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+  if (!base) return raw;
+  try {
+    return new URL(raw, base).toString();
+  } catch (_) {
+    return raw;
+  }
+};
+const assetKindValue = (asset) => {
+  const raw = String(asset?.kind || '').toLowerCase();
+  if (raw === 'images') return 'image';
+  return raw || 'file';
+};
+const filteredAssets = computed(() =>
+  recentAssets.value.filter((asset) => {
+    if ((mediaLibraryTab.value || 'image') !== assetKindValue(asset)) return false;
+    if (!normalizedMediaLibrarySearch.value) return true;
+    const haystack = [
+      asset.originalName,
+      asset.assetId,
+      asset.mimeType,
+      resolveAssetUrl(asset.url),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(normalizedMediaLibrarySearch.value);
+  }),
+);
 
 const buildEmptyQuestionOption = () => ({ optionText: '', isCorrect: false });
 const normalizeDraftOrder = (options = []) =>
@@ -775,14 +1001,148 @@ const escapeHtml = (value = '') =>
     .replace(/'/g, '&#39;');
 
 const buildAssetSnippet = (asset) => {
-  const safeLabel = escapeHtml(asset.originalName || asset.url);
+  const url = resolveAssetUrl(asset.url);
+  const safeLabel = escapeHtml(asset.originalName || url);
   if (asset.kind === 'image' || asset.kind === 'images') {
-    return `<p><img src="${asset.url}" alt="${safeLabel}" /></p>`;
+    return `<p><img src="${url}" alt="${safeLabel}" /></p>`;
   }
   if (asset.kind === 'audio') {
-    return `<p><audio controls src="${asset.url}"></audio></p>`;
+    return `<p><audio controls src="${url}"></audio></p>`;
   }
-  return `<p><a href="${asset.url}" target="_blank" rel="noopener">${safeLabel}</a></p>`;
+  return `<p><a href="${url}" target="_blank" rel="noopener">${safeLabel}</a></p>`;
+};
+
+const buildInlineQuizMarkerHtml = (targetLessonId, questionId) => {
+  const safeLessonId = escapeHtml(String(targetLessonId || ''));
+  const safeQuestionId = escapeHtml(String(questionId || ''));
+  return `<div class="cms-quiz mceNonEditable" contenteditable="false" data-lesson-id="${safeLessonId}" data-question-id="${safeQuestionId}"></div>`;
+};
+
+const renderQuizPreviewHtml = (questionId) => {
+  const question = quizQuestions.value.find((item) => String(item?.id || '') === String(questionId || ''));
+  if (!question) {
+    return `<div class="cms-quiz-placeholder">🧩 Inline quiz (${String(questionId || '').slice(0, 8)})</div>`;
+  }
+  const questionText = escapeHtml(String(question.questionText || ''));
+  const options = Array.isArray(question.options) ? question.options : [];
+  const optionsHtml = options
+    .map((option) => {
+      const optionText = escapeHtml(String(option?.optionText || ''));
+      return `<label class="cms-quiz-option"><input type="radio" disabled /><span>${optionText}</span></label>`;
+    })
+    .join('');
+
+  return `
+    <div class="cms-quiz-preview">
+      <p class="cms-quiz-question">${questionText}</p>
+      <div class="cms-quiz-options">${optionsHtml || '<small>No options</small>'}</div>
+    </div>
+  `;
+};
+
+const renderInlineQuizMarkersInEditor = (editor) => {
+  const body = editor?.getBody?.();
+  if (!body) return;
+  const markers = body.querySelectorAll('.cms-quiz[data-question-id]');
+  markers.forEach((marker) => {
+    const questionId = String(marker.getAttribute('data-question-id') || '').trim();
+    marker.classList.add('mceNonEditable');
+    marker.setAttribute('contenteditable', 'false');
+    marker.innerHTML = renderQuizPreviewHtml(questionId);
+  });
+};
+
+const stripInlineQuizPreviewFromHtml = (html) => {
+  if (!html) return html;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  const markers = wrapper.querySelectorAll('.cms-quiz[data-lesson-id][data-question-id]');
+  markers.forEach((marker) => {
+    marker.classList.add('mceNonEditable');
+    marker.setAttribute('contenteditable', 'false');
+    marker.innerHTML = '';
+  });
+  return wrapper.innerHTML;
+};
+
+const insertQuizMarker = () => {
+  const editor = tinymceEditor.value;
+  const questionId = insertQuizQuestionId.value;
+  if (!editor) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Editor not ready',
+      detail: 'TinyMCE editor is not available yet',
+      life: 2500,
+    });
+    return;
+  }
+  if (!lessonId || !questionId) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing data',
+      detail: 'Lesson and question are required',
+      life: 2500,
+    });
+    return;
+  }
+
+  editor.focus();
+  editor.insertContent(buildInlineQuizMarkerHtml(lessonId, questionId));
+  renderInlineQuizMarkersInEditor(editor);
+  insertQuizDialogVisible.value = false;
+  toast.add({
+    severity: 'success',
+    summary: 'Quiz marker inserted',
+    life: 2000,
+  });
+};
+
+const openInsertQuizDialog = () => {
+  if (!lessonId) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Lesson id is required to insert a quiz marker',
+      life: 3000,
+    });
+    return;
+  }
+  if (!sortedQuestions.value.length) {
+    toast.add({
+      severity: 'warn',
+      summary: 'No questions yet',
+      detail: 'Create a quiz question first',
+      life: 3000,
+    });
+    return;
+  }
+  if (!insertQuizQuestionOptions.value.length) {
+    toast.add({
+      severity: 'info',
+      summary: 'No available questions',
+      detail: 'All questions are already inserted in the editor',
+      life: 3000,
+    });
+    return;
+  }
+  insertQuizQuestionId.value = insertQuizQuestionOptions.value[0]?.value || '';
+  insertQuizDialogVisible.value = true;
+};
+
+const openInlineQuizEditor = async (quizId) => {
+  currentQuizId.value = quizId;
+  if (quizId && !discoveredQuizIds.value.includes(quizId)) {
+    discoveredQuizIds.value = [...discoveredQuizIds.value, quizId];
+  }
+  editingQuizId.value = quizId;
+  inlineQuizDialogVisible.value = true;
+  await loadInlineQuiz();
+};
+
+const openInlineQuestionDialog = (question) => {
+  questionDialogContext.value = 'inline';
+  openQuestionDialog(question);
 };
 
 const recentAssetLimit = 50;
@@ -818,7 +1178,7 @@ const uploadAndRegisterAsset = async (kind, file) => {
     originalName: registered.originalName,
     sizeBytes: registered.sizeBytes,
     storagePath: registered.storagePath,
-    url: registered.url || uploadResult.publicUrl,
+    url: resolveAssetUrl(registered.url || uploadResult.publicUrl),
     createdAt: registered.createdAt || new Date().toISOString(),
   };
 
@@ -828,8 +1188,9 @@ const uploadAndRegisterAsset = async (kind, file) => {
 
 const editorInsertContent = (asset) => {
   const editor = editorRef.value?.editor;
-  if (!editor || !asset?.url) return;
-  const snippet = buildAssetSnippet(asset);
+  const url = resolveAssetUrl(asset?.url);
+  if (!editor || !url) return;
+  const snippet = buildAssetSnippet({ ...asset, url });
   editor.focus();
   editor.insertContent(snippet);
 };
@@ -900,22 +1261,15 @@ const tinymceInit = {
   suffix: '.min',
   menubar: true,
   height: 400,
-  plugins: [
-    'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-    'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-    'insertdatetime', 'media', 'table', 'help', 'wordcount',
-    /* Premium plugins for demo purposes only */
-    'mediaembed',
-  ],
-  plugins: 'link lists table code image media autoresize preview fullscreen',
+  plugins: 'link lists table code image media autoresize preview fullscreen noneditable',
   toolbar:
-    'undo redo | link image media | blocks | bold italic underline | bullist numlist | table | code | removeformat',
+    'undo redo | insertQuiz | link image media | blocks | bold italic underline | bullist numlist | table | code | removeformat',
   branding: false,
   convert_urls: false,
   relative_urls: false,
 
   extended_valid_elements:
-    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox],script[src|async|defer],audio[controls|src],source[src|type]',
+    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox],script[src|async|defer],audio[controls|src],source[src|type],div[class|style|data-lesson-id|data-question-id|contenteditable],label[class|style],input[type|disabled|checked|class|style],p[class|style],span[class|style],small[class|style]',
   valid_children: '+body[iframe|script]',
   sandbox_iframes: false,    
   
@@ -923,6 +1277,92 @@ const tinymceInit = {
   file_picker_types: 'image media file',
   images_upload_handler: handleTinyMceImageUpload,
   file_picker_callback: handleTinyMceFilePicker,
+  content_style: `
+    .cms-quiz {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #f8fafc;
+      padding: 10px 12px;
+      margin: 8px 0;
+      min-height: 40px;
+      cursor: default;
+    }
+    .cms-quiz.mceNonEditable {
+      user-select: none;
+    }
+    .cms-quiz-placeholder {
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .cms-quiz-preview {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .cms-quiz-question {
+      margin: 0;
+      color: #0f172a;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .cms-quiz-options {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cms-quiz-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #1e293b;
+      font-size: 13px;
+    }
+    .cms-quiz-option input {
+      margin: 0;
+    }
+  `,
+  setup: (editor) => {
+    editor.on('init', () => {
+      tinymceEditor.value = editor;
+      renderInlineQuizMarkersInEditor(editor);
+    });
+    editor.on('remove', () => {
+      if (tinymceEditor.value === editor) {
+        tinymceEditor.value = null;
+      }
+    });
+
+    editor.ui.registry.addButton('insertQuiz', {
+      text: 'Quiz',
+      onAction: async () => {
+        if (insertingQuiz.value) return;
+        insertingQuiz.value = true;
+        try {
+          openInsertQuizDialog();
+        } catch (err) {
+          toast.add({
+            severity: 'error',
+            summary: 'Insert quiz failed',
+            detail: err?.response?.data?.error || err?.message || 'Failed to insert quiz',
+            life: 3500,
+          });
+        } finally {
+          insertingQuiz.value = false;
+        }
+      },
+      onSetup: (api) => {
+        const interval = window.setInterval(() => {
+          api.setEnabled(!insertingQuiz.value);
+        }, 150);
+        return () => window.clearInterval(interval);
+      },
+    });
+
+    editor.on('SetContent Change Undo Redo', () => {
+      renderInlineQuizMarkersInEditor(editor);
+      scheduleQuizEmbedScan();
+    });
+  },
 }
 
 
@@ -963,6 +1403,7 @@ const loadLesson = async () => {
 
     loading.value = false;
     updatePlainTextFromEditor();
+    refreshDiscoveredQuizIds();
   } catch (err) {
     loading.value = false;
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson'+ err, life: 3000 });
@@ -975,6 +1416,11 @@ const triggerAssetInput = (kind) => {
     target.value.value = '';
     target.value.click();
   }
+};
+
+const openMediaLibrary = async () => {
+  mediaLibraryVisible.value = true;
+  await loadAssetsList();
 };
 
 const handleAssetSelection = async (kind, event) => {
@@ -1009,12 +1455,11 @@ const loadAssetsList = async (force = false) => {
   assetsLoading.value = true;
   assetsError.value = false;
   try {
-    const params = {};
-    if (assetsKindFilter.value) params.kind = assetsKindFilter.value;
-    if (assetsSearchTerm.value) params.search = assetsSearchTerm.value;
-
-    const rows = await listAssets(params);
-    recentAssets.value = rows;
+    const rows = await listAssets();
+    recentAssets.value = (rows || []).map((row) => ({
+      ...row,
+      url: resolveAssetUrl(row?.url),
+    }));
     assetsLoaded.value = true;
   } catch (err) {
     assetsError.value = true;
@@ -1048,9 +1493,9 @@ const copyAssetUrl = async (url) => {
 };
 
 watch(
-  () => assetsSectionExpanded.value,
-  (expanded) => {
-    if (expanded) loadAssetsList();
+  () => mediaLibraryVisible.value,
+  (visible) => {
+    if (visible) loadAssetsList();
   },
 );
 
@@ -1062,21 +1507,66 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => currentQuizId.value,
+  (quizId, prevQuizId) => {
+    if (!inlineQuizDialogVisible.value) return;
+    if (!quizId || quizId === prevQuizId) return;
+    loadInlineQuiz();
+  },
+);
+
+watch(
+  () => quizQuestions.value,
+  () => {
+    if (!tinymceEditor.value) return;
+    renderInlineQuizMarkersInEditor(tinymceEditor.value);
+  },
+  { deep: true },
+);
+
 const formatTimestamp = (value) => (value ? new Date(value).toLocaleString() : '');
+
+const mapQuizQuestionRow = (question) => ({
+  ...question,
+  id: question.id || question.questionId || question.question_id || null,
+  points: question.points ?? 1,
+  explanation: question.explanation || '',
+  meta: question.meta ?? null,
+  quizId: question.quizId || question.quiz_id || null,
+  options: question.options || [],
+});
+
+const scanQuizEmbedsFromEditor = () => {
+  const body = editorRef.value?.editor?.getBody?.();
+  if (!body) return [];
+  const nodes = body.querySelectorAll('.cms-quiz[data-question-id]');
+  const ids = Array.from(nodes)
+    .map((node) => node.getAttribute('data-question-id'))
+    .filter(Boolean);
+  return [...new Set(ids)];
+};
+
+const refreshDiscoveredQuizIds = () => {
+  discoveredQuizIds.value = scanQuizEmbedsFromEditor();
+  if (!currentQuizId.value && discoveredQuizIds.value.length) {
+    currentQuizId.value = discoveredQuizIds.value[0];
+  }
+};
+
+const scheduleQuizEmbedScan = () => {
+  if (scanQuizDebounceTimer) clearTimeout(scanQuizDebounceTimer);
+  scanQuizDebounceTimer = setTimeout(() => {
+    refreshDiscoveredQuizIds();
+  }, 250);
+};
 
 const loadQuiz = async () => {
   quizLoading.value = true;
   quizError.value = false;
   try {
     const data = await getLessonQuiz(lessonId);
-    quizQuestions.value = (data.questions || []).map((question) => ({
-      ...question,
-      points: question.points ?? 1,
-      explanation: question.explanation || '',
-      meta: question.meta ?? null,
-      quizId: question.quizId || null,
-      options: question.options || [],
-    }));
+    quizQuestions.value = (data.questions || []).map(mapQuizQuestionRow);
     syncSelectedQuestion();
   } catch (err) {
     quizQuestions.value = [];
@@ -1092,10 +1582,46 @@ const loadQuiz = async () => {
   }
 };
 
+const loadInlineQuiz = async () => {
+  if (!currentQuizId.value) return;
+  inlineQuizLoading.value = true;
+  inlineQuizError.value = false;
+  inlineSelectedQuestion.value = null;
+  try {
+    const data = await getQuizById(currentQuizId.value);
+    inlineQuizQuestions.value = (data.questions || []).map(mapQuizQuestionRow);
+  } catch (err) {
+    inlineQuizQuestions.value = [];
+    inlineQuizError.value = true;
+    toast.add({
+      severity: 'error',
+      summary: 'Inline quiz error',
+      detail: err?.response?.data?.error || err?.message || 'Failed to load inline quiz',
+      life: 3500,
+    });
+  } finally {
+    inlineQuizLoading.value = false;
+  }
+};
+
 const sanitizerConfig = {
   USE_PROFILES: { html: true },
   ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track', 'code', 'pre'],
-  ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'referrerpolicy', 'controls', 'muted', 'playsinline', 'data-mce-*', 'class', 'style'],
+  ADD_ATTR: [
+    'allow',
+    'allowfullscreen',
+    'frameborder',
+    'referrerpolicy',
+    'controls',
+    'muted',
+    'playsinline',
+    'data-mce-*',
+    'data-lesson-id',
+    'data-question-id',
+    'contenteditable',
+    'class',
+    'style',
+  ],
 };
 
 const saveLesson = async () => {
@@ -1106,7 +1632,8 @@ const saveLesson = async () => {
 
   saving.value = true;
   try {
-    const sanitizedHtml = DOMPurify.sanitize(form.value.contentHtml || '', sanitizerConfig);
+    const normalizedHtml = stripInlineQuizPreviewFromHtml(form.value.contentHtml || '');
+    const sanitizedHtml = DOMPurify.sanitize(normalizedHtml || '', sanitizerConfig);
 
     const payload = {
       title: form.value.title,
@@ -1170,7 +1697,9 @@ const openVideo = () => {
 
 const questionAdvancedOpen = ref(false);
 
-const openQuestionDialog = (question) => {
+const openQuestionDialog = (question, context = 'lesson') => {
+  questionDialogContext.value = context;
+  editingQuizId.value = context === 'inline' ? currentQuizId.value : null;
   editingQuestionId.value = question?.id || null;
   let draftOptions = [
     { optionText: '', isCorrect: true },
@@ -1240,6 +1769,8 @@ const closeQuestionDialog = () => {
     trueFalseCorrect: '',
   };
   editingQuestionId.value = null;
+  editingQuizId.value = null;
+  questionDialogContext.value = 'lesson';
   questionAdvancedOpen.value = false;
 };
 
@@ -1251,6 +1782,15 @@ const saveQuestion = async () => {
 
   if (questionForm.value.points < 0) {
     toast.add({ severity: 'warn', summary: 'Points invalid', detail: 'Points must be 0 or greater', life: 2500 });
+    return;
+  }
+  if (questionDialogContext.value === 'inline' && !currentQuizId.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Quiz required',
+      detail: 'Select an inline quiz before saving questions',
+      life: 2500,
+    });
     return;
   }
 
@@ -1312,15 +1852,20 @@ const saveQuestion = async () => {
       await updateQuizQuestion(editingQuestionId.value, payload);
       savedQuestionId = editingQuestionId.value;
     } else {
-      const created = await createQuizQuestion(lessonId, payload);
+      const created =
+        questionDialogContext.value === 'inline'
+          ? await createQuizQuestionByQuiz(currentQuizId.value, payload)
+          : await createQuizQuestion(lessonId, payload);
       savedQuestionId = created?.id || created?.question?.id || null;
       if (!savedQuestionId) {
         throw new Error('Failed to resolve created question id');
       }
     }
 
+    const sourceQuestions =
+      questionDialogContext.value === 'inline' ? inlineQuizQuestions.value : quizQuestions.value;
     const existingQuestion =
-      quizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
+      sourceQuestions.find((question) => String(question.id) === String(savedQuestionId)) || null;
     const existingOptions = existingQuestion?.options || [];
 
     if (createQuestionOptionTypes.includes(questionType)) {
@@ -1407,9 +1952,15 @@ const saveQuestion = async () => {
       questionForm.value.draftOptions = [];
     }
 
-    await loadQuiz();
-    selectedQuestion.value =
-      quizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
+    if (questionDialogContext.value === 'inline') {
+      await loadInlineQuiz();
+      inlineSelectedQuestion.value =
+        inlineQuizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
+    } else {
+      await loadQuiz();
+      selectedQuestion.value =
+        quizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
+    }
     toast.add({ severity: 'success', summary: 'Question saved', life: 2000 });
     closeQuestionDialog();
   } catch (err) {
@@ -1465,8 +2016,13 @@ const removeQuestion = async (question) => {
   try {
     await deleteQuizQuestion(question.id);
     if (selectedQuestion.value?.id === question.id) selectedQuestion.value = null;
+    if (inlineSelectedQuestion.value?.id === question.id) inlineSelectedQuestion.value = null;
     toast.add({ severity: 'info', summary: 'Question deleted', life: 2000 });
-    await loadQuiz();
+    if (inlineQuizDialogVisible.value) {
+      await loadInlineQuiz();
+    } else {
+      await loadQuiz();
+    }
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -1478,7 +2034,7 @@ const removeQuestion = async (question) => {
 };
 
 const moveQuestion = async (question, direction) => {
-  const list = sortedQuestions.value;
+  const list = inlineQuizDialogVisible.value ? sortedInlineQuestions.value : sortedQuestions.value;
   const index = list.findIndex((item) => item.id === question.id);
   const targetIndex = index + direction;
   if (targetIndex < 0 || targetIndex >= list.length) return;
@@ -1487,7 +2043,11 @@ const moveQuestion = async (question, direction) => {
   try {
     await updateQuizQuestion(question.id, { orderIndex: target.orderIndex });
     await updateQuizQuestion(target.id, { orderIndex: question.orderIndex });
-    await loadQuiz();
+    if (inlineQuizDialogVisible.value) {
+      await loadInlineQuiz();
+    } else {
+      await loadQuiz();
+    }
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -1499,7 +2059,7 @@ const moveQuestion = async (question, direction) => {
 };
 
 const canMoveQuestion = (question, direction) => {
-  const list = sortedQuestions.value;
+  const list = inlineQuizDialogVisible.value ? sortedInlineQuestions.value : sortedQuestions.value;
   const index = list.findIndex((item) => item.id === question.id);
   const targetIndex = index + direction;
   return targetIndex >= 0 && targetIndex < list.length;
@@ -1509,6 +2069,11 @@ onMounted(async () => {
   await loadLesson();
   await loadQuiz();
   loadAssetsList(true);
+  refreshDiscoveredQuizIds();
+});
+
+onBeforeUnmount(() => {
+  if (scanQuizDebounceTimer) clearTimeout(scanQuizDebounceTimer);
 });
 </script>
 
@@ -1564,33 +2129,23 @@ onMounted(async () => {
   align-items: center;
 }
 
-.assets-section {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 1rem;
-  margin-top: 1rem;
-  background: #f8fafc;
-}
-
-.assets-header {
+.content-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
 }
 
-.assets-body {
-  margin-top: 1rem;
+.assets-inline-hint {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #f8fafc;
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.assets-filters {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
 }
 
 .assets-list {
@@ -1627,9 +2182,11 @@ onMounted(async () => {
 .asset-preview {
   width: 48px;
   height: 48px;
+  min-width: 48px;
   margin-right: 0.75rem;
   border-radius: 0.5rem;
   display: flex;
+  flex: 0 0 48px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -1637,6 +2194,7 @@ onMounted(async () => {
 }
 
 .asset-preview img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1682,6 +2240,65 @@ onMounted(async () => {
   font-size: 0.9rem;
 }
 
+:deep(.media-library-dialog .p-dialog-content) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: min(85vh, 900px);
+}
+
+.media-library-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0.75rem;
+}
+
+.media-library-header  div{
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.media-library-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.media-library-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.media-library-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.media-library-upload {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.media-library-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
 .dialog-field {
   display: flex;
   flex-direction: column;
@@ -1717,6 +2334,13 @@ onMounted(async () => {
   gap: 0.5rem;
 }
 
+:deep(.cms-quiz) {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
 .mb-2 {
   margin-bottom: 0.75rem;
 }
@@ -1735,6 +2359,14 @@ onMounted(async () => {
 .quiz-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.inline-quiz-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .question-actions {

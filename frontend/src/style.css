@@ -62,4 +62,11 @@ a {
     0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
+:deep(.media-library-sidebar) {
+  width: min(96vw, 620px);
+  width: min(98vw, 1100px);
+}
+
+
+
 

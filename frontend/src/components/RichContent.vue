@@ -1,27 +1,113 @@
 <template>
-  <div class="rich-content" v-if="sanitizedContent" v-html="sanitizedContent"></div>
+  <div ref="rootRef" class="rich-content" v-if="sanitizedContent" v-html="sanitizedContent"></div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, createApp, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import DOMPurify from 'dompurify';
+import InlineQuiz from './InlineQuiz.vue';
 
 const props = defineProps({
   content: {
     type: String,
     default: '',
   },
+  quizQuestions: {
+    type: Array,
+    default: () => [],
+  },
+  answersByQuestionId: {
+    type: Object,
+    default: () => ({}),
+  },
 });
+const emit = defineEmits(['inline-quiz-attempted']);
 
 const purifierConfig = {
   USE_PROFILES: { html: true },
-  ADD_ATTR: ['allow', 'allowfullscreen', 'referrerpolicy', 'controls', 'muted', 'playsinline', 'data-mce-*', 'class', 'style'],
+  ADD_ATTR: [
+    'allow',
+    'allowfullscreen',
+    'referrerpolicy',
+    'controls',
+    'muted',
+    'playsinline',
+    'data-mce-*',
+    'data-lesson-id',
+    'data-question-id',
+    'class',
+    'style',
+  ],
   ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track'],
 };
+
+const rootRef = ref(null);
+const mountedQuizApps = ref([]);
+const questionIdentifier = (item) => item?.id || item?.questionId || item?.question_id || null;
 
 const sanitizedContent = computed(() => {
   if (!props.content) return '';
   return DOMPurify.sanitize(props.content, purifierConfig);
+});
+
+const cleanupInlineQuizzes = () => {
+  mountedQuizApps.value.forEach(({ app, marker }) => {
+    app.unmount();
+    if (marker) marker.innerHTML = '';
+  });
+  mountedQuizApps.value = [];
+};
+
+const mountInlineQuizzes = async () => {
+  await nextTick();
+  cleanupInlineQuizzes();
+
+  const root = rootRef.value;
+  if (!root) return;
+
+  const markers = root.querySelectorAll('.cms-quiz[data-lesson-id][data-question-id]');
+  markers.forEach((marker) => {
+    const lessonId = marker.getAttribute('data-lesson-id');
+    const questionId = marker.getAttribute('data-question-id');
+    marker.innerHTML = '';
+
+    if (!lessonId || !String(questionId || '').trim()) {
+      marker.innerHTML = '<small class="cms-quiz-warning">Missing questionId for inline quiz.</small>';
+      return;
+    }
+
+    const mountEl = document.createElement('div');
+    marker.appendChild(mountEl);
+    const question =
+      props.quizQuestions.find(
+        (item) => String(questionIdentifier(item) || '').trim() === String(questionId || '').trim(),
+      ) || null;
+    const normalizedQuestionId = String(questionId || '').trim();
+    const initialAnswer = props.answersByQuestionId[normalizedQuestionId] || null;
+    const app = createApp(InlineQuiz, {
+      lessonId,
+      questionId,
+      question,
+      initialAnswer,
+      onAttempted: (payload) => {
+        emit('inline-quiz-attempted', payload);
+      },
+    });
+    app.mount(mountEl);
+    mountedQuizApps.value.push({ app, marker, mountEl });
+  });
+};
+
+watch(
+  [() => sanitizedContent.value, () => props.quizQuestions, () => props.answersByQuestionId],
+  async () => {
+    await mountInlineQuizzes();
+  },
+  { immediate: true, deep: true },
+);
+
+onBeforeUnmount(() => {
+  cleanupInlineQuizzes();
 });
 </script>
 
@@ -60,6 +146,18 @@ const sanitizedContent = computed(() => {
 .rich-content :deep(img) {
   display: block;
   height: auto;
+}
+
+/* Respeta alineación centrada generada por TinyMCE (p con text-align:center) */
+.rich-content :deep(p[style*='text-align:center'] img),
+.rich-content :deep(p[style*='text-align: center'] img) {
+  display: inline-block;
+}
+
+/* Fallback para figuras centradas por TinyMCE */
+.rich-content :deep(figure.image) {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ✅ párrafos y texto */
@@ -138,5 +236,9 @@ const sanitizedContent = computed(() => {
   color: #0f172a;
   text-decoration: none;
   font-weight: 600;
+}
+
+.rich-content :deep(.cms-quiz-warning) {
+  color: #b45309;
 }
 </style>

@@ -258,27 +258,49 @@ const mapGroupRow = (row) => ({
 });
 
 
-const QUIZ_WITH_OPTIONS_SELECT = `
-  SELECT
-    qq.id AS question_id,
-    qq.lesson_id,
-    qq.question_text,
-    qq.question_type,
-    qq.order_index,
-    qq.quiz_id AS question_quiz_id,
-    qq.points AS question_points,
-    qq.explanation AS question_explanation,
-    qq.meta AS question_meta,
-    qo.id AS option_id,
-    qo.option_text,
-    qo.is_correct,
-    qo.order_index AS option_order,
-    qo.points AS option_points,
-    qo.feedback AS option_feedback,
-    qo.meta AS option_meta
-  FROM quiz_questions qq
-  LEFT JOIN quiz_options qo ON qo.question_id = qq.id
-`;
+let quizQuestionsHasQuizIdColumn = null;
+
+const getQuizQuestionsHasQuizIdColumn = async () => {
+  if (quizQuestionsHasQuizIdColumn !== null) return quizQuestionsHasQuizIdColumn;
+  const { rows } = await pool.query(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'quiz_questions'
+          AND column_name = 'quiz_id'
+      ) AS exists
+    `,
+  );
+  quizQuestionsHasQuizIdColumn = Boolean(rows[0]?.exists);
+  return quizQuestionsHasQuizIdColumn;
+};
+
+const getQuizWithOptionsSelect = async () => {
+  const hasQuizId = await getQuizQuestionsHasQuizIdColumn();
+  return `
+    SELECT
+      qq.id AS question_id,
+      qq.lesson_id,
+      qq.question_text,
+      qq.question_type,
+      qq.order_index,
+      ${hasQuizId ? 'qq.quiz_id' : 'NULL::uuid'} AS question_quiz_id,
+      qq.points AS question_points,
+      qq.explanation AS question_explanation,
+      qq.meta AS question_meta,
+      qo.id AS option_id,
+      qo.option_text,
+      qo.is_correct,
+      qo.order_index AS option_order,
+      qo.points AS option_points,
+      qo.feedback AS option_feedback,
+      qo.meta AS option_meta
+    FROM quiz_questions qq
+    LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+  `;
+};
 
 const mapQuizRowsToQuestions = (rows) => {
   const map = new Map();
@@ -952,9 +974,10 @@ router.get(
   async (req, res) => {
     const lessonId = req.params.lessonId;
     try {
+      const quizWithOptionsSelect = await getQuizWithOptionsSelect();
       const { rows } = await pool.query(
         `
-          ${QUIZ_WITH_OPTIONS_SELECT}
+          ${quizWithOptionsSelect}
           WHERE qq.lesson_id = $1
           ORDER BY qq.order_index ASC, qo.order_index ASC
         `,
@@ -1001,10 +1024,11 @@ router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
     const questionType = parsed.data.questionType || 'single_choice';
     const explicitQuizId = parsed.data.quizId;
     const lessonQuizId = explicitQuizId || (await getQuizIdByLesson(lessonId));
+    const hasQuizIdColumn = await getQuizQuestionsHasQuizIdColumn();
 
     const columns = ['lesson_id', 'question_text', 'question_type', 'order_index'];
     const values = [lessonId, parsed.data.questionText, questionType, orderIndex];
-    if (lessonQuizId) {
+    if (lessonQuizId && hasQuizIdColumn) {
       columns.push('quiz_id');
       values.push(lessonQuizId);
     }
@@ -1044,9 +1068,10 @@ router.post('/lessons/:lessonId/quiz/questions', async (req, res) => {
       );
     }
 
+    const quizWithOptionsSelect = await getQuizWithOptionsSelect();
     const questionRows = await pool.query(
       `
-        ${QUIZ_WITH_OPTIONS_SELECT}
+        ${quizWithOptionsSelect}
         WHERE qq.id = $1
         ORDER BY qq.order_index ASC, qo.order_index ASC
       `,
@@ -1115,7 +1140,7 @@ router.patch('/quiz/questions/:id', async (req, res) => {
       values.push(parsed.data.meta);
       updates.push(`meta = $${values.length}`);
     }
-    if (parsed.data.quizId !== undefined) {
+    if (parsed.data.quizId !== undefined && (await getQuizQuestionsHasQuizIdColumn())) {
       values.push(parsed.data.quizId);
       updates.push(`quiz_id = $${values.length}`);
     }
@@ -1154,9 +1179,10 @@ router.patch('/quiz/questions/:id', async (req, res) => {
       await pool.query('DELETE FROM quiz_options WHERE question_id = $1', [questionId]);
     }
 
+    const quizWithOptionsSelect = await getQuizWithOptionsSelect();
     const questionRows = await pool.query(
       `
-        ${QUIZ_WITH_OPTIONS_SELECT}
+        ${quizWithOptionsSelect}
         WHERE qq.id = $1
         ORDER BY qq.order_index ASC, qo.order_index ASC
       `,

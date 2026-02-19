@@ -250,4 +250,25 @@ export const parseRichContent = (text = '') => {
   });
 };
 
+export const extractInlineQuestionIds = (html = '') => {
+  const ids = new Set();
+  if (!html || typeof window === 'undefined' || typeof window.DOMParser === 'undefined') {
+    return ids;
+  }
+
+  try {
+    const parser = new window.DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const nodes = doc.querySelectorAll('div.cms-quiz[data-question-id]');
+    nodes.forEach((node) => {
+      const value = String(node.getAttribute('data-question-id') || '').trim();
+      if (value) ids.add(value);
+    });
+  } catch {
+    return ids;
+  }
+
+  return ids;
+};
+
 export default parseRichContent;

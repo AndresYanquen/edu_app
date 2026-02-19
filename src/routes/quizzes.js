@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { requireGlobalRoleAny } = require('../middleware/roles');
-const { quizAttemptSchema, formatZodError } = require('../utils/validators');
+const { quizAttemptSchema, inlineQuizAttemptSchema, formatZodError } = require('../utils/validators');
 const { computeQuizScore } = require('../utils/quizScoring');
 
 const router = express.Router();
@@ -42,7 +42,7 @@ const ensureEnrollment = async (courseId, userId) => {
   return result.rows.length > 0;
 };
 
-router.get('/lessons/:id/quiz', requireGlobalRoleAny(['student']), async (req, res) => {
+router.get('/lessons/:id/quiz', requireGlobalRoleAny(['student', 'admin']), async (req, res) => {
   const lessonId = req.params.id;
   try {
     const lesson = await getLessonCourse(lessonId);
@@ -107,6 +107,7 @@ router.get('/lessons/:id/quiz', requireGlobalRoleAny(['student']), async (req, r
             id: row.option_id,
             optionText: row.option_text,
             orderIndex: row.option_order,
+            isCorrect: Boolean(row.is_correct)            
           });
         }
         if (row.is_correct) {
@@ -152,10 +153,111 @@ router.get('/lessons/:id/quiz', requireGlobalRoleAny(['student']), async (req, r
       options: question.options.map((option) => ({
         id: option.id,
         optionText: option.optionText,
+        isCorrect: option.isCorrect,
       })),
     }));
 
-    return res.json({ lessonId, questions });
+    const latestByQuestionRes = await pool.query(
+      `
+        SELECT DISTINCT ON (qaa.question_id)
+          qaa.question_id,
+          qa.id AS attempt_id,
+          qa.created_at,
+          qa.submitted_at,
+          qq.question_type
+        FROM quiz_attempts qa
+        JOIN quiz_attempt_answers qaa ON qaa.attempt_id = qa.id
+        JOIN quiz_questions qq ON qq.id = qaa.question_id
+        WHERE qa.user_id = $1
+          AND qa.lesson_id = $2
+          AND qa.status = 'submitted'
+        ORDER BY qaa.question_id, qa.created_at DESC, qa.id DESC
+      `,
+      [req.user.id, lessonId],
+    );
+
+    const myAnswersByQuestionId = {};
+    if (latestByQuestionRes.rows.length) {
+      const latestAttemptByQuestionId = new Map();
+      const attemptIds = new Set();
+      const questionIds = new Set();
+
+      for (const row of latestByQuestionRes.rows) {
+        latestAttemptByQuestionId.set(row.question_id, row);
+        attemptIds.add(row.attempt_id);
+        questionIds.add(row.question_id);
+      }
+
+      const answersRes = await pool.query(
+        `
+          SELECT
+            qaa.question_id,
+            qaa.selected_option_id,
+            qaa.correct,
+            qa.id AS attempt_id,
+            qa.created_at,
+            qa.submitted_at,
+            qq.question_type
+          FROM quiz_attempts qa
+          JOIN quiz_attempt_answers qaa ON qaa.attempt_id = qa.id
+          JOIN quiz_questions qq ON qq.id = qaa.question_id
+          WHERE qa.id = ANY($1::uuid[])
+            AND qaa.question_id = ANY($2::uuid[])
+        `,
+        [Array.from(attemptIds), Array.from(questionIds)],
+      );
+
+      const grouped = new Map();
+      for (const row of answersRes.rows) {
+        const latestAttempt = latestAttemptByQuestionId.get(row.question_id);
+        if (!latestAttempt) continue;
+        if (String(latestAttempt.attempt_id) !== String(row.attempt_id)) continue;
+
+        if (!grouped.has(row.question_id)) {
+          grouped.set(row.question_id, {
+            questionType: row.question_type,
+            attemptId: row.attempt_id,
+            answeredAt: row.submitted_at || row.created_at,
+            rows: [],
+          });
+        }
+        grouped.get(row.question_id).rows.push(row);
+      }
+
+      for (const [questionId, value] of grouped.entries()) {
+        const questionInfo = questionsMap.get(questionId);
+        const questionType = value.questionType;
+        const selectedOptionIds = Array.from(
+          new Set(value.rows.map((row) => row.selected_option_id).filter(Boolean)),
+        );
+
+        let isCorrect = false;
+        if (questionType === 'multiple_choice') {
+          const correctSet = new Set(
+            (questionInfo?.options || [])
+              .filter((option) => Boolean(option.isCorrect))
+              .map((option) => option.id),
+          );
+          const selectedSet = new Set(selectedOptionIds);
+          isCorrect =
+            selectedSet.size === correctSet.size &&
+            selectedOptionIds.every((optionId) => correctSet.has(optionId));
+        } else {
+          isCorrect = Boolean(value.rows[0]?.correct);
+        }
+
+        myAnswersByQuestionId[questionId] = {
+          questionType,
+          optionId: questionType === 'multiple_choice' ? null : selectedOptionIds[0] || null,
+          optionIds: questionType === 'multiple_choice' ? selectedOptionIds : [],
+          isCorrect,
+          answeredAt: value.answeredAt,
+          attemptId: value.attemptId,
+        };
+      }
+    }
+
+    return res.json({ lessonId, questions, myAnswersByQuestionId });
   } catch (err) {
     console.error('Failed to load quiz', err);
     return res.status(500).json({ error: 'Failed to load quiz' });
@@ -281,17 +383,18 @@ router.post('/lessons/:id/quiz/attempt', requireGlobalRoleAny(['student']), asyn
       }
     }
 
-    if (normalizedAnswers.size !== questionMap.size) {
-      return res.status(400).json({ error: 'All questions must be answered' });
-    }
-
-    const scoring = computeQuizScore({
-      questions: Array.from(questionMap.values()).map((question) => ({
+    const questionsForScoring = Array.from(normalizedAnswers.keys()).map((questionId) => {
+      const question = questionMap.get(questionId);
+      return {
         questionId: question.questionId,
         questionType: question.questionType,
         points: question.points,
         correctOptionIds: Array.from(question.correctOptionIds),
-      })),
+      };
+    });
+
+    const scoring = computeQuizScore({
+      questions: questionsForScoring,
       answers: normalizedAnswers,
     });
 
@@ -315,8 +418,15 @@ router.post('/lessons/:id/quiz/attempt', requireGlobalRoleAny(['student']), asyn
       await client.query('BEGIN');
       const attemptRes = await client.query(
         `
-          INSERT INTO quiz_attempts (user_id, lesson_id, attempt_number, status, started_at)
-          VALUES ($1, $2, $3, 'draft', now())
+          INSERT INTO quiz_attempts (
+            user_id,
+            lesson_id,
+            attempt_number,
+            status,
+            started_at,
+            score_percent
+          )
+          VALUES ($1, $2, $3, 'draft', now(), 0)
           RETURNING id
         `,
         [req.user.id, lessonId, attemptNumber],
@@ -388,6 +498,236 @@ router.post('/lessons/:id/quiz/attempt', requireGlobalRoleAny(['student']), asyn
   }
 });
 
+router.post('/lessons/:lessonId/quiz/questions/:questionId/attempt', requireGlobalRoleAny(['student']), async (req, res) => {
+  const { lessonId, questionId } = req.params;
+  const parseResult = inlineQuizAttemptSchema.safeParse(req.body || {});
+  if (!parseResult.success) {
+    return res.status(400).json({ error: formatZodError(parseResult.error) });
+  }
+
+  try {
+    const lesson = await getLessonCourse(lessonId);
+    if (!lesson) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+    if (!lesson.course_published || !lesson.module_published || !lesson.lesson_published) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+
+    const enrolled = await ensureEnrollment(lesson.course_id, req.user.id);
+    if (!enrolled) {
+      return res.status(403).json({ error: 'You are not enrolled in this course' });
+    }
+
+    const questionRes = await pool.query(
+      `
+        SELECT
+          qq.id AS question_id,
+          qq.question_type,
+          qq.points,
+          qo.id AS option_id,
+          qo.is_correct
+        FROM quiz_questions qq
+        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        WHERE qq.lesson_id = $1
+          AND qq.id = $2
+        ORDER BY qo.order_index ASC
+      `,
+      [lessonId, questionId],
+    );
+
+    if (!questionRes.rows.length) {
+      return res.status(404).json({ error: 'Question not found for this lesson' });
+    }
+
+    const allowedQuestionTypes = new Set(['single_choice', 'true_false', 'multiple_choice']);
+    const questionType = questionRes.rows[0].question_type;
+    if (!allowedQuestionTypes.has(questionType)) {
+      return res.status(400).json({ error: 'Question type is not supported for inline attempts' });
+    }
+
+    const optionsMap = new Map();
+    const correctOptionIds = new Set();
+    for (const row of questionRes.rows) {
+      if (row.option_id && !optionsMap.has(row.option_id)) {
+        optionsMap.set(row.option_id, { isCorrect: Boolean(row.is_correct) });
+      }
+      if (row.option_id && row.is_correct) {
+        correctOptionIds.add(row.option_id);
+      }
+    }
+
+    if (optionsMap.size < 2) {
+      return res.status(400).json({ error: 'Question must include at least two options' });
+    }
+    if (!correctOptionIds.size) {
+      return res.status(400).json({ error: 'Question requires at least one correct option' });
+    }
+
+    const answerPayload = parseResult.data;
+    const normalizedAnswers = new Map();
+    if (questionType === 'multiple_choice') {
+      if (!answerPayload.optionIds || !answerPayload.optionIds.length) {
+        return res.status(400).json({ error: 'Multiple choice questions require optionIds' });
+      }
+      const uniqueOptions = Array.from(new Set(answerPayload.optionIds));
+      const invalidOption = uniqueOptions.find((optionId) => !optionsMap.has(optionId));
+      if (invalidOption) {
+        return res.status(400).json({ error: 'Answer option does not belong to question' });
+      }
+      normalizedAnswers.set(questionId, { optionIds: uniqueOptions });
+    } else {
+      if (!answerPayload.optionId) {
+        return res.status(400).json({ error: 'Question requires optionId' });
+      }
+      if (!optionsMap.has(answerPayload.optionId)) {
+        return res.status(400).json({ error: 'Answer option does not belong to question' });
+      }
+      normalizedAnswers.set(questionId, { optionId: answerPayload.optionId });
+    }
+
+    const scoring = computeQuizScore({
+      questions: [
+        {
+          questionId,
+          questionType,
+          points: Number(questionRes.rows[0].points ?? 1),
+          correctOptionIds: Array.from(correctOptionIds),
+        },
+      ],
+      answers: normalizedAnswers,
+    });
+
+    const detail = scoring.questionResults[0];
+    const scorePercent = scoring.totalPoints
+      ? Math.round((scoring.earnedPoints / scoring.totalPoints) * 100)
+      : 0;
+    const passed = detail?.correct || false;
+
+    const attemptNumberRes = await pool.query(
+      `
+        SELECT COALESCE(MAX(attempt_number), 0) AS current_max
+        FROM quiz_attempts
+        WHERE user_id = $1 AND lesson_id = $2
+      `,
+      [req.user.id, lessonId],
+    );
+    const attemptNumber = (attemptNumberRes.rows[0]?.current_max || 0) + 1;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const attemptRes = await client.query(
+        `
+          INSERT INTO quiz_attempts (
+            user_id,
+            lesson_id,
+            attempt_number,
+            status,
+            started_at,
+            score_percent,
+            metadata
+          )
+          VALUES ($1, $2, $3, 'draft', now(), 0, $4::jsonb)
+          RETURNING id
+        `,
+        [req.user.id, lessonId, attemptNumber, JSON.stringify({ source: 'inline', questionId })],
+      );
+      const attemptId = attemptRes.rows[0].id;
+
+      const pointsPerSelection =
+        detail.selectedOptionIds.length && detail.pointsAwarded
+          ? detail.pointsAwarded / detail.selectedOptionIds.length
+          : 0;
+      for (const optionId of detail.selectedOptionIds) {
+        const option = optionsMap.get(optionId);
+        await client.query(
+          `
+            INSERT INTO quiz_attempt_answers (
+              attempt_id,
+              question_id,
+              selected_option_id,
+              correct,
+              points_awarded
+            )
+            VALUES ($1, $2, $3, $4, $5)
+          `,
+          [attemptId, questionId, optionId, option?.isCorrect ?? false, pointsPerSelection],
+        );
+      }
+
+      await client.query(
+        `
+          UPDATE quiz_attempts
+          SET status = 'submitted',
+              submitted_at = now(),
+              score_raw = $1,
+              score_percent = $2,
+              passed = $3
+          WHERE id = $4
+        `,
+        [scoring.earnedPoints, scorePercent, passed, attemptId],
+      );
+
+      await client.query('COMMIT');
+      const INLINE_ATTEMPT_RETENTION = 10;
+      // Retención inline (no bloquear respuesta si falla)
+      try {
+        const cleanupRes = await pool.query(
+          `
+            WITH ranked AS (
+              SELECT qa.id,
+                    ROW_NUMBER() OVER (ORDER BY qa.created_at DESC) AS rn
+              FROM quiz_attempts qa
+              WHERE qa.user_id = $1
+                AND qa.lesson_id = $2
+                AND (qa.metadata->>'source') = 'inline'
+                AND (qa.metadata->>'questionId') = $3
+            )
+            SELECT id FROM ranked WHERE rn > $4
+          `,
+          [req.user.id, lessonId, questionId, INLINE_ATTEMPT_RETENTION],
+        );
+
+        const idsToDelete = cleanupRes.rows.map((r) => r.id);
+
+        if (idsToDelete.length) {
+          await pool.query(
+            `DELETE FROM quiz_attempt_answers WHERE attempt_id = ANY($1)`,
+            [idsToDelete],
+          );
+
+          await pool.query(
+            `DELETE FROM quiz_attempts WHERE id = ANY($1)`,
+            [idsToDelete],
+          );
+        }
+      } catch (cleanupErr) {
+        console.warn('Inline attempt cleanup failed', cleanupErr);
+      }
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    return res.json({
+      lessonId,
+      questionId,
+      isCorrect: Boolean(detail?.correct),
+      selectedOptionIds: detail?.selectedOptionIds || [],
+      correctOptionIds: Array.from(correctOptionIds),
+      pointsAwarded: detail?.pointsAwarded || 0,
+      scorePercent,
+    });
+  } catch (err) {
+    console.error('Failed to submit inline quiz attempt', err);
+    return res.status(500).json({ error: 'Failed to submit inline quiz attempt' });
+  }
+});
+
 /**
  * Example:
  * curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/lessons/<lessonId>/quiz/score
@@ -406,28 +746,146 @@ router.get('/lessons/:id/quiz/score', auth, requireGlobalRoleAny(['student']), a
       return res.status(403).json({ error: 'Not enrolled in this course' });
     }
 
-    const scoreRes = await pool.query(
+    // Score is computed from the latest answer per question in this lesson, regardless of
+    // whether the answer came from inline or final quiz flows (metadata.source is ignored).
+    const evaluableTypes = ['single_choice', 'true_false', 'multiple_choice'];
+
+    const questionsRes = await pool.query(
       `
         SELECT
-          MAX(score_percent)::int AS best_score,
-          (
-            SELECT qa.score_percent::int
-            FROM quiz_attempts qa
-            WHERE qa.user_id = $1 AND qa.lesson_id = $2
-            ORDER BY qa.created_at DESC
-            LIMIT 1
-          ) AS last_score
-        FROM quiz_attempts
-        WHERE user_id = $1 AND lesson_id = $2
+          qq.id AS question_id,
+          qq.question_type,
+          COALESCE(qq.points, 1) AS points,
+          qo.id AS option_id,
+          qo.is_correct
+        FROM quiz_questions qq
+        LEFT JOIN quiz_options qo ON qo.question_id = qq.id
+        WHERE qq.lesson_id = $1
+          AND qq.question_type = ANY($2::text[])
+        ORDER BY qq.order_index ASC, qo.order_index ASC
       `,
-      [req.user.id, lessonId],
+      [lessonId, evaluableTypes],
     );
 
-    const row = scoreRes.rows[0] || {};
+    const questionsMap = new Map();
+    for (const row of questionsRes.rows) {
+      if (!questionsMap.has(row.question_id)) {
+        questionsMap.set(row.question_id, {
+          questionId: row.question_id,
+          questionType: row.question_type,
+          points: Number(row.points ?? 1),
+          correctOptionIds: new Set(),
+        });
+      }
+      if (row.option_id && row.is_correct) {
+        questionsMap.get(row.question_id).correctOptionIds.add(row.option_id);
+      }
+    }
+
+    const evaluableQuestions = Array.from(questionsMap.values());
+    if (!evaluableQuestions.length) {
+      return res.json({
+        lessonId,
+        bestScore: null,
+        lastScore: null,
+      });
+    }
+
+    const latestAttemptByQuestionRes = await pool.query(
+      `
+        SELECT DISTINCT ON (qaa.question_id)
+          qaa.question_id,
+          qa.id AS attempt_id,
+          COALESCE(qa.submitted_at, qa.created_at) AS answered_at
+        FROM quiz_attempt_answers qaa
+        JOIN quiz_attempts qa ON qa.id = qaa.attempt_id
+        JOIN quiz_questions qq ON qq.id = qaa.question_id
+        WHERE qa.user_id = $1
+          AND qa.lesson_id = $2
+          AND qa.status = 'submitted'
+          AND qq.question_type = ANY($3::text[])
+        ORDER BY qaa.question_id, COALESCE(qa.submitted_at, qa.created_at) DESC, qa.id DESC
+      `,
+      [req.user.id, lessonId, evaluableTypes],
+    );
+
+    if (!latestAttemptByQuestionRes.rows.length) {
+      return res.json({
+        lessonId,
+        bestScore: null,
+        lastScore: null,
+      });
+    }
+
+    const latestAttemptIdByQuestionId = new Map();
+    const latestAttemptIds = [];
+    const latestQuestionIds = [];
+    for (const row of latestAttemptByQuestionRes.rows) {
+      latestAttemptIdByQuestionId.set(row.question_id, row.attempt_id);
+      latestAttemptIds.push(row.attempt_id);
+      latestQuestionIds.push(row.question_id);
+    }
+
+    const answersRes = await pool.query(
+      `
+        SELECT
+          qaa.question_id,
+          qaa.selected_option_id,
+          qa.id AS attempt_id
+        FROM quiz_attempt_answers qaa
+        JOIN quiz_attempts qa ON qa.id = qaa.attempt_id
+        WHERE qa.id = ANY($1::uuid[])
+          AND qaa.question_id = ANY($2::uuid[])
+      `,
+      [latestAttemptIds, latestQuestionIds],
+    );
+
+    const selectedOptionIdsByQuestionId = new Map();
+    for (const row of answersRes.rows) {
+      const latestAttemptId = latestAttemptIdByQuestionId.get(row.question_id);
+      if (!latestAttemptId) continue;
+      if (String(latestAttemptId) !== String(row.attempt_id)) continue;
+
+      if (!selectedOptionIdsByQuestionId.has(row.question_id)) {
+        selectedOptionIdsByQuestionId.set(row.question_id, []);
+      }
+      selectedOptionIdsByQuestionId.get(row.question_id).push(row.selected_option_id);
+    }
+
+    let totalPoints = 0;
+    let earnedPoints = 0;
+
+    for (const question of evaluableQuestions) {
+      const points = Number(question.points ?? 1);
+      totalPoints += points;
+
+      const selectedRaw = selectedOptionIdsByQuestionId.get(question.questionId) || [];
+      const selected = Array.from(new Set(selectedRaw.filter(Boolean)));
+      if (!selected.length) {
+        continue;
+      }
+
+      const correctSet = question.correctOptionIds;
+      let isCorrect = false;
+
+      if (question.questionType === 'multiple_choice') {
+        isCorrect =
+          selected.length === correctSet.size &&
+          selected.every((optionId) => correctSet.has(optionId));
+      } else {
+        isCorrect = selected.length === 1 && correctSet.has(selected[0]);
+      }
+
+      if (isCorrect) {
+        earnedPoints += points;
+      }
+    }
+
+    const scorePercent = totalPoints ? Math.round((earnedPoints / totalPoints) * 100) : null;
     return res.json({
       lessonId,
-      bestScore: row.best_score ?? null,
-      lastScore: row.last_score ?? null,
+      bestScore: scorePercent,
+      lastScore: scorePercent,
     });
   } catch (err) {
     console.error('Failed to fetch quiz score', err);

@@ -33,8 +33,11 @@ export const unpublishLesson = (lessonId) =>
 export const deleteLesson = (lessonId) => unwrap(api.delete(`/cms/lessons/${lessonId}`));
 
 export const getLessonQuiz = (lessonId) => unwrap(api.get(`/cms/lessons/${lessonId}/quiz`));
+export const getQuizById = (quizId) => unwrap(api.get(`/cms/quizzes/${quizId}`));
 export const createQuizQuestion = (lessonId, payload) =>
   unwrap(api.post(`/cms/lessons/${lessonId}/quiz/questions`, payload));
+export const createQuizQuestionByQuiz = (quizId, payload) =>
+  unwrap(api.post(`/cms/quizzes/${quizId}/questions`, payload));
 export const updateQuizQuestion = (questionId, payload) =>
   unwrap(api.patch(`/cms/quiz/questions/${questionId}`, payload));
 export const deleteQuizQuestion = (questionId) =>
@@ -45,6 +48,16 @@ export const updateQuizOption = (optionId, payload) =>
   unwrap(api.patch(`/cms/quiz/options/${optionId}`, payload));
 export const deleteQuizOption = (optionId) =>
   unwrap(api.delete(`/cms/quiz/options/${optionId}`));
+
+// TODO: replace this client-side stub with backend endpoint wiring for quiz embeds.
+export const createQuizEmbed = async (lessonId) => {
+  if (!lessonId) throw new Error('lessonId is required');
+  const quizId =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `quiz_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+  return { quizId };
+};
 
 export const listAssets = (params = {}) =>
   unwrap(api.get('/cms/assets', { params }));
@@ -90,12 +103,15 @@ export default {
   unpublishLesson,
   deleteLesson,
   getLessonQuiz,
+  getQuizById,
   createQuizQuestion,
+  createQuizQuestionByQuiz,
   updateQuizQuestion,
   deleteQuizQuestion,
   createQuizOption,
   updateQuizOption,
   deleteQuizOption,
+  createQuizEmbed,
   getCourseGroups,
   getAvailableStudents,
   getCourseEnrollments,

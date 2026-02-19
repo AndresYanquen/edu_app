@@ -88,6 +88,21 @@ const quizAttemptSchema = z.object({
     .min(1, 'At least one answer is required'),
 });
 
+const inlineQuizAttemptSchema = z
+  .object({
+    optionId: z.string().uuid({ message: 'optionId must be a valid UUID' }).optional(),
+    optionIds: z
+      .array(z.string().uuid({ message: 'optionIds must contain valid UUIDs' }))
+      .optional(),
+  })
+  .refine((value) => {
+    const hasSingle = Boolean(value.optionId);
+    const hasMultiple = Boolean(value.optionIds && value.optionIds.length);
+    return Number(hasSingle) + Number(hasMultiple) === 1;
+  }, {
+    message: 'Provide exactly one answer type',
+  });
+
 const passwordSchema = z
   .string({ required_error: 'password is required' })
   .min(8, 'Password must be at least 8 characters')
@@ -432,6 +447,7 @@ module.exports = {
   lessonCreateSchema,
   lessonUpdateSchema,
   quizAttemptSchema,
+  inlineQuizAttemptSchema,
   quizQuestionCreateSchema,
   quizQuestionUpdateSchema,
   quizOptionCreateSchema,
