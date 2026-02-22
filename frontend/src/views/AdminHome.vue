@@ -6,44 +6,67 @@
           <p class="admin-topbar__eyebrow">Academy</p>
           <h1>Admin Panel</h1>
         </div>
+        <Button
+          label="Crear usuario"
+          icon="pi pi-plus"
+          class="admin-topbar__create"
+          @click="activeTab = 'users'"
+        />
       </header>
 
-      <div class="admin-tabs">
-        <nav class="tabs-nav">
-          <button
-            type="button"
-            class="tabs-nav__item"
-            :class="{ active: activeTab === 'users' }"
-            @click="activeTab = 'users'"
-          >
-            Usuarios
-          </button>
-          <button
-            type="button"
-            class="tabs-nav__item"
-            :class="{ active: activeTab === 'bulkInvite' }"
-            @click="activeTab = 'bulkInvite'"
-          >
-            Invitación masiva
-          </button>
-          <button
-            type="button"
-            class="tabs-nav__item"
-            :class="{ active: activeTab === 'courseLevels' }"
-            @click="activeTab = 'courseLevels'"
-          >
-            Niveles de curso
-          </button>
-          <button
-            type="button"
-            class="tabs-nav__item"
-            :class="{ active: activeTab === 'settings' }"
-            @click="activeTab = 'settings'"
-          >
-            Configuración
-          </button>
-        </nav>
+      <section class="kpi-grid">
+        <article class="kpi-card">
+          <span class="kpi-icon users"><i class="pi pi-users" /></span>
+          <div>
+            <p>Total usuarios</p>
+            <strong>{{ totalUsers }}</strong>
+          </div>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-icon active"><i class="pi pi-user-plus" /></span>
+          <div>
+            <p>Usuarios activos</p>
+            <strong>{{ activeUsersCount }}</strong>
+          </div>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-icon courses"><i class="pi pi-graduation-cap" /></span>
+          <div>
+            <p>Cursos activos</p>
+            <strong>{{ activeCoursesCount }}</strong>
+          </div>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-icon alerts"><i class="pi pi-bell" /></span>
+          <div>
+            <p>Alertas</p>
+            <strong>{{ adminAlertsCount }}</strong>
+          </div>
+        </article>
+      </section>
 
+      <Card class="quick-menus-card">
+        <template #title>
+          <h2>Acciones rápidas</h2>
+        </template>
+        <template #content>
+          <div class="quick-menus-grid">
+            <button
+              v-for="item in quickMenus"
+              :key="item.key"
+              type="button"
+              class="quick-menu-item"
+              :class="{ active: activeTab === item.key }"
+              @click="selectQuickMenu(item.key)"
+            >
+              <span class="quick-menu-item__icon"><i :class="item.icon" /></span>
+              <span class="quick-menu-item__label">{{ item.label }}</span>
+            </button>
+          </div>
+        </template>
+      </Card>
+
+      <div class="admin-tabs">
         <section v-if="activeTab === 'users'" class="tab-content">
           <Card class="card create-user-card">
             <template #title>
@@ -451,6 +474,12 @@ const userSearch = ref('');
 const activeTab = ref('users');
 const resettingId = ref(null);
 const togglingId = ref(null);
+const quickMenus = [
+  { key: 'users', label: 'Usuarios', icon: 'pi pi-users' },
+  { key: 'bulkInvite', label: 'Invitación masiva', icon: 'pi pi-envelope' },
+  { key: 'courseLevels', label: 'Niveles de curso', icon: 'pi pi-graduation-cap' },
+  { key: 'settings', label: 'Configuración', icon: 'pi pi-cog' },
+];
 
 const linkDialogVisible = ref(false);
 const activationLink = ref('');
@@ -505,10 +534,16 @@ const filteredGroupOptions = computed(() => {
     .map((group) => ({ label: group.group_name, value: group.group_id }));
 });
 const bulkFileName = computed(() => bulkFile.value?.name || '');
+const activeUsersCount = computed(() => users.value.filter((user) => user.is_active).length);
+const activeCoursesCount = computed(() => courses.value.length);
+const adminAlertsCount = computed(() => Number(bulkTotals.value?.failed || 0));
 
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 const userRoles = (user) =>
   Array.isArray(user.global_roles) ? user.global_roles.filter(Boolean) : [];
+const selectQuickMenu = (menuKey) => {
+  activeTab.value = menuKey;
+};
 
 const getInitials = (name = '') =>
   (name || '')
@@ -995,11 +1030,6 @@ onMounted(() => {
 }
 
 .admin-topbar {
-  background: #fff;
-  border: 1px solid var(--app-border);
-  border-radius: 20px;
-  padding: 1rem 1.5rem;
-  box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1019,6 +1049,126 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
+.admin-topbar__create {
+  border-radius: 12px;
+  padding-inline: 1.1rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.kpi-card {
+  background: #fff;
+  border: 1px solid var(--app-border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.kpi-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.kpi-card strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.kpi-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.kpi-icon.users {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.kpi-icon.active {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.kpi-icon.courses {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.kpi-icon.alerts {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.quick-menus-card {
+  background: #fff;
+  border: 1px solid var(--app-border);
+  border-radius: 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.quick-menus-card h2 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.quick-menus-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.quick-menu-item {
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.quick-menu-item:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.quick-menu-item.active {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: #eff6ff;
+}
+
+.quick-menu-item__icon {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-menu-item__label {
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .admin-tabs {
   background: #fff;
   border-radius: 24px;
@@ -1028,46 +1178,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-}
-
-.tabs-nav {
-  display: flex;
-  gap: 1rem;
-  border-bottom: 2px solid rgba(45, 62, 85, 0.12);
-  padding-bottom: 0.5rem;
-  overflow-x: auto;
-}
-
-.tabs-nav__item {
-  border: none;
-  background: transparent;
-  padding: 0.65rem 1.25rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  border-radius: 999px;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.2s ease;
-}
-
-.tabs-nav__item.active {
-  color: var(--brand-primary);
-}
-
-.tabs-nav__item.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -0.5rem;
-  height: 3px;
-  border-radius: 3px;
-  background: var(--brand-primary);
-}
-
-.tabs-nav__item:focus-visible {
-  outline: 3px solid rgba(13, 59, 102, 0.25);
-  outline-offset: 4px;
 }
 
 .tab-content {
@@ -1288,17 +1398,17 @@ onMounted(() => {
 }
 
 @media (max-width: 900px) {
-  .tabs-nav {
-    padding-bottom: 0;
-  }
-
-  .tabs-nav__item {
-    flex: 1;
-    white-space: nowrap;
-  }
-
   .admin-main {
     padding: 1rem;
+  }
+
+  .admin-topbar {
+    flex-wrap: wrap;
+  }
+
+  .kpi-grid,
+  .quick-menus-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .users-header {
@@ -1309,6 +1419,17 @@ onMounted(() => {
   .users-header__actions {
     width: 100%;
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 640px) {
+  .kpi-grid,
+  .quick-menus-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-topbar__create {
+    width: 100%;
   }
 }
 

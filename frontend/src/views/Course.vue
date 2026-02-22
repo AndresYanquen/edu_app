@@ -26,7 +26,7 @@
             <h2>{{ course.title }}</h2>
             <p class="description">{{ course.description }}</p>
           </div>
-          <div class="progress" v-show="activeTabIndex !== 1">
+          <div class="progress" v-show="!isLiveTabActive">
             <span>{{ t('course.progressLabel') }}</span>
             <ProgressBar :value="progress?.percent ?? 0" />
             <small>{{ progressSummaryText }}</small>
@@ -34,7 +34,7 @@
               {{ nextLessonText }}
             </small>
           </div>
-              <div class="live-session-image-card" v-if="activeTabIndex === 1">
+              <div class="live-session-image-card" v-if="isLiveTabActive">
                 <div class="live-session-image-card__text">
                   <h3>Live Sessions</h3>
                   <p>Upcoming and past live sessions</p>
@@ -50,7 +50,10 @@
       </template>
       <template #content>
         <TabView class="course-tabs" v-model:activeIndex="activeTabIndex">
-          <p>{{ activeTabIndex }}</p>
+          <TabPanel header="Posts">
+            <CoursePostsFeed :course-id="route.params.id" />
+          </TabPanel>
+
           <TabPanel :header="t('course.tabs.lessons')">
             <section class="student-course-hero">
               <div class="continue-card">
@@ -297,6 +300,7 @@ import TabView from 'primevue/tabview';
 import Accordion from 'primevue/accordion';
 import AccordionTab from 'primevue/accordiontab';
 import PreviewBanner from '../components/PreviewBanner.vue';
+import CoursePostsFeed from '../components/student/posts/CoursePostsFeed.vue';
 import api from '../api/axios';
 import { mySessions } from '../api/liveSessions';
 
@@ -404,6 +408,12 @@ const fetchProgress = async (id) => {
 };
 
 const activeTabIndex = ref(0);
+const TAB_INDEX = {
+  posts: 0,
+  lessons: 1,
+  live: 2,
+};
+const isLiveTabActive = computed(() => activeTabIndex.value === TAB_INDEX.live);
 
 const loadLiveSessions = async (courseId) => {
   if (!courseId) {

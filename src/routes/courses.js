@@ -12,6 +12,121 @@ const router = express.Router();
 
 router.use(auth);
 
+const mapCoursePostRow = (row) => ({
+  id: row.id,
+  courseId: row.course_id,
+  groupId: row.group_id || null,
+  createdByUserId: row.created_by_user_id || null,
+  createdByFullName: row.created_by_full_name || null,
+  title: row.title,
+  body: row.body,
+  createdAt: row.created_at,
+});
+
+router.get('/:courseId/posts', async (req, res) => {
+  const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
+  if (!parsedCourseId.success) {
+    return res.status(400).json({ error: formatZodError(parsedCourseId.error) });
+  }
+
+  const courseId = parsedCourseId.data;
+  const userId = req.user.id;
+  const limitRaw = Number.parseInt(req.query.limit, 10);
+  const offsetRaw = Number.parseInt(req.query.offset, 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 20;
+  const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
+
+  try {
+    const canPreviewAsStaff =
+      hasGlobalRole(req.user, 'admin') || (await canEditCourse(courseId, req.user));
+
+    if (!canPreviewAsStaff) {
+      const enrollment = await pool.query(
+        `
+          SELECT 1
+          FROM enrollments
+          WHERE course_id = $1
+            AND user_id = $2
+            AND status = 'active'
+          LIMIT 1
+        `,
+        [courseId, userId],
+      );
+
+      if (!enrollment.rows.length) {
+        return res.status(403).json({ error: 'You are not actively enrolled in this course' });
+      }
+    }
+
+    const visibilityClause = canPreviewAsStaff
+      ? 'TRUE'
+      : `
+        (
+          cp.group_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM group_students gs
+            WHERE gs.group_id = cp.group_id
+              AND gs.user_id = $2
+              AND gs.status = 'active'
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM group_teachers gt
+            WHERE gt.group_id = cp.group_id
+              AND gt.user_id = $2
+          )
+        )
+      `;
+    const totalParams = canPreviewAsStaff ? [courseId] : [courseId, userId];
+    const dataParams = canPreviewAsStaff
+      ? [courseId, limit, offset]
+      : [courseId, userId, limit, offset];
+
+    const totalResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM course_posts cp
+        WHERE cp.course_id = $1
+          AND ${visibilityClause}
+      `,
+      totalParams,
+    );
+
+    const dataResult = await pool.query(
+      `
+        SELECT
+          cp.id,
+          cp.course_id,
+          cp.group_id,
+          cp.created_by_user_id,
+          u.full_name AS created_by_full_name,
+          cp.title,
+          cp.body,
+          cp.created_at
+        FROM course_posts cp
+        LEFT JOIN users u ON u.id = cp.created_by_user_id
+        WHERE cp.course_id = $1
+          AND ${visibilityClause}
+        ORDER BY cp.created_at DESC
+        LIMIT $${canPreviewAsStaff ? 2 : 3}
+        OFFSET $${canPreviewAsStaff ? 3 : 4}
+      `,
+      dataParams,
+    );
+
+    return res.json({
+      data: dataResult.rows.map(mapCoursePostRow),
+      limit,
+      offset,
+      total: Number(totalResult.rows[0]?.total || 0),
+    });
+  } catch (err) {
+    console.error('Failed to fetch course posts', err);
+    return res.status(500).json({ error: 'Failed to fetch course posts' });
+  }
+});
+
 router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), async (req, res) => {
   const courseId = req.params.id;
   const { id: userId } = req.user;

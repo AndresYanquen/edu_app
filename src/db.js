@@ -14,6 +14,9 @@ console.log(
 );
 const pool = new Pool({
   connectionString,
+  max: 10,                  // conexiones máximas por proceso
+  idleTimeoutMillis: 30000, // cierra conexiones ociosas
+  connectionTimeoutMillis: 10000, // espera para obtener conexión
 });
 
 pool.on('error', (err) => {

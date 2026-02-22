@@ -914,6 +914,57 @@ router.delete('/courses/:courseId/staff/:userId/role/:roleName', requireAdmin, a
       return res.status(404).json({ error: 'Course not found' });
     }
 
+    if (roleName === 'instructor') {
+      const [groupTeacherResult, seriesHostResult, sessionsHostResult] = await Promise.all([
+        pool.query(
+          `
+            SELECT COUNT(*)::int AS total
+            FROM group_teachers gt
+            JOIN groups g ON g.id = gt.group_id
+            WHERE gt.user_id = $1
+              AND g.course_id = $2
+          `,
+          [userId, course.id],
+        ),
+        pool.query(
+          `
+            SELECT COUNT(*)::int AS total
+            FROM live_session_series lss
+            JOIN groups g ON g.id = lss.group_id
+            WHERE g.course_id = $1
+              AND lss.host_teacher_id = $2
+          `,
+          [course.id, userId],
+        ),
+        pool.query(
+          `
+            SELECT COUNT(*)::int AS total
+            FROM live_sessions ls
+            JOIN groups g ON g.id = ls.group_id
+            WHERE g.course_id = $1
+              AND ls.host_teacher_id = $2
+          `,
+          [course.id, userId],
+        ),
+      ]);
+
+      const groupAssignments = Number(groupTeacherResult.rows[0]?.total || 0);
+      const hostedSeries = Number(seriesHostResult.rows[0]?.total || 0);
+      const hostedSessions = Number(sessionsHostResult.rows[0]?.total || 0);
+
+      if (groupAssignments > 0 || hostedSeries > 0 || hostedSessions > 0) {
+        return res.status(409).json({
+          error:
+            'Cannot remove instructor role while assigned to groups or live sessions. Reassign/remove those dependencies first.',
+          details: {
+            groupAssignments,
+            hostedSeries,
+            hostedSessions,
+          },
+        });
+      }
+    }
+
     const removed = await removeCourseStaffRole(pool, course.id, userId, roleName);
     if (!removed) {
       return res.status(404).json({ error: 'Assignment not found' });

@@ -31,6 +31,8 @@ const {
   groupUpdateSchema,
   announcementCreateSchema,
   announcementUpdateSchema,
+  coursePostCreateSchema,
+  coursePostUpdateSchema,
   bulkEnrollSchema,
   formatZodError,
   uuidSchema,
@@ -258,6 +260,22 @@ const mapGroupRow = (row) => ({
   updatedAt: toTimestampString(row.updated_at),
   teachersCount: Number(row.teachers_count || 0),
 });
+
+const mapCoursePostRow = (row) => ({
+  id: row.id,
+  courseId: row.course_id,
+  groupId: row.group_id || null,
+  createdByUserId: row.created_by_user_id || null,
+  title: row.title,
+  body: row.body,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at || null,
+});
+
+const hasPostsCmsAccess = (user) =>
+  hasGlobalRole(user, 'admin') ||
+  hasGlobalRole(user, 'instructor') ||
+  hasGlobalRole(user, 'content_editor');
 
 
 let quizQuestionsHasQuizIdColumn = null;
@@ -962,6 +980,282 @@ router.delete('/announcements/:id', async (req, res) => {
   } catch (err) {
     console.error('Failed to delete announcement', err);
     return res.status(500).json({ error: 'Failed to delete announcement' });
+  }
+});
+
+router.get('/courses/:courseId/posts', async (req, res) => {
+  const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
+  if (!parsedCourseId.success) {
+    return res.status(400).json({ error: formatZodError(parsedCourseId.error) });
+  }
+
+  if (!hasPostsCmsAccess(req.user)) {
+    return res.status(403).json({ error: 'You cannot manage course posts' });
+  }
+
+  const courseId = parsedCourseId.data;
+  const parsedGroupId = req.query.groupId ? uuidSchema.safeParse(String(req.query.groupId)) : null;
+  if (parsedGroupId && !parsedGroupId.success) {
+    return res.status(400).json({ error: formatZodError(parsedGroupId.error) });
+  }
+  const groupId = parsedGroupId?.data || null;
+
+  const pageRaw = Number.parseInt(req.query.page, 10);
+  const pageSizeRaw = Number.parseInt(req.query.pageSize, 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const pageSize = Number.isFinite(pageSizeRaw) ? Math.min(Math.max(pageSizeRaw, 1), 100) : 20;
+  const offset = (page - 1) * pageSize;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+
+  try {
+    const course = await ensureCourseExists(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (!isAdmin) {
+      const allowed = await canEditCourse(courseId, req.user);
+      if (!allowed) {
+        return res.status(403).json({ error: 'You cannot view posts for this course' });
+      }
+    }
+
+    const where = ['cp.course_id = $1'];
+    const params = [courseId];
+    if (groupId) {
+      params.push(groupId);
+      where.push(`cp.group_id = $${params.length}`);
+    }
+    const whereClause = `WHERE ${where.join(' AND ')}`;
+
+    const totalResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM course_posts cp
+        ${whereClause}
+      `,
+      params,
+    );
+
+    const listParams = [...params, pageSize, offset];
+    const listResult = await pool.query(
+      `
+        SELECT
+          cp.id,
+          cp.course_id,
+          cp.group_id,
+          cp.created_by_user_id,
+          cp.title,
+          cp.body,
+          cp.created_at,
+          cp.updated_at
+        FROM course_posts cp
+        ${whereClause}
+        ORDER BY cp.created_at DESC
+        LIMIT $${params.length + 1}
+        OFFSET $${params.length + 2}
+      `,
+      listParams,
+    );
+
+    return res.json({
+      data: listResult.rows.map(mapCoursePostRow),
+      page,
+      pageSize,
+      total: Number(totalResult.rows[0]?.total || 0),
+    });
+  } catch (err) {
+    console.error('Failed to list course posts', err);
+    return res.status(500).json({ error: 'Failed to list course posts' });
+  }
+});
+
+router.post('/courses/:courseId/posts', async (req, res) => {
+  const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
+  if (!parsedCourseId.success) {
+    return res.status(400).json({ error: formatZodError(parsedCourseId.error) });
+  }
+  if (!hasPostsCmsAccess(req.user)) {
+    return res.status(403).json({ error: 'You cannot create course posts' });
+  }
+
+  const parsed = coursePostCreateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const courseId = parsedCourseId.data;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  let groupId = null;
+
+  try {
+    const course = await ensureCourseExists(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (!isAdmin) {
+      const allowed = await canEditCourse(courseId, req.user);
+      if (!allowed) {
+        return res.status(403).json({ error: 'You cannot create posts for this course' });
+      }
+    }
+
+    if (parsed.data.target === 'group') {
+      const group = await fetchGroupById(parsed.data.groupId);
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      if (group.course_id !== courseId) {
+        return res.status(400).json({ error: 'Group must belong to the course' });
+      }
+      groupId = group.id;
+    }
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO course_posts (
+          course_id,
+          group_id,
+          created_by_user_id,
+          title,
+          body
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING
+          id,
+          course_id,
+          group_id,
+          created_by_user_id,
+          title,
+          body,
+          created_at,
+          updated_at
+      `,
+      [courseId, groupId, req.user.id, parsed.data.title, parsed.data.body],
+    );
+
+    return res.status(201).json(mapCoursePostRow(rows[0]));
+  } catch (err) {
+    console.error('Failed to create course post', err);
+    return res.status(500).json({ error: 'Failed to create course post' });
+  }
+});
+
+router.put('/posts/:id', async (req, res) => {
+  const parsedId = uuidSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    return res.status(400).json({ error: formatZodError(parsedId.error) });
+  }
+  if (!hasPostsCmsAccess(req.user)) {
+    return res.status(403).json({ error: 'You cannot edit course posts' });
+  }
+
+  const parsed = coursePostUpdateSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const postId = parsedId.data;
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+
+  try {
+    const existingResult = await pool.query(
+      `
+        SELECT
+          id,
+          course_id,
+          group_id,
+          title,
+          body,
+          created_by_user_id,
+          created_at,
+          updated_at
+        FROM course_posts
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [postId],
+    );
+
+    if (!existingResult.rows.length) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const existing = existingResult.rows[0];
+    if (!isAdmin) {
+      const allowed = await canEditCourse(existing.course_id, req.user);
+      if (!allowed) {
+        return res.status(403).json({ error: 'You cannot edit this post' });
+      }
+    }
+
+    const hasTarget = Object.prototype.hasOwnProperty.call(parsed.data, 'target');
+    const hasGroupId = Object.prototype.hasOwnProperty.call(parsed.data, 'groupId');
+    let nextGroupId = existing.group_id;
+    const target = hasTarget ? parsed.data.target : existing.group_id ? 'group' : 'course';
+
+    if (target === 'course') {
+      if (hasGroupId && parsed.data.groupId) {
+        return res.status(400).json({ error: 'groupId must be empty for course target' });
+      }
+      nextGroupId = null;
+    } else {
+      const candidateGroupId = hasGroupId ? parsed.data.groupId : existing.group_id;
+      if (!candidateGroupId) {
+        return res.status(400).json({ error: 'groupId is required for group target' });
+      }
+      const group = await fetchGroupById(candidateGroupId);
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      if (group.course_id !== existing.course_id) {
+        return res.status(400).json({ error: 'Group must belong to the post course' });
+      }
+      nextGroupId = group.id;
+    }
+
+    const updates = [];
+    const values = [];
+    const pushUpdate = (column, value) => {
+      values.push(value);
+      updates.push(`${column} = $${values.length}`);
+    };
+
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'title')) {
+      pushUpdate('title', parsed.data.title);
+    }
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'body')) {
+      pushUpdate('body', parsed.data.body);
+    }
+    if (nextGroupId !== existing.group_id) {
+      pushUpdate('group_id', nextGroupId);
+    }
+    updates.push('updated_at = now()');
+
+    values.push(postId);
+    const { rows } = await pool.query(
+      `
+        UPDATE course_posts
+        SET ${updates.join(', ')}
+        WHERE id = $${values.length}
+        RETURNING
+          id,
+          course_id,
+          group_id,
+          created_by_user_id,
+          title,
+          body,
+          created_at,
+          updated_at
+      `,
+      values,
+    );
+
+    return res.json(mapCoursePostRow(rows[0]));
+  } catch (err) {
+    console.error('Failed to update course post', err);
+    return res.status(500).json({ error: 'Failed to update course post' });
   }
 });
 

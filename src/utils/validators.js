@@ -591,6 +591,75 @@ const announcementUpdateSchema = z
     }
   });
 
+const coursePostCreateSchema = z
+  .object({
+    target: z.enum(['course', 'group'], {
+      errorMap: () => ({ message: 'Invalid target value' }),
+    }),
+    groupId: z.string().uuid({ message: 'groupId must be a valid UUID' }).optional().nullable(),
+    title: z
+      .string({ required_error: 'title is required' })
+      .trim()
+      .min(3, 'title must be at least 3 characters'),
+    body: z
+      .string({ required_error: 'body is required' })
+      .trim()
+      .min(1, 'body is required'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.target === 'course' && data.groupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['groupId'],
+        message: 'groupId must be empty for course target',
+      });
+    }
+
+    if (data.target === 'group' && !data.groupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['groupId'],
+        message: 'groupId is required for group target',
+      });
+    }
+  });
+
+const coursePostUpdateSchema = z
+  .object({
+    target: z.enum(['course', 'group'], {
+      errorMap: () => ({ message: 'Invalid target value' }),
+    }).optional(),
+    groupId: z.string().uuid({ message: 'groupId must be a valid UUID' }).optional().nullable(),
+    title: z.string().trim().min(3, 'title must be at least 3 characters').optional(),
+    body: z.string().trim().min(1, 'body is required').optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!Object.keys(data).length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: 'No updates provided',
+      });
+      return;
+    }
+
+    if (data.target === 'course' && data.groupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['groupId'],
+        message: 'groupId must be empty for course target',
+      });
+    }
+
+    if (data.target === 'group' && !data.groupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['groupId'],
+        message: 'groupId is required for group target',
+      });
+    }
+  });
+
 module.exports = {
   loginSchema,
   lessonProgressSchema,
@@ -621,6 +690,8 @@ module.exports = {
   groupUpdateSchema,
   announcementCreateSchema,
   announcementUpdateSchema,
+  coursePostCreateSchema,
+  coursePostUpdateSchema,
   bulkEnrollSchema,
   formatZodError,
 };

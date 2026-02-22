@@ -308,6 +308,10 @@
           <CmsCourseAnnouncementsTab :course-id="courseId" :groups="courseGroups" />
         </TabPanel>
 
+        <TabPanel header="Posts" v-if="hasContentAccess">
+          <CmsCoursePostsTab :course-id="courseId" :groups="courseGroups" />
+        </TabPanel>
+
         <TabPanel header="Live sessions" v-if="isAdmin">
           <Card class="live-sessions-card">
             <template #title>
@@ -854,6 +858,7 @@ import SessionsTable from '../components/live/SessionsTable.vue';
 import SessionEditDialog from '../components/live/SessionEditDialog.vue';
 import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
 import CmsCourseAnnouncementsTab from '../components/cms/announcements/CmsCourseAnnouncementsTab.vue';
+import CmsCoursePostsTab from '../components/cms/posts/CmsCoursePostsTab.vue';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 import Accordion from 'primevue/accordion';
@@ -940,6 +945,9 @@ const tabs = computed(() => {
   }
   if (hasContentAccess.value) {
     list.push({ key: 'announcements', label: 'Announcements' });
+  }
+  if (hasContentAccess.value) {
+    list.push({ key: 'posts', label: 'Posts' });
   }
   if (isAdmin.value) {
     list.push({ key: 'live', label: 'Live sessions' });
@@ -2355,11 +2363,24 @@ const removeStaffRole = async (userId, roleName) => {
     });
     await loadStaffAssignments();
   } catch (err) {
+    const apiError = err?.response?.data;
+    const isDependencyConflict = err?.response?.status === 409 && apiError?.details;
+    let detail = 'Failed to remove role';
+
+    if (isDependencyConflict) {
+      const groupAssignments = Number(apiError.details.groupAssignments || 0);
+      const hostedSeries = Number(apiError.details.hostedSeries || 0);
+      const hostedSessions = Number(apiError.details.hostedSessions || 0);
+      detail = `No se puede remover el rol de instructor. Dependencias activas: grupos (${groupAssignments}), series en vivo (${hostedSeries}), sesiones en vivo (${hostedSessions}).`;
+    } else if (apiError?.error) {
+      detail = apiError.error;
+    }
+
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to remove role',
-      life: 3000,
+      detail,
+      life: 4500,
     });
   } finally {
     removingStaffRoleKey.value = null;
