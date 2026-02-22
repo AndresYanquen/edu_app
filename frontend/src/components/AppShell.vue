@@ -37,17 +37,23 @@
             <span v-if="unreadBadge" class="bell-badge">{{ unreadBadge }}</span>
           </div>
           <div class="nav-list">
-            <Button
+            <RouterLink
               v-for="link in navLinks"
-              :key="link.to"
-              class="nav-item"
-              :label="collapsed ? '' : link.label"
-              :icon="link.icon"
-              :severity="isActive(link.to) ? 'primary' : null"
-              :outlined="!isActive(link.to)"
-              @click="navigate(link.to)"
-              :aria-label="link.label"
-            />
+              :key="link.name"
+              :to="{ name: link.name }"
+              custom
+              v-slot="{ navigate, isActive }"
+            >
+              <Button
+                class="nav-item"
+                :label="collapsed ? '' : link.label"
+                :icon="link.icon"
+                :severity="isActive || isActiveGroup(link) ? 'primary' : null"
+                :outlined="!(isActive || isActiveGroup(link))"
+                @click="navigate"
+                :aria-label="link.label"
+              />
+            </RouterLink>
           </div>
         </div>
 
@@ -134,26 +140,41 @@ const notificationsPanelKey = ref(0);
 const { t, locale } = useI18n();
 
 const studentLinks = computed(() => [
-  { label: t('sidebar.studentDashboard'), to: '/student', icon: 'pi pi-home' },
+  { label: t('sidebar.studentDashboard'), name: 'student', icon: 'pi pi-home' },
 ]);
 
 const instructorLinks = computed(() => [
-  { label: t('sidebar.instructorDashboard'), to: '/instructor', icon: 'pi pi-users' },
-  { label: t('sidebar.cms'), to: '/cms/courses', icon: 'pi pi-database' },
+  { label: t('sidebar.instructorDashboard'), name: 'instructor', icon: 'pi pi-users' },
+  { label: t('sidebar.cms'), name: 'cms-courses', icon: 'pi pi-database' },
 ]);
 
 const adminLinks = computed(() => [
-  { label: t('sidebar.adminHome'), to: '/admin', icon: 'pi pi-shield' },
-  { label: t('sidebar.cms'), to: '/cms/courses', icon: 'pi pi-database' },
+  {
+    label: t('sidebar.adminHome'),
+    name: 'admin-dashboard',
+    icon: 'pi pi-shield',
+    groupNames: [
+      'admin-dashboard',
+      'admin-users',
+      'admin-invitations',
+      'admin-course-levels',
+      'admin-settings',
+    ],
+  },
+  { label: 'Usuarios', name: 'admin-users', icon: 'pi pi-users' },
+  { label: 'Invitaciones', name: 'admin-invitations', icon: 'pi pi-envelope' },
+  { label: 'Niveles', name: 'admin-course-levels', icon: 'pi pi-graduation-cap' },
+  { label: 'Config', name: 'admin-settings', icon: 'pi pi-cog' },
+  { label: t('sidebar.cms'), name: 'cms-courses', icon: 'pi pi-database' },
 ]);
 
-const staffLinks = computed(() => [{ label: t('sidebar.cms'), to: '/cms/courses', icon: 'pi pi-database' }]);
+const staffLinks = computed(() => [{ label: t('sidebar.cms'), name: 'cms-courses', icon: 'pi pi-database' }]);
 
 const navLinks = computed(() => {
   const links = [];
   const addLinks = (items) => {
     items.forEach((item) => {
-      if (!links.some((existing) => existing.to === item.to)) {
+      if (!links.some((existing) => existing.name === item.name)) {
         links.push(item);
       }
     });
@@ -175,13 +196,8 @@ const navLinks = computed(() => {
   return links;
 });
 
-const navigate = (path) => {
-  if (route.path !== path) {
-    router.push(path);
-  }
-};
-
-const isActive = (path) => route.path.startsWith(path);
+const isActiveGroup = (link) =>
+  Array.isArray(link.groupNames) && link.groupNames.includes(String(route.name || ''));
 
 const handleLogout = async () => {
   await auth.logout();

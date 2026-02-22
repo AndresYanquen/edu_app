@@ -8,7 +8,12 @@ const Course = () => import('../views/Course.vue');
 const InstructorDashboard = () => import('../views/InstructorDashboard.vue');
 const InstructorGroup = () => import('../views/InstructorGroup.vue');
 const Lesson = () => import('../views/Lesson.vue');
-const AdminHome = () => import('../views/AdminHome.vue');
+const AdminLayout = () => import('../views/admin/AdminLayout.vue');
+const DashboardView = () => import('../views/admin/DashboardView.vue');
+const UsersView = () => import('../views/admin/UsersView.vue');
+const InvitationsView = () => import('../views/admin/InvitationsView.vue');
+const CourseLevelsView = () => import('../views/admin/CourseLevelsView.vue');
+const SettingsView = () => import('../views/admin/SettingsView.vue');
 const CmsCourses = () => import('../views/CmsCourses.vue');
 const CmsCourseBuilder = () => import('../views/CmsCourseBuilder.vue');
 const CmsLessonEditor = () => import('../views/CmsLessonEditor.vue');
@@ -52,8 +57,40 @@ const routes = [
   {
     path: '/admin',
     name: 'admin',
-    component: AdminHome,
+    component: AdminLayout,
     meta: { requiresAuth: true, requiresAdmin: true },
+    children: [
+      {
+        path: '',
+        name: 'admin-dashboard',
+        component: DashboardView,
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
+      {
+        path: 'users',
+        name: 'admin-users',
+        component: UsersView,
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
+      {
+        path: 'invitations',
+        name: 'admin-invitations',
+        component: InvitationsView,
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
+      {
+        path: 'course-levels',
+        name: 'admin-course-levels',
+        component: CourseLevelsView,
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
+      {
+        path: 'settings',
+        name: 'admin-settings',
+        component: SettingsView,
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
+    ],
   },
   {
     path: '/cms/courses',

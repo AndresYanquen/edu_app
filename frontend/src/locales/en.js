@@ -33,7 +33,7 @@ export default {
     workspace: 'Workspace',
     studentDashboard: 'Student Dashboard',
     instructorDashboard: 'Instructor Dashboard',
-    adminHome: 'Admin Home',
+    adminHome: 'Home',
     cms: 'CMS',
     toggle: 'Toggle sidebar',
     noRole: 'No role',
