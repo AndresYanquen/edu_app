@@ -13,6 +13,7 @@ const {
 const FALLBACK_LEVEL_CODE = 'A1';
 const COURSE_LEVEL_JOIN = 'LEFT JOIN course_levels cl ON cl.id = c.level_id';
 const WEEK_ATTENDANCE_ALLOWED_STATUS = new Set(['present', 'absent', 'late', 'excused']);
+const WEEK_ATTENDANCE_EXCEPTION_STATUSES = new Set(['absent', 'late', 'excused']);
 
 const router = express.Router();
 
@@ -134,6 +135,41 @@ const ensureCourseAttendanceAccess = async (req, courseId, groupId = null) => {
   return { allowed: false, status: 403, error: 'You are not allowed to view course attendance' };
 };
 
+const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
+  if (!Array.isArray(sessionIds) || !sessionIds.length) {
+    return;
+  }
+
+  const values = [];
+  const placeholders = [];
+  sessionIds.forEach((sessionId, index) => {
+    const base = index * 2;
+    placeholders.push(`($${base + 1}, 'finalized', $${base + 2}, now(), now(), now())`);
+    values.push(sessionId, userId);
+  });
+
+  await client.query(
+    `
+      INSERT INTO live_session_attendance_runs (
+        live_session_id,
+        status,
+        taken_by,
+        taken_at,
+        created_at,
+        updated_at
+      )
+      VALUES ${placeholders.join(', ')}
+      ON CONFLICT (live_session_id)
+      DO UPDATE SET
+        status = 'finalized',
+        taken_by = EXCLUDED.taken_by,
+        taken_at = now(),
+        updated_at = now()
+    `,
+    values,
+  );
+};
+
 router.get('/:courseId/attendance', async (req, res) => {
   const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
   if (!parsedCourseId.success) {
@@ -177,8 +213,10 @@ router.get('/:courseId/attendance', async (req, res) => {
         stats: {
           totalStudents: 0,
           totalSessions: 0,
-          presentPct: 0,
+          takenSessions: 0,
+          presentPct: null,
           atRiskCount: 0,
+          hasAttendanceRecords: false,
         },
       });
     }
@@ -227,20 +265,51 @@ router.get('/:courseId/attendance', async (req, res) => {
       attendanceRows = attendanceRes.rows;
     }
 
+    let attendanceRunRows = [];
+    if (sessionIds.length) {
+      const attendanceRunRes = await pool.query(
+        `
+          SELECT live_session_id, taken_at, taken_by, status
+          FROM live_session_attendance_runs
+          WHERE live_session_id = ANY($1::uuid[])
+        `,
+        [sessionIds],
+      );
+      attendanceRunRows = attendanceRunRes.rows;
+    }
+
+    const attendanceRunBySessionId = new Map(
+      attendanceRunRows.map((row) => [
+        row.live_session_id,
+        {
+          isTaken: row.status === 'finalized',
+          takenAt: row.taken_at ? row.taken_at.toISOString() : null,
+          takenBy: row.taken_by || null,
+        },
+      ]),
+    );
+
     const dayIndex = new Map(days.map((day, idx) => [day.date, idx]));
     sessionsRes.rows.forEach((row) => {
       const key = toUtcIsoDate(row.starts_at);
       const idx = dayIndex.get(key);
       if (idx === undefined) return;
+      const runMeta = attendanceRunBySessionId.get(row.session_id) || {
+        isTaken: false,
+        takenAt: null,
+        takenBy: null,
+      };
       days[idx].sessions.push({
         sessionId: row.session_id,
         startsAt: row.starts_at ? row.starts_at.toISOString() : null,
         title: row.title || null,
+        isTaken: runMeta.isTaken,
+        attendanceTakenAt: runMeta.takenAt,
+        attendanceTakenBy: runMeta.takenBy,
       });
     });
 
     const attendanceByUser = new Map();
-    let presentCount = 0;
     for (const row of attendanceRows) {
       if (!attendanceByUser.has(row.user_id)) {
         attendanceByUser.set(row.user_id, {});
@@ -249,9 +318,6 @@ router.get('/:courseId/attendance', async (req, res) => {
         status: row.status,
         ...(row.note ? { note: row.note } : {}),
       };
-      if (row.status === 'present') {
-        presentCount += 1;
-      }
     }
 
     let atRiskCount = 0;
@@ -271,8 +337,22 @@ router.get('/:courseId/attendance', async (req, res) => {
 
     const totalStudents = students.length;
     const totalSessions = sessionIds.length;
-    const denominator = totalStudents * totalSessions;
-    const presentPct = denominator > 0 ? (presentCount / denominator) * 100 : 0;
+    const takenSessionIds = sessionIds.filter(
+      (sessionId) => attendanceRunBySessionId.get(sessionId)?.isTaken,
+    );
+    let presentCount = 0;
+    if (students.length && takenSessionIds.length) {
+      students.forEach((student) => {
+        takenSessionIds.forEach((sessionId) => {
+          const cell = student.bySession[sessionId];
+          if (!cell || cell.status === 'present') {
+            presentCount += 1;
+          }
+        });
+      });
+    }
+    const denominator = totalStudents * takenSessionIds.length;
+    const presentPct = denominator > 0 ? (presentCount / denominator) * 100 : null;
 
     return res.json({
       courseId,
@@ -283,8 +363,10 @@ router.get('/:courseId/attendance', async (req, res) => {
       stats: {
         totalStudents,
         totalSessions,
+        takenSessions: takenSessionIds.length,
         presentPct,
         atRiskCount,
+        hasAttendanceRecords: takenSessionIds.length > 0,
       },
     });
   } catch (err) {
@@ -395,41 +477,80 @@ router.put('/:courseId/attendance/week', async (req, res) => {
       return res.status(400).json({ error: 'One or more users are not active in the selected group' });
     }
 
-    const values = [];
-    const placeholders = [];
-    normalized.forEach((item, index) => {
-      const base = index * 5;
-      placeholders.push(
-        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, now(), now(), now())`,
-      );
-      values.push(item.sessionId, item.userId, item.status, item.note, req.user.id);
-    });
-
-    const upsertRes = await pool.query(
-      `
-        INSERT INTO live_session_attendance (
-          live_session_id,
-          user_id,
-          status,
-          note,
-          marked_by,
-          marked_at,
-          created_at,
-          updated_at
-        )
-        VALUES ${placeholders.join(', ')}
-        ON CONFLICT (live_session_id, user_id)
-        DO UPDATE SET
-          status = EXCLUDED.status,
-          note = EXCLUDED.note,
-          marked_by = EXCLUDED.marked_by,
-          marked_at = now(),
-          updated_at = now()
-      `,
-      values,
+    const touchedSessionIds = [...new Set(normalized.map((item) => item.sessionId))];
+    const presentItems = normalized.filter((item) => item.status === 'present');
+    const exceptionItems = normalized.filter((item) =>
+      WEEK_ATTENDANCE_EXCEPTION_STATUSES.has(item.status),
     );
 
-    return res.json({ updated: upsertRes.rowCount || normalized.length });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await markAttendanceRunsFinalized(client, touchedSessionIds, req.user.id);
+
+      let updatedCount = 0;
+
+      if (presentItems.length) {
+        const deleteSessionIds = presentItems.map((item) => item.sessionId);
+        const deleteUserIds = presentItems.map((item) => item.userId);
+        const deleteRes = await client.query(
+          `
+            DELETE FROM live_session_attendance
+            WHERE (live_session_id, user_id) IN (
+              SELECT *
+              FROM unnest($1::uuid[], $2::uuid[])
+            )
+          `,
+          [deleteSessionIds, deleteUserIds],
+        );
+        updatedCount += deleteRes.rowCount || 0;
+      }
+
+      if (exceptionItems.length) {
+        const values = [];
+        const placeholders = [];
+        exceptionItems.forEach((item, index) => {
+          const base = index * 5;
+          placeholders.push(
+            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, now(), now(), now())`,
+          );
+          values.push(item.sessionId, item.userId, item.status, item.note, req.user.id);
+        });
+
+        const upsertRes = await client.query(
+          `
+            INSERT INTO live_session_attendance (
+              live_session_id,
+              user_id,
+              status,
+              note,
+              marked_by,
+              marked_at,
+              created_at,
+              updated_at
+            )
+            VALUES ${placeholders.join(', ')}
+            ON CONFLICT (live_session_id, user_id)
+            DO UPDATE SET
+              status = EXCLUDED.status,
+              note = EXCLUDED.note,
+              marked_by = EXCLUDED.marked_by,
+              marked_at = now(),
+              updated_at = now()
+          `,
+          values,
+        );
+        updatedCount += upsertRes.rowCount || exceptionItems.length;
+      }
+
+      await client.query('COMMIT');
+      return res.json({ updated: updatedCount || normalized.length });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.error('Failed to save course attendance week', err);
     return res.status(500).json({ error: 'Failed to save course attendance week' });

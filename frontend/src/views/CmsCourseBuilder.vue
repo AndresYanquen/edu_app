@@ -60,564 +60,21 @@
         </template>
       </Card>
 
-      <TabView
-        v-model:activeIndex="activeTabIndex"
-        class="course-tabs"
-        :renderActiveOnly="false"
-      >
-        <TabPanel header="Build" v-if="hasContentAccess">
-          <Card class="build-card">
-            <template #title>
-              <div class="section-header">
-                <div>
-                  <div class="section-title">Build</div>
-                  <small class="muted">Manage modules and lessons inside each module</small>
-                </div>
-                <Button  label="Add module" icon="pi pi-plus" @click="openModuleDialog()" />
-              </div>
-            </template>
+      <div class="course-tabs">
+        <RouterLink
+          v-for="tab in tabs"
+          :key="tab.key"
+          :to="{ name: tab.routeName, params: { id: courseId } }"
+          class="course-tab-link"
+          :class="{ 'is-active': currentTabKey === tab.key }"
+        >
+          {{ tab.label }}
+        </RouterLink>
+      </div>
 
-            <template #content>
-              <div v-if="loadingModules">
-                <Skeleton height="2rem" class="mb-2" />
-                <Skeleton height="2rem" class="mb-2" />
-              </div>
-
-              <div v-else-if="!modules.length" class="empty-state">No modules yet.</div>
-
-              <Accordion
-                v-else
-                v-model:activeIndex="activeModuleTabs"
-                :multiple="true"
-                class="modules-accordion"
-                @tab-open="onModuleTabOpen"
-              >
-                <AccordionTab v-for="(module, index) in modules" :key="module.id">
-                  <template #header>
-                    <div class="module-tab-header" @click.stop="selectModuleFromTab(module.id)">
-                      <div class="module-tab-title">
-                        <span class="module-name">{{ module.title }}</span>
-                        <Tag
-                          :value="module.is_published ? 'Published' : 'Draft'"
-                          :severity="module.is_published ? 'success' : 'warning'"
-                          class="module-status"
-                        />
-                      </div>
-
-                      <div class="module-tab-actions" @click.stop>
-                        <Button icon="pi pi-pencil" class="p-button-text" @click="openModuleDialog(module)" />
-                        <Button
-                          :icon="module.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                          class="p-button-text"
-                          @click="toggleModulePublish(module)"
-                        />
-                        <Button
-                          icon="pi pi-trash"
-                          class="p-button-text p-button-danger"
-                          severity="danger"
-                          :loading="deletingModuleId === module.id"
-                          :disabled="deletingModuleId === module.id"
-                          @click.stop="openDeleteModuleDialog(module)"
-                        />
-                        <Button icon="pi pi-arrow-up" class="p-button-text" :disabled="index === 0" @click="reorderModule(module, 'up')" />
-                        <Button icon="pi pi-arrow-down" class="p-button-text" :disabled="index === modules.length - 1" @click="reorderModule(module, 'down')" />
-                      </div>
-                    </div>
-                  </template>
-
-                  <div class="module-lessons-wrap">
-                    <div class="lessons-head">
-                      <div>
-                        <div class="lessons-title">Lessons · {{ module.title }}</div>
-                        <small class="muted">
-                          {{ (lessonsByModuleId[module.id] || []).length }} lesson(s)
-                        </small>
-                      </div>
-
-                      <Button
-                        label="Add lesson"
-                        icon="pi pi-plus"
-                        @click="openLessonDialogForModule(module.id)"
-                      />
-                    </div>
-
-                    <div class="lessons-toolbar">
-                      <span class="p-input-icon-left lessons-search">
-                        <i class="pi pi-search" />
-                        <InputText
-                          v-model="lessonFiltersByModuleId[module.id].search"
-                          placeholder="Search lessons"
-                        />
-                      </span>
-
-                      <Dropdown
-                        v-model="lessonFiltersByModuleId[module.id].status"
-                        :options="lessonStatusOptions"
-                        optionLabel="label"
-                        optionValue="value"
-                        placeholder="All"
-                        class="lessons-filter"
-                      />
-                    </div>
-
-                    <div v-if="lessonsLoadingByModuleId[module.id]" class="lessons-loading">
-                      <Skeleton height="2rem" class="mb-2" />
-                      <Skeleton height="2rem" class="mb-2" />
-                      <Skeleton height="2rem" class="mb-2" />
-                    </div>
-
-                    <div v-else-if="!filteredLessonsForModule(module.id).length" class="empty-state">
-                      No lessons yet for this module.
-                    </div>
-
-                    <div v-else class="lesson-list-scroll">
-                      <div
-                        v-for="(lesson, lIndex) in filteredLessonsForModule(module.id)"
-                        :key="lesson.id"
-                        class="list-item lesson-item lesson-item--nested"
-                      >
-                        <div class="lesson-info">
-                          <strong class="item-title">{{ lesson.title }}</strong>
-                          <p class="lesson-meta muted">{{ lesson.estimated_minutes || 0 }} min</p>
-                        </div>
-
-                        <div class="module-actions" @click.stop>
-                          <Tag
-                            :value="lesson.is_published ? 'Published' : 'Draft'"
-                            :severity="lesson.is_published ? 'success' : 'warning'"
-                          />
-                          <Button icon="pi pi-pencil" class="p-button-text" @click="editLesson(lesson)" />
-                          <Button
-                            :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                            class="p-button-text"
-                            @click="toggleLessonPublish(lesson, module.id)"
-                          />
-                          <Button
-                            icon="pi pi-trash"
-                            class="p-button-text p-button-danger"
-                            severity="danger"
-                            :loading="deletingLessonId === lesson.id"
-                            :disabled="deletingLessonId === lesson.id"
-                            @click.stop="openDeleteLessonDialogForModule(module.id, lesson)"
-                          />
-                          <Button
-                            icon="pi pi-arrow-up"
-                            class="p-button-text"
-                            :disabled="lIndex === 0"
-                            @click="reorderLessonForModule(module.id, lesson, 'up')"
-                          />
-                          <Button
-                            icon="pi pi-arrow-down"
-                            class="p-button-text"
-                            :disabled="lIndex === filteredLessonsForModule(module.id).length - 1"
-                            @click="reorderLessonForModule(module.id, lesson, 'down')"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </AccordionTab>
-              </Accordion>
-            </template>
-          </Card>
-        </TabPanel>
-
-        <TabPanel header="Groups" v-if="canManageEnrollments">
-          <Card class="groups-card">
-            <template #title>
-              <div class="section-header">
-                <div>
-                  <div class="section-title">Groups</div>
-                  <small class="muted">Manage cohorts and staff assignments</small>
-                </div>
-                <Button label="Create group" icon="pi pi-plus" @click="openGroupDialog()" />
-              </div>
-            </template>
-            <template #content>
-              <div v-if="loadingGroups">
-                <Skeleton height="2rem" class="mb-2" />
-                <Skeleton height="2rem" class="mb-2" />
-              </div>
-              <div v-else-if="!courseGroups.length" class="empty-state">
-                No groups yet.
-              </div>
-              <DataTable
-                v-else
-                :value="courseGroups"
-                responsiveLayout="scroll"
-                dataKey="id"
-                :paginator="courseGroups.length > 8"
-                :rows="8"
-              >
-                <Column field="code" header="Code" />
-                <Column field="name" header="Name" />
-                <Column field="startDate" header="Start date" />
-                <Column field="endDate" header="End date" />
-                <Column header="Capacity">
-                  <template #body="{ data }">
-                    {{ data.capacity ?? '-' }}
-                  </template>
-                </Column>
-                <Column header="Status">
-                  <template #body="{ data }">
-                    <Tag
-                      :value="data.status"
-                      :severity="data.status === 'active' ? 'success' : 'warning'"
-                    />
-                  </template>
-                </Column>
-                <Column header="Teachers">
-                  <template #body="{ data }">
-                    <Tag
-                      :value="`${data.teachersCount} instructor${data.teachersCount === 1 ? '' : 's'}`"
-                      severity="info"
-                    />
-                  </template>
-                </Column>
-                <Column header="Actions" body-style="min-width: 12rem">
-                  <template #body="{ data }">
-                    <Button
-                      icon="pi pi-pencil"
-                      class="p-button-text"
-                      @click="openGroupDialog(data)"
-                      aria-label="Edit group"
-                    />
-                    <Button
-                      icon="pi pi-users"
-                      class="p-button-text"
-                      @click="openGroupTeacherDialog(data.id)"
-                      aria-label="Manage teachers"
-                    />
-                    <Button
-                      icon="pi pi-trash"
-                      class="p-button-text p-button-danger"
-                      severity="danger"
-                      :loading="deletingGroupId === data.id"
-                      :disabled="deletingGroupId === data.id"
-                      @click.stop="openDeleteGroupDialog(data)"
-                      aria-label="Delete group"
-                    />
-                  </template>
-                </Column>
-              </DataTable>
-            </template>
-          </Card>
-        </TabPanel>
-
-        <TabPanel header="Announcements" v-if="hasContentAccess">
-          <CmsCourseAnnouncementsTab :course-id="courseId" :groups="courseGroups" />
-        </TabPanel>
-
-        <TabPanel header="Posts" v-if="hasContentAccess">
-          <CmsCoursePostsTab :course-id="courseId" :groups="courseGroups" />
-        </TabPanel>
-
-        <TabPanel header="Live sessions" v-if="isAdmin">
-          <Card class="live-sessions-card">
-            <template #title>
-              <div class="section-header">
-                <div>
-                  <div class="section-title">Live sessions</div>
-                  <small class="muted">Manage recurring live meetings for each group</small>
-                </div>
-                <div class="live-session-controls">
-                  <label>Select group</label>
-                  <Dropdown
-                    v-model="liveSessionGroupId"
-                    :options="liveSessionGroupOptions"
-                    optionLabel="label"
-                    optionValue="value"
-                    placeholder="Select group"
-                    :disabled="!courseGroups.length"
-                  />
-                </div>
-              </div>
-            </template>
-            <template #content>
-              <div v-if="liveSessionLoading" class="live-session-loading">
-                <Skeleton height="2rem" class="mb-2" />
-                <Skeleton height="2rem" class="mb-2" />
-                <Skeleton height="12rem" />
-              </div>
-              <div v-else-if="liveSessionError" class="empty-state">
-                <p>Unable to load live sessions right now.</p>
-                <Button
-                  :label="'Reload live sessions'"
-                  icon="pi pi-refresh"
-                  class="p-button-text"
-                  @click="loadLiveSessionData"
-                />
-              </div>
-              <div v-else>
-                <SeriesTable
-                  :series="liveSessionSeries"
-                  :modules="modules"
-                  :loading="liveSessionSeriesLoading"
-                  :publishLoadingId="liveSeriesPublishLoadingId"
-                  :generatingId="liveSeriesGeneratingId"
-                  :regeneratingId="liveSeriesRegeneratingId"
-                  :deletingId="liveSeriesDeletingId"
-                  @create="openLiveSeriesCreate"
-                  @edit="openLiveSeriesEdit"
-                  @toggle-publish="handleLiveSeriesPublishToggle"
-                  @generate="handleLiveSeriesGenerate"
-                  @regenerate="openRegenerateSeriesDialog"
-                  @delete-series="handleLiveSeriesDelete"
-                />
-                <SessionsTable
-                  :sessions="liveSessionSessions"
-                  :loading="liveSessionSessionsLoading"
-                  :classTypes="liveSessionClassTypes"
-                  :modules="modules"
-                  :teachers="liveSessionTeachers"
-                  :range="liveSessionRange"
-                  @refresh="handleLiveSessionsRefresh"
-                  @edit="openLiveSessionEdit"
-                  @range-change="handleLiveSessionsRangeChange"
-                />
-              </div>
-            </template>
-          </Card>
-        </TabPanel>
-
-        <TabPanel header="Asistencia" v-if="canManageEnrollments">
-          <CmsCourseAttendanceTab :course-id="courseId" :groups="courseGroups" />
-        </TabPanel>
-
-        <TabPanel header="Instructors" v-if="canManageEnrollments && hasContentAccess">
-          <Card class="group-teachers-card">
-            <template #title>
-              <div class="section-header">
-                <div>
-                  <h3>Group instructors</h3>
-                  <small>Assign instructors to a specific group</small>
-                </div>
-                <Button
-                  label="Add instructor"
-                  icon="pi pi-user-plus"
-                  :disabled="!selectedGroupForTeachers"
-                  @click="openGroupTeacherDialog"
-                />
-              </div>
-            </template>
-            <template #content>
-              <div class="group-teachers-selector">
-                <label>Select group</label>
-                <Dropdown
-                  v-model="selectedGroupForTeachers"
-                  :options="groupTeacherOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Select group"
-                  :disabled="!courseGroups.length"
-                />
-              </div>
-              <div v-if="!courseGroups.length" class="empty-state">
-                Create a group to assign instructors.
-              </div>
-              <div v-else>
-                <div v-if="loadingGroupTeachers">
-                  <Skeleton height="2.5rem" class="mb-2" />
-                  <Skeleton height="2.5rem" class="mb-2" />
-                </div>
-                <div v-else-if="!groupTeachers.length" class="empty-state">
-                  No instructors assigned yet.
-                </div>
-                <ul v-else class="group-teacher-list">
-                  <li v-for="teacher in groupTeachers" :key="teacher.id" class="group-teacher-item">
-                    <div>
-                      <strong>{{ teacher.fullName }}</strong>
-                      <small>{{ teacher.email }}</small>
-                    </div>
-                    <Button
-                      icon="pi pi-times"
-                      class="p-button-text p-button-danger"
-                      :loading="removingGroupTeacherId === teacher.id"
-                      @click="removeGroupInstructor(teacher.id)"
-                      aria-label="Remove instructor"
-                    />
-                  </li>
-                </ul>
-              </div>
-            </template>
-          </Card>
-        </TabPanel>
-
-        <TabPanel header="Enrollments" v-if="canManageEnrollments">
-          <Card class="enrollments-card">
-            <template #title>
-              <div class="section-header">
-                <h3>Enrollments</h3>
-                <Button label="Enroll student" icon="pi pi-user-plus" @click="openEnrollDialog" />
-              </div>
-            </template>
-            <template #content>
-              <div v-if="loadingEnrollments">
-                <Skeleton height="2.5rem" class="mb-2" />
-                <Skeleton height="2.5rem" class="mb-2" />
-                <Skeleton height="2.5rem" />
-              </div>
-              <div v-else>
-                <div class="enrollment-filters">
-                  <div class="filter-field">
-                    <label>Search</label>
-                    <InputText v-model="enrollmentFilter" placeholder="Name or email" />
-                  </div>
-                  <div class="filter-field">
-                    <label>Group</label>
-                    <Dropdown
-                      v-model="enrollmentGroupFilter"
-                      :options="enrollmentGroupOptions"
-                      optionLabel="label"
-                      optionValue="value"
-                      placeholder="All groups"
-                      showClear
-                    />
-                  </div>
-                </div>
-                <div v-if="!enrollmentTotal" class="empty-state">
-                  {{
-                    enrollmentFilter || enrollmentGroupFilter
-                      ? 'No enrollments match your filters.'
-                      : 'No students enrolled yet.'
-                  }}
-                </div>
-                <DataTable
-                  v-else
-                  :value="enrollments"
-                  responsiveLayout="scroll"
-                  :paginator="true"
-                  :rows="enrollmentRows"
-                  :totalRecords="enrollmentTotal"
-                  :first="enrollmentPage * enrollmentRows"
-                  :rowsPerPageOptions="enrollmentRowsOptions"
-                  lazy
-                  @page="onEnrollmentPage"
-                >
-                  <Column field="fullName" header="Student" />
-                  <Column field="email" header="Email" />
-                  <Column header="Group" body-style="min-width:16rem">
-                    <template #body="{ data }">
-                      <div class="group-cell">
-                        <Tag
-                          :value="data.groupName || 'No group'"
-                          :severity="data.groupName ? 'info' : 'warning'"
-                          class="group-tag"
-                        />
-                        <Dropdown
-                          :modelValue="data.groupId || null"
-                          :options="groupDropdownOptions"
-                          optionLabel="label"
-                          optionValue="value"
-                          placeholder="Select group"
-                          showClear
-                          class="group-dropdown"
-                          :loading="updatingGroupId === data.studentId"
-                          :disabled="updatingGroupId === data.studentId"
-                          @update:modelValue="(value) => updateStudentGroup(data.studentId, value)"
-                        />
-                      </div>
-                    </template>
-                  </Column>
-                  <Column header="Actions" body-style="min-width:6rem">
-                    <template #body="{ data }">
-                      <Button
-                        label="Remove"
-                        icon="pi pi-times"
-                        class="p-button-text p-button-danger"
-                        :loading="removingEnrollmentId === data.studentId"
-                        @click="removeEnrollmentRow(data)"
-                      />
-                    </template>
-                  </Column>
-                </DataTable>
-              </div>
-            </template>
-          </Card>
-        </TabPanel>
-
-        <TabPanel header="Staff" v-if="isAdmin">
-          <Card class="staff-card">
-            <template #title>
-              <div class="section-header">
-                <h3>Staff</h3>
-                <small>Assign instructors, editors, and enrollment managers</small>
-              </div>
-            </template>
-            <template #content>
-              <div class="staff-form-grid">
-                <div class="dialog-field">
-                  <label>User</label>
-                  <Dropdown
-                    v-model="staffForm.userId"
-                    :options="staffCandidates"
-                    optionLabel="label"
-                    optionValue="value"
-                    placeholder="Select user"
-                    filter
-                    :loading="loadingStaffCandidates"
-                    @show="ensureStaffCandidates"
-                    @filter="handleStaffFilter"
-                  />
-                </div>
-                <div class="dialog-field">
-                  <label>Roles</label>
-                  <MultiSelect
-                    v-model="staffForm.roles"
-                    :options="staffRoleOptions"
-                    optionLabel="label"
-                    optionValue="value"
-                    placeholder="Select roles"
-                    display="chip"
-                  />
-                </div>
-                <div class="staff-form-actions">
-                  <Button
-                    label="Assign roles"
-                    :loading="assigningStaff"
-                    @click="submitStaffAssignment"
-                  />
-                </div>
-              </div>
-
-              <div class="staff-list">
-                <div v-if="loadingStaff">
-                  <Skeleton height="2.5rem" class="mb-2" />
-                  <Skeleton height="2.5rem" />
-                </div>
-                <div v-else-if="!staffAssignments.length" class="empty-state">
-                  No staff assigned yet.
-                </div>
-                <div v-else>
-                  <DataTable :value="staffAssignments" responsiveLayout="scroll">
-                    <Column field="fullName" header="Name" />
-                    <Column field="email" header="Email" />
-                    <Column header="Roles">
-                      <template #body="{ data }">
-                        <div class="staff-role-tags">
-                          <div
-                            v-for="role in data.roles"
-                            :key="`${data.userId}-${role}`"
-                            class="staff-role-tag"
-                          >
-                            <Tag :value="staffRoleLabels[role] || role" severity="info" />
-                            <Button
-                              icon="pi pi-times"
-                              class="p-button-text p-button-danger"
-                              :loading="removingStaffRoleKey === `${data.userId}:${role}`"
-                              @click="removeStaffRole(data.userId, role)"
-                            />
-                          </div>
-                        </div>
-                      </template>
-                    </Column>
-                  </DataTable>
-                </div>
-              </div>
-            </template>
-          </Card>
-        </TabPanel>
-      </TabView>
+      <div class="course-tab-panel">
+        <RouterView />
+      </div>
     </template>
 
     <Dialog v-model:visible="showModuleDialog" header="Module" modal :style="{ width: '25rem' }">
@@ -853,22 +310,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
-import SeriesTable from '../components/live/SeriesTable.vue';
-import SessionsTable from '../components/live/SessionsTable.vue';
 import SessionEditDialog from '../components/live/SessionEditDialog.vue';
 import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
-import CmsCourseAnnouncementsTab from '../components/cms/announcements/CmsCourseAnnouncementsTab.vue';
-import CmsCoursePostsTab from '../components/cms/posts/CmsCoursePostsTab.vue';
-import CmsCourseAttendanceTab from './cms/courses/attendance/CmsCourseAttendanceTab.vue';
-import TabView from 'primevue/tabview';
-import TabPanel from 'primevue/tabpanel';
-import Accordion from 'primevue/accordion';
-import AccordionTab from 'primevue/accordiontab';
 import { useAuthStore } from '../stores/auth';
+import { cmsCourseBuilderContextKey } from './cms/courses/cmsCourseBuilderContext';
 import {
   listCourses,
   publishCourse,
@@ -939,41 +388,71 @@ const enrollmentOnlyMode = computed(
 const canManageEnrollments = computed(
   () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'enrollment_manager'])),
 );
-const activeTabIndex = ref(0);
+const courseTabRouteNames = {
+  summary: 'cms-course-summary',
+  build: 'cms-course-build',
+  groups: 'cms-course-groups',
+  announcements: 'cms-course-announcements',
+  posts: 'cms-course-posts',
+  live: 'cms-course-live-sessions',
+  attendance: 'cms-course-attendance',
+  instructors: 'cms-course-instructors',
+  enrollments: 'cms-course-enrollments',
+  staff: 'cms-course-staff',
+};
 const tabs = computed(() => {
   const list = [];
+  if (canManageEnrollments.value) {
+    list.push({ key: 'summary', label: 'Resumen', routeName: courseTabRouteNames.summary });
+  }
   if (hasContentAccess.value) {
-    list.push({ key: 'build', label: 'Build' });
+    list.push({ key: 'build', label: 'Build', routeName: courseTabRouteNames.build });
   }
   if (canManageEnrollments.value) {
-    list.push({ key: 'groups', label: 'Groups' });
+    list.push({ key: 'groups', label: 'Groups', routeName: courseTabRouteNames.groups });
   }
   if (hasContentAccess.value) {
-    list.push({ key: 'announcements', label: 'Announcements' });
+    list.push({ key: 'announcements', label: 'Announcements', routeName: courseTabRouteNames.announcements });
   }
   if (hasContentAccess.value) {
-    list.push({ key: 'posts', label: 'Posts' });
+    list.push({ key: 'posts', label: 'Posts', routeName: courseTabRouteNames.posts });
   }
   if (isAdmin.value) {
-    list.push({ key: 'live', label: 'Live sessions' });
+    list.push({ key: 'live', label: 'Live sessions', routeName: courseTabRouteNames.live });
   }
   if (canManageEnrollments.value) {
-    list.push({ key: 'attendance', label: 'Asistencia' });
+    list.push({ key: 'attendance', label: 'Asistencia', routeName: courseTabRouteNames.attendance });
   }
   if (canManageEnrollments.value && hasContentAccess.value) {
-    list.push({ key: 'instructors', label: 'Instructors' });
+    list.push({ key: 'instructors', label: 'Instructors', routeName: courseTabRouteNames.instructors });
   }
   if (canManageEnrollments.value) {
-    list.push({ key: 'enrollments', label: 'Enrollments' });
+    list.push({ key: 'enrollments', label: 'Enrollments', routeName: courseTabRouteNames.enrollments });
   }
   if (isAdmin.value) {
-    list.push({ key: 'staff', label: 'Staff' });
+    list.push({ key: 'staff', label: 'Staff', routeName: courseTabRouteNames.staff });
   }
   return list;
+});
+const currentTabKey = computed(() => String(route.meta?.cmsCourseTabKey || ''));
+const tabDataReady = ref({
+  summary: false,
+  build: false,
+  groups: false,
+  announcements: false,
+  posts: false,
+  live: false,
+  attendance: false,
+  instructors: false,
+  enrollments: false,
+  staff: false,
 });
 
 const hasTab = (key) => tabs.value.some((tab) => tab.key === key);
 const determineDefaultTabKey = () => {
+  if (canManageEnrollments.value && hasTab('summary')) {
+    return 'summary';
+  }
   if (enrollmentOnlyMode.value && hasTab('enrollments')) {
     return 'enrollments';
   }
@@ -995,39 +474,39 @@ const determineDefaultTabKey = () => {
   return tabs.value[0]?.key ?? null;
 };
 
-const setActiveTabByKey = (key) => {
-  const index = tabs.value.findIndex((tab) => tab.key === key);
-  if (index === -1) {
-    if (activeTabIndex.value >= tabs.value.length) {
-      activeTabIndex.value = Math.max(0, tabs.value.length - 1);
-    }
+const syncCurrentTabRoute = () => {
+  if (currentTabKey.value && hasTab(currentTabKey.value)) {
     return;
   }
-  activeTabIndex.value = index;
-};
-
-const ensureActiveTabInRange = () => {
-  if (!tabs.value.length) {
-    activeTabIndex.value = 0;
-    return;
-  }
-  if (activeTabIndex.value >= tabs.value.length) {
-    activeTabIndex.value = tabs.value.length - 1;
-  }
-};
-
-const updateActiveTabBasedOnPermissions = () => {
   const defaultKey = determineDefaultTabKey();
-  if (defaultKey) {
-    setActiveTabByKey(defaultKey);
-  } else {
-    ensureActiveTabInRange();
+  const targetRouteName = courseTabRouteNames[defaultKey];
+  if (!targetRouteName) {
+    return;
   }
+  if (route.name === targetRouteName) {
+    return;
+  }
+  router.replace({ name: targetRouteName, params: { ...route.params } });
 };
 
 const courseId = route.params.id;
 const course = ref(null);
 const loadingCourse = ref(true);
+
+const resetTabDataState = () => {
+  tabDataReady.value = {
+    summary: false,
+    build: false,
+    groups: false,
+    announcements: false,
+    posts: false,
+    live: false,
+    attendance: false,
+    instructors: false,
+    enrollments: false,
+    staff: false,
+  };
+};
 
 const modules = ref([]);
 const selectedModuleId = ref(null);
@@ -1105,6 +584,10 @@ const openDeleteLessonDialog = (lesson) => {
     title: lesson.title,
     isPublished: lesson.is_published,
   });
+};
+
+const openDeleteLessonDialogForModule = (_moduleId, lesson) => {
+  openDeleteLessonDialog(lesson);
 };
 const openDeleteGroupDialog = (group) => {
   if (!group?.id) return;
@@ -1759,6 +1242,19 @@ const refreshGroupList = async () => {
   }
 };
 
+const ensureGroupsReady = async (...keys) => {
+  const needsFetch = keys.some((key) => !tabDataReady.value[key]);
+  if (!needsFetch) {
+    return;
+  }
+  await refreshGroupList();
+  const nextState = { ...tabDataReady.value };
+  keys.forEach((key) => {
+    nextState[key] = true;
+  });
+  tabDataReady.value = nextState;
+};
+
 let groupTeachersRequestId = 0;
 const loadGroupTeachers = async (groupId) => {
   if (!groupId || !canManageEnrollments.value) {
@@ -1811,8 +1307,6 @@ const ensureGroupTeacherSelection = () => {
     !groups.some((group) => group.id === selectedGroupForTeachers.value)
   ) {
     selectedGroupForTeachers.value = groups[0].id;
-  } else {
-    loadGroupTeachers(selectedGroupForTeachers.value);
   }
 };
 
@@ -2553,6 +2047,12 @@ const openLessonDialog = () => {
   showLessonDialog.value = true;
 };
 
+const openLessonDialogForModule = (moduleId) => {
+  if (!moduleId) return;
+  selectedModuleId.value = moduleId;
+  openLessonDialog();
+};
+
 const openEnrollDialog = async () => {
   enrollForm.value = { groupId: null };
   bulkErrors.value = [];
@@ -2760,6 +2260,12 @@ const reorderLesson = async (lesson, direction) => {
   }
 };
 
+const reorderLessonForModule = async (moduleId, lesson, direction) => {
+  if (!moduleId || !lesson?.id) return;
+  selectedModuleId.value = moduleId;
+  await reorderLesson(lesson, direction);
+};
+
 const editLesson = (lesson) => {
   router.push({
     path: `/cms/lessons/${lesson.id}/edit`,
@@ -2787,10 +2293,92 @@ const filteredLessonsForModule = (moduleId) => {
   });
 };
 
+const ensureDataForCurrentTab = async () => {
+  if (!auth.isAuthenticated || auth.isLoggingOut || !course.value) {
+    return;
+  }
+
+  switch (currentTabKey.value) {
+    case 'summary':
+    case 'groups':
+    case 'announcements':
+    case 'posts':
+    case 'attendance':
+      await ensureGroupsReady(currentTabKey.value);
+      return;
+    case 'build':
+      if (!hasContentAccess.value || tabDataReady.value.build) {
+        return;
+      }
+      await loadModules();
+      tabDataReady.value = { ...tabDataReady.value, build: true };
+      return;
+    case 'instructors':
+      if (!canManageEnrollments.value || !hasContentAccess.value) {
+        return;
+      }
+      {
+        const previousGroupId = selectedGroupForTeachers.value;
+        await ensureGroupsReady('instructors');
+        ensureGroupTeacherSelection();
+        if (
+          selectedGroupForTeachers.value &&
+          (tabDataReady.value.instructors || selectedGroupForTeachers.value === previousGroupId)
+        ) {
+          await loadGroupTeachers(selectedGroupForTeachers.value);
+        }
+      }
+      tabDataReady.value = { ...tabDataReady.value, instructors: true };
+      return;
+    case 'enrollments':
+      if (!canManageEnrollments.value || tabDataReady.value.enrollments) {
+        return;
+      }
+      await loadEnrollmentData();
+      tabDataReady.value = { ...tabDataReady.value, enrollments: true };
+      return;
+    case 'live':
+      if (!isAdmin.value) {
+        return;
+      }
+      {
+        if (!tabDataReady.value.build && hasContentAccess.value) {
+          await loadModules();
+          tabDataReady.value = { ...tabDataReady.value, build: true };
+        }
+        const previousGroupId = liveSessionGroupId.value;
+        if (!tabDataReady.value.live) {
+          await ensureGroupsReady('live');
+        }
+        ensureLiveSessionGroupSelection();
+        if (
+          liveSessionGroupId.value &&
+          (tabDataReady.value.live || liveSessionGroupId.value === previousGroupId)
+        ) {
+          await loadLiveSessionData();
+        }
+      }
+      tabDataReady.value = { ...tabDataReady.value, live: true };
+      return;
+    case 'staff':
+      if (!isAdmin.value || tabDataReady.value.staff) {
+        return;
+      }
+      await loadStaffAssignments();
+      tabDataReady.value = { ...tabDataReady.value, staff: true };
+      return;
+    default:
+      return;
+  }
+};
+
 watch(
   () => route.params.id,
   (newId, oldId) => {
-    if (newId && newId !== oldId) loadData();
+    if (newId && newId !== oldId) {
+      resetTabDataState();
+      loadData();
+    }
   },
 );
 
@@ -2830,7 +2418,12 @@ watch(
 watch(
   selectedGroupForTeachers,
   (groupId, previous) => {
-    if (groupId && groupId !== previous && canManageEnrollments.value) {
+    if (
+      currentTabKey.value === 'instructors' &&
+      groupId &&
+      groupId !== previous &&
+      canManageEnrollments.value
+    ) {
       loadGroupTeachers(groupId);
     } else if (!groupId) {
       groupTeachers.value = [];
@@ -2847,10 +2440,19 @@ watch(
       groupTeachers.value = [];
       enrollmentPage.value = 0;
       enrollmentTotal.value = 0;
+      tabDataReady.value = {
+        ...tabDataReady.value,
+        attendance: false,
+        groups: false,
+        announcements: false,
+        posts: false,
+        instructors: false,
+        enrollments: false,
+        summary: false,
+      };
     } else {
       enrollmentPage.value = 0;
       ensureGroupTeacherSelection();
-      loadEnrollmentData();
     }
   },
   { immediate: false },
@@ -2887,7 +2489,7 @@ watch(
 watch(
   () => liveSessionGroupId.value,
   (groupId) => {
-    if (groupId) {
+    if (groupId && currentTabKey.value === 'live') {
       liveSessionRange.value = defaultLiveSessionRange();
       loadLiveSessionData();
     } else {
@@ -2901,36 +2503,130 @@ watch(
 watch(
   isAdmin,
   (value) => {
-    if (value) {
-      loadStaffAssignments();
-      ensureStaffCandidates();
-      ensureLiveSessionGroupSelection();
-      if (liveSessionGroupId.value) {
-        loadLiveSessionData();
-      }
-    } else {
+    if (!value) {
       staffAssignments.value = [];
+      staffCandidates.value = [];
       liveSessionGroupId.value = null;
       liveSessionSeries.value = [];
       liveSessionSessions.value = [];
       liveSessionTeachers.value = [];
       liveSessionError.value = false;
       liveSessionLoading.value = false;
+      tabDataReady.value = {
+        ...tabDataReady.value,
+        live: false,
+        staff: false,
+      };
     }
   },
   { immediate: true },
 );
 
 watch(
-  [enrollmentOnlyMode, hasContentAccess, canManageEnrollments, isAdmin],
+  currentTabKey,
   () => {
-    updateActiveTabBasedOnPermissions();
+    ensureDataForCurrentTab();
+  },
+  { immediate: false },
+);
+
+watch(
+  [enrollmentOnlyMode, hasContentAccess, canManageEnrollments, isAdmin, () => route.name],
+  () => {
+    syncCurrentTabRoute();
   },
   { immediate: true },
 );
 
-watch(tabs, () => {
-  ensureActiveTabInRange();
+provide(cmsCourseBuilderContextKey, {
+  courseId,
+  courseGroups,
+  loadingModules,
+  modules,
+  activeModuleTabs,
+  onModuleTabOpen,
+  selectModuleFromTab,
+  openModuleDialog,
+  toggleModulePublish,
+  deletingModuleId,
+  reorderModule,
+  lessonsByModuleId,
+  openLessonDialogForModule,
+  lessonFiltersByModuleId,
+  lessonStatusOptions,
+  lessonsLoadingByModuleId,
+  filteredLessonsForModule,
+  editLesson,
+  toggleLessonPublish,
+  deletingLessonId,
+  openDeleteModuleDialog,
+  openDeleteLessonDialogForModule,
+  reorderLessonForModule,
+  loadingGroups,
+  openGroupDialog,
+  openGroupTeacherDialog,
+  deletingGroupId,
+  openDeleteGroupDialog,
+  liveSessionGroupId,
+  liveSessionGroupOptions,
+  liveSessionLoading,
+  liveSessionError,
+  loadLiveSessionData,
+  liveSessionSeries,
+  liveSessionSeriesLoading,
+  liveSeriesPublishLoadingId,
+  liveSeriesGeneratingId,
+  liveSeriesRegeneratingId,
+  liveSeriesDeletingId,
+  openLiveSeriesCreate,
+  openLiveSeriesEdit,
+  handleLiveSeriesPublishToggle,
+  handleLiveSeriesGenerate,
+  openRegenerateSeriesDialog,
+  handleLiveSeriesDelete,
+  liveSessionSessions,
+  liveSessionSessionsLoading,
+  liveSessionClassTypes,
+  liveSessionTeachers,
+  liveSessionRange,
+  handleLiveSessionsRefresh,
+  openLiveSessionEdit,
+  handleLiveSessionsRangeChange,
+  selectedGroupForTeachers,
+  groupTeacherOptions,
+  loadingGroupTeachers,
+  groupTeachers,
+  removingGroupTeacherId,
+  removeGroupInstructor,
+  openEnrollDialog,
+  loadingEnrollments,
+  enrollmentFilter,
+  enrollmentGroupFilter,
+  enrollmentGroupOptions,
+  enrollmentTotal,
+  enrollments,
+  enrollmentRows,
+  enrollmentPage,
+  enrollmentRowsOptions,
+  onEnrollmentPage,
+  groupDropdownOptions,
+  updatingGroupId,
+  updateStudentGroup,
+  removingEnrollmentId,
+  removeEnrollmentRow,
+  staffForm,
+  staffCandidates,
+  loadingStaffCandidates,
+  ensureStaffCandidates,
+  handleStaffFilter,
+  staffRoleOptions,
+  assigningStaff,
+  submitStaffAssignment,
+  loadingStaff,
+  staffAssignments,
+  staffRoleLabels,
+  removingStaffRoleKey,
+  removeStaffRole,
 });
 
 onBeforeUnmount(() => {
@@ -2948,19 +2644,7 @@ const init = async () => {
     return;
   }
   await loadCourse();
-
-  if (enrollmentOnlyMode.value) {
-    await Promise.all([refreshGroupList(), loadEnrollmentData(), loadAvailableStudents()]);
-    return;
-  }
-
-  if (course.value) {
-    const tasks = [loadModules()];
-    if (canManageEnrollments.value) {
-      tasks.push(loadEnrollmentData(), loadAvailableStudents(), refreshGroupList());
-    }
-    await Promise.all(tasks);
-  }
+  await ensureDataForCurrentTab();
 };
 
 const loadData = init;
@@ -2971,6 +2655,38 @@ init();
 <style scoped>
 .course-header-card {
   margin-bottom: 1rem;
+}
+
+.course-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.course-tab-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  color: #475569;
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.course-tab-link:hover {
+  color: #0f172a;
+}
+
+.course-tab-link.is-active {
+  color: #0f172a;
+  border-bottom-color: #3b82f6;
+}
+
+.course-tab-panel {
+  min-height: 12rem;
 }
 
 .course-header {

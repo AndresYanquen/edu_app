@@ -28,13 +28,20 @@
                 <div class="session-subhead__inner">
                   <span>S{{ sessionIndex + 1 }}</span>
                   <small>{{ session.timeLabel }}</small>
+                  <em v-if="!session.isTaken" class="session-state-pill">Pend.</em>
                 </div>
               </th>
             </template>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="student in students" :key="student.userId" class="student-row">
+          <tr
+            v-for="student in students"
+            :key="student.userId"
+            class="student-row"
+            :class="{ 'is-focused': focusUserId && focusUserId === student.userId }"
+            :data-attendance-student-id="student.userId"
+          >
             <td class="student-col sticky-col">
               <div class="student-meta">
                 <span class="student-avatar">{{ initials(student.fullName) }}</span>
@@ -50,6 +57,7 @@
                 v-for="session in day.sessions"
                 :key="`${student.userId}-${session.sessionId}`"
                 class="session-cell"
+                :class="{ 'is-pending': !session.isTaken && !cellSelection(student, session) }"
               >
                 <div class="attendance-inline-options" role="radiogroup" aria-label="Estado de asistencia">
                   <label
@@ -58,7 +66,10 @@
                     class="attendance-inline-option"
                     :class="[
                       statusClass(opt.value),
-                      { 'is-selected': currentStatus(cellData(student, session).status) === opt.value, 'is-disabled': saving },
+                      {
+                        'is-selected': cellSelection(student, session) === opt.value,
+                        'is-disabled': saving,
+                      },
                     ]"
                   >
                     <input
@@ -66,13 +77,16 @@
                       class="attendance-inline-option__input"
                       :name="`att-${student.userId}-${session.sessionId}`"
                       :value="opt.value"
-                      :checked="currentStatus(cellData(student, session).status) === opt.value"
+                      :checked="cellSelection(student, session) === opt.value"
                       :disabled="saving"
                       @change="selectStatus(student, session, opt.value)"
                     />
                     <span class="attendance-inline-option__label">{{ opt.code }}</span>
                   </label>
                 </div>
+                <small v-if="!session.isTaken && !cellSelection(student, session)" class="pending-note">
+                  Pendiente
+                </small>
               </td>
             </template>
           </tr>
@@ -89,6 +103,7 @@ const props = defineProps({
   days: { type: Array, default: () => [] },
   students: { type: Array, default: () => [] },
   saving: { type: Boolean, default: false },
+  focusUserId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['save-cell']);
@@ -115,7 +130,13 @@ const cellData = (student, session) => {
   return bySession[session.sessionId] || { status: null, note: '' };
 };
 
-const currentStatus = (status) => status || 'present';
+const cellSelection = (student, session) => {
+  const current = cellData(student, session);
+  if (current.status) {
+    return current.status;
+  }
+  return session?.isTaken ? 'present' : null;
+};
 
 const statusClass = (status) => {
   switch (status) {
@@ -129,7 +150,7 @@ const statusClass = (status) => {
 
 const selectStatus = async (student, session, status) => {
   const current = cellData(student, session);
-  if (currentStatus(current.status) === status) {
+  if (cellSelection(student, session) === status) {
     return;
   }
   await emit('save-cell', {
@@ -186,8 +207,25 @@ const selectStatus = async (student, session, status) => {
 .session-subhead.empty { color: #94a3b8; }
 .session-subhead__inner { display: grid; gap: 0.1rem; }
 .session-subhead__inner small { color: #64748b; font-weight: 500; }
+.session-state-pill {
+  justify-self: center;
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 0.05rem 0.35rem;
+}
 .student-row:hover td { background: #fbfdff; }
 .student-row:hover .sticky-col { background: #fbfdff; }
+.student-row.is-focused td {
+  background: #eff6ff;
+}
+.student-row.is-focused .sticky-col {
+  background: #eff6ff;
+}
 .student-meta { display: flex; align-items: center; gap: 0.65rem; }
 .student-meta strong { display: block; }
 .student-meta small { color: #64748b; display: block; }
@@ -197,6 +235,9 @@ const selectStatus = async (student, session, status) => {
   background: #dbeafe; color: #1d4ed8; font-weight: 700;
 }
 .session-cell { text-align: center; }
+.session-cell.is-pending {
+  background: #fffdf7;
+}
 .session-cell.empty { color: #94a3b8; }
 .attendance-inline-options {
   display: grid;
@@ -238,5 +279,11 @@ const selectStatus = async (student, session, status) => {
 .attendance-inline-option:focus-within {
   outline: 2px solid rgba(59, 130, 246, 0.25);
   outline-offset: 1px;
+}
+.pending-note {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  color: #92400e;
 }
 </style>

@@ -16,6 +16,16 @@ const CourseLevelsView = () => import('../views/admin/CourseLevelsView.vue');
 const SettingsView = () => import('../views/admin/SettingsView.vue');
 const CmsCourses = () => import('../views/CmsCourses.vue');
 const CmsCourseBuilder = () => import('../views/CmsCourseBuilder.vue');
+const CmsCourseSummaryTab = () => import('../views/cms/courses/tabs/CmsCourseSummaryTab.vue');
+const CmsCourseBuildTab = () => import('../views/cms/courses/tabs/CmsCourseBuildTab.vue');
+const CmsCourseGroupsTab = () => import('../views/cms/courses/tabs/CmsCourseGroupsTab.vue');
+const CmsCourseAnnouncementsRouteTab = () => import('../views/cms/courses/tabs/CmsCourseAnnouncementsRouteTab.vue');
+const CmsCoursePostsRouteTab = () => import('../views/cms/courses/tabs/CmsCoursePostsRouteTab.vue');
+const CmsCourseLiveSessionsTab = () => import('../views/cms/courses/tabs/CmsCourseLiveSessionsTab.vue');
+const CmsCourseAttendanceRouteTab = () => import('../views/cms/courses/tabs/CmsCourseAttendanceRouteTab.vue');
+const CmsCourseInstructorsTab = () => import('../views/cms/courses/tabs/CmsCourseInstructorsTab.vue');
+const CmsCourseEnrollmentsTab = () => import('../views/cms/courses/tabs/CmsCourseEnrollmentsTab.vue');
+const CmsCourseStaffTab = () => import('../views/cms/courses/tabs/CmsCourseStaffTab.vue');
 const CmsLessonEditor = () => import('../views/CmsLessonEditor.vue');
 const ActivateAccount = () => import('../views/ActivateAccount.vue');
 const LandingPage = () => import('../views/LandingPage.vue');
@@ -103,6 +113,68 @@ const routes = [
     name: 'cms-course-builder',
     component: CmsCourseBuilder,
     meta: { requiresAuth: true, requiresStaff: true },
+    children: [
+      {
+        path: 'summary',
+        name: 'cms-course-summary',
+        component: CmsCourseSummaryTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'summary' },
+      },
+      {
+        path: 'build',
+        name: 'cms-course-build',
+        component: CmsCourseBuildTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'build' },
+      },
+      {
+        path: 'groups',
+        name: 'cms-course-groups',
+        component: CmsCourseGroupsTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'groups' },
+      },
+      {
+        path: 'announcements',
+        name: 'cms-course-announcements',
+        component: CmsCourseAnnouncementsRouteTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'announcements' },
+      },
+      {
+        path: 'posts',
+        name: 'cms-course-posts',
+        component: CmsCoursePostsRouteTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'posts' },
+      },
+      {
+        path: 'live-sessions',
+        name: 'cms-course-live-sessions',
+        component: CmsCourseLiveSessionsTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'live' },
+      },
+      {
+        path: 'attendance',
+        name: 'cms-course-attendance',
+        component: CmsCourseAttendanceRouteTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'attendance' },
+      },
+      {
+        path: 'instructors',
+        name: 'cms-course-instructors',
+        component: CmsCourseInstructorsTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'instructors' },
+      },
+      {
+        path: 'enrollments',
+        name: 'cms-course-enrollments',
+        component: CmsCourseEnrollmentsTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'enrollments' },
+      },
+      {
+        path: 'staff',
+        name: 'cms-course-staff',
+        component: CmsCourseStaffTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'staff' },
+      },
+    ],
   },
   {
     path: '/cms/lessons/:id/edit',

@@ -1,5 +1,10 @@
 <template>
   <div class="page">
+    <section class="student-hero">
+      <h1>{{ greetingTitle }}</h1>
+      <p>{{ greetingSubtitle }}</p>
+    </section>
+
     <Card>
       <template #title>{{ t('student.title') }}</template>
       <template #content>
@@ -54,11 +59,12 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
 import api from '../api/axios';
+import { useAuthStore } from '../stores/auth';
 
 const courses = ref([]);
 const loading = ref(true);
@@ -66,6 +72,18 @@ const error = ref(false);
 const router = useRouter();
 const toast = useToast();
 const { t } = useI18n();
+const auth = useAuthStore();
+
+const firstName = computed(() => {
+  const rawName = String(auth.user?.fullName || auth.user?.full_name || '').trim();
+  if (!rawName) {
+    return 'there';
+  }
+  return rawName.split(/\s+/)[0];
+});
+
+const greetingTitle = computed(() => `Good morning, ${firstName.value} 👋`);
+const greetingSubtitle = 'Welcome back. Pick up your priority learning for today.';
 
 const statusSeverity = (status) => {
   if (!status) return 'info';
@@ -114,6 +132,25 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.student-hero {
+  margin-bottom: 1.25rem;
+}
+
+.student-hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.student-hero p {
+  margin: 0.55rem 0 0;
+  font-size: 1.1rem;
+  color: #334155;
+}
+
 .empty-card {
   text-align: center;
 }

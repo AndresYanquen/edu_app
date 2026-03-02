@@ -1,14 +1,19 @@
 <template>
   <div class="cms-course-attendance-tab">
     <AttendanceWeekHeader
+      :week-start="weekStart"
       :week-label="weekLabel"
       :week-sub-label="weekSubLabel"
+      :week-progress-label="weekProgressLabel"
       :stats="computedStats"
       :group-options="groupOptions"
       :selected-group-id="selectedGroupId"
       @prev-week="goPreviousWeek"
       @next-week="goNextWeek"
       @current-week="goCurrentWeek"
+      @prev-month="goPreviousMonth"
+      @next-month="goNextMonth"
+      @jump-week="handleJumpWeek"
       @update:groupId="handleGroupChange"
       @export="handleExport"
     />
@@ -35,6 +40,7 @@
           :days="displayDays"
           :students="students"
           :saving="saving"
+          :focus-user-id="focusedUserId"
           @save-cell="handleSaveCell"
         />
       </template>
@@ -43,7 +49,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import AttendanceWeekHeader from './components/AttendanceWeekHeader.vue';
@@ -71,6 +77,7 @@ const selectedGroupId = ref(null);
 const weekStart = ref('');
 const weekData = ref(null);
 const localError = ref('');
+const focusedUserId = ref('');
 
 const loading = computed(() => attendanceStore.loadingWeek);
 const saving = computed(() => attendanceStore.savingCell);
@@ -108,6 +115,25 @@ const shiftWeek = (iso, days) => {
   return isoDate(base);
 };
 
+const shiftMonth = (iso, months) => {
+  const base = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(base.getTime())) {
+    return isoDate(mondayOf(new Date()));
+  }
+  base.setMonth(base.getMonth() + months);
+  return isoDate(mondayOf(base));
+};
+
+const getIsoWeekNumber = (iso) => {
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  return Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+};
+
 const formatWeekLabel = (iso) => {
   if (!iso) return 'Semana';
   const start = new Date(`${iso}T00:00:00`);
@@ -125,10 +151,42 @@ const weekSubLabel = computed(() => {
   return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
 });
 
+const selectedGroup = computed(() => {
+  const groups = Array.isArray(props.groups) ? props.groups : [];
+  if (!groups.length) return null;
+  if (selectedGroupId.value) {
+    return groups.find((group) => group.id === selectedGroupId.value) || null;
+  }
+  return groups[0] || null;
+});
+
+const weekProgressLabel = computed(() => {
+  if (!weekStart.value) return '';
+  const group = selectedGroup.value;
+  const currentWeekDate = mondayOf(new Date(`${weekStart.value}T00:00:00`));
+  const startRaw = group?.startDate || group?.start_date || null;
+  const endRaw = group?.endDate || group?.end_date || null;
+  if (startRaw && endRaw) {
+    const start = mondayOf(new Date(`${startRaw}T00:00:00`));
+    const end = mondayOf(new Date(`${endRaw}T00:00:00`));
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
+      const totalWeeks = Math.max(1, Math.floor((end - start) / (7 * 24 * 60 * 60 * 1000)) + 1);
+      const relativeWeek = Math.floor((currentWeekDate - start) / (7 * 24 * 60 * 60 * 1000)) + 1;
+      const currentWeek = Math.min(totalWeeks, Math.max(1, relativeWeek));
+      return `Semana ${currentWeek} de ${totalWeeks}`;
+    }
+  }
+  const weekNumber = getIsoWeekNumber(weekStart.value);
+  return weekNumber ? `Semana ${weekNumber}` : '';
+});
+
 const normalizeSession = (session, sessionIndex = 0) => ({
   sessionId: session.sessionId || session.id || session.session_id,
   startsAt: session.startsAt || session.starts_at || null,
   title: session.title || `Sesión ${sessionIndex + 1}`,
+  isTaken: Boolean(session.isTaken ?? session.is_taken),
+  attendanceTakenAt: session.attendanceTakenAt || session.attendance_taken_at || null,
+  attendanceTakenBy: session.attendanceTakenBy || session.attendance_taken_by || null,
   timeLabel: (() => {
     const value = session.startsAt || session.starts_at;
     if (!value) return '';
@@ -210,6 +268,7 @@ const computedStats = computed(() => {
 
 const loadWeek = async () => {
   if (!resolvedCourseId.value || !weekStart.value) return;
+  if (Array.isArray(props.groups) && props.groups.length > 0 && !selectedGroupId.value) return;
   localError.value = '';
   try {
     const payload = await attendanceStore.fetchCourseWeekAttendance(
@@ -218,15 +277,36 @@ const loadWeek = async () => {
       weekStart.value,
     );
     weekData.value = payload || null;
+    await nextTick();
+    focusStudentRow();
   } catch (err) {
     localError.value = err?.response?.data?.error || 'No se pudo cargar la asistencia semanal';
   }
+};
+
+const focusStudentRow = () => {
+  if (!focusedUserId.value) return;
+  const escapedId =
+    typeof globalThis.CSS !== 'undefined' && typeof globalThis.CSS.escape === 'function'
+      ? globalThis.CSS.escape(focusedUserId.value)
+      : focusedUserId.value;
+  const target = document.querySelector(`[data-attendance-student-id="${escapedId}"]`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 };
 
 const updateLocalCell = ({ sessionId, userId, status, note }) => {
   const source = weekData.value || {};
   const next = {
     ...source,
+    days: Array.isArray(source.days)
+      ? source.days.map((day) => ({
+          ...day,
+          sessions: Array.isArray(day.sessions)
+            ? day.sessions.map((session) => ({ ...session }))
+            : [],
+        }))
+      : [],
     students: Array.isArray(source.students)
       ? source.students.map((student) => ({
           ...student,
@@ -235,10 +315,27 @@ const updateLocalCell = ({ sessionId, userId, status, note }) => {
         }))
       : [],
   };
+  if (Array.isArray(next.days)) {
+    next.days.forEach((day) => {
+      day.sessions = (day.sessions || []).map((session) =>
+        (session.sessionId || session.id || session.session_id) === sessionId
+          ? {
+              ...session,
+              isTaken: true,
+              attendanceTakenAt: new Date().toISOString(),
+            }
+          : session,
+      );
+    });
+  }
   const row = next.students.find((student) => (student.userId || student.user_id) === userId);
   if (!row) return;
   const target = row.bySession || row.by_session || {};
-  target[sessionId] = { ...(target[sessionId] || {}), status, note: note || '' };
+  if (status === 'present') {
+    delete target[sessionId];
+  } else {
+    target[sessionId] = { ...(target[sessionId] || {}), status, note: note || '' };
+  }
   if (row.bySession) {
     row.bySession = target;
   } else {
@@ -280,6 +377,22 @@ const goCurrentWeek = async () => {
   weekStart.value = isoDate(mondayOf(new Date()));
   await loadWeek();
 };
+const goPreviousMonth = async () => {
+  weekStart.value = shiftMonth(weekStart.value, -1);
+  await loadWeek();
+};
+const goNextMonth = async () => {
+  weekStart.value = shiftMonth(weekStart.value, 1);
+  await loadWeek();
+};
+
+const handleJumpWeek = async (value) => {
+  if (!value) return;
+  const nextWeek = isoDate(mondayOf(value));
+  if (!nextWeek) return;
+  weekStart.value = nextWeek;
+  await loadWeek();
+};
 
 const handleGroupChange = async (groupId) => {
   selectedGroupId.value = groupId || null;
@@ -297,6 +410,17 @@ watch(
       selectedGroupId.value = null;
       return;
     }
+    const requestedGroupId =
+      typeof route.query.groupId === 'string' && groups.some((group) => group.id === route.query.groupId)
+        ? route.query.groupId
+        : null;
+    if (requestedGroupId) {
+      selectedGroupId.value = requestedGroupId;
+      if (weekStart.value) {
+        loadWeek();
+      }
+      return;
+    }
     if (selectedGroupId.value && groups.some((group) => group.id === selectedGroupId.value)) {
       return;
     }
@@ -308,9 +432,26 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => route.query.focusUser,
+  (value) => {
+    focusedUserId.value = typeof value === 'string' ? value : '';
+    if (focusedUserId.value) {
+      nextTick(() => {
+        focusStudentRow();
+      });
+    }
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
-  weekStart.value = isoDate(mondayOf(new Date()));
-  await loadWeek();
+  const queryWeekStart = typeof route.query.weekStart === 'string' ? route.query.weekStart : '';
+  const initialWeek = queryWeekStart ? isoDate(mondayOf(queryWeekStart)) : '';
+  weekStart.value = initialWeek || isoDate(mondayOf(new Date()));
+  if (selectedGroupId.value) {
+    await loadWeek();
+  }
 });
 </script>
 
