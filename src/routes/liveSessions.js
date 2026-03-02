@@ -42,6 +42,7 @@ router.get(
 
 const INSTRUCTOR_ROLE = ['instructor'];
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const LIVE_ATTENDANCE_ALLOWED_STATUS = new Set(['present', 'absent', 'late', 'excused']);
 
 const mapSeriesRow = (row) => ({
   id: row.id,
@@ -228,6 +229,189 @@ const ensureSessionAccess = async (req, res, sessionId) => {
   }
   return { session, group };
 };
+
+const ensureAttendanceAccess = async (req, res, sessionId) => {
+  const session = await loadSessionById(sessionId);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return null;
+  }
+  const group = await loadGroup(session.group_id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return null;
+  }
+
+  if (hasGlobalRole(req.user, 'admin')) {
+    return { session, group, isAdmin: true };
+  }
+
+  if (session.host_teacher_id === req.user.id) {
+    return { session, group, isAdmin: false };
+  }
+
+  const teacher = await isGroupTeacher(req.user.id, group.id);
+  if (!teacher) {
+    res.status(403).json({ error: 'You are not allowed to manage attendance for this session' });
+    return null;
+  }
+
+  return { session, group, isAdmin: false };
+};
+
+router.get('/live-sessions/:id/attendance', async (req, res) => {
+  try {
+    const parsed = uuidSchema.safeParse(req.params.id);
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    const lookup = await ensureAttendanceAccess(req, res, parsed.data);
+    if (!lookup) {
+      return;
+    }
+
+    const { session, group } = lookup;
+    const { rows } = await pool.query(
+      `
+        SELECT
+          gs.user_id,
+          u.full_name,
+          u.email,
+          lsa.status AS attendance_status,
+          lsa.note AS attendance_note,
+          lsa.marked_at AS attendance_marked_at
+        FROM group_students gs
+        JOIN users u ON u.id = gs.user_id
+        LEFT JOIN live_session_attendance lsa
+          ON lsa.live_session_id = $1
+         AND lsa.user_id = gs.user_id
+        WHERE gs.group_id = $2
+          AND gs.status = 'active'
+        ORDER BY u.full_name ASC
+      `,
+      [session.id, group.id],
+    );
+
+    return res.json({
+      sessionId: session.id,
+      groupId: group.id,
+      students: rows.map((row) => ({
+        userId: row.user_id,
+        fullName: row.full_name,
+        email: row.email,
+        status: row.attendance_status || null,
+        note: row.attendance_note || null,
+        markedAt: row.attendance_marked_at ? row.attendance_marked_at.toISOString() : null,
+      })),
+    });
+  } catch (err) {
+    console.error('Failed to load live session attendance', err);
+    return res.status(500).json({ error: 'Failed to load live session attendance' });
+  }
+});
+
+router.put('/live-sessions/:id/attendance', async (req, res) => {
+  try {
+    const parsed = uuidSchema.safeParse(req.params.id);
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    const lookup = await ensureAttendanceAccess(req, res, parsed.data);
+    if (!lookup) {
+      return;
+    }
+
+    const { session, group } = lookup;
+    const items = Array.isArray(req.body?.items) ? req.body.items : null;
+    if (!items) {
+      return res.status(400).json({ error: 'items must be an array' });
+    }
+    if (!items.length) {
+      return res.json({ updated: 0 });
+    }
+
+    const normalized = [];
+    const seenUsers = new Set();
+    for (const item of items) {
+      const parsedUserId = uuidSchema.safeParse(item?.userId);
+      if (!parsedUserId.success) {
+        return res.status(400).json({ error: 'Each attendance item must include a valid userId' });
+      }
+      const status = String(item?.status || '').trim().toLowerCase();
+      if (!LIVE_ATTENDANCE_ALLOWED_STATUS.has(status)) {
+        return res.status(400).json({ error: `Invalid attendance status for user ${parsedUserId.data}` });
+      }
+      if (seenUsers.has(parsedUserId.data)) {
+        continue;
+      }
+      seenUsers.add(parsedUserId.data);
+      normalized.push({
+        userId: parsedUserId.data,
+        status,
+        note:
+          item?.note === undefined || item?.note === null
+            ? null
+            : String(item.note).trim().slice(0, 1000) || null,
+      });
+    }
+
+    const rosterRes = await pool.query(
+      `
+        SELECT user_id
+        FROM group_students
+        WHERE group_id = $1
+          AND status = 'active'
+      `,
+      [group.id],
+    );
+    const allowedUsers = new Set(rosterRes.rows.map((row) => row.user_id));
+    const invalidUser = normalized.find((item) => !allowedUsers.has(item.userId));
+    if (invalidUser) {
+      return res.status(400).json({ error: 'One or more users do not belong to the active group roster' });
+    }
+
+    const values = [];
+    const placeholders = [];
+    normalized.forEach((item, index) => {
+      const base = index * 5;
+      placeholders.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, now(), now(), now())`,
+      );
+      values.push(session.id, item.userId, item.status, item.note, req.user.id);
+    });
+
+    const result = await pool.query(
+      `
+        INSERT INTO live_session_attendance (
+          live_session_id,
+          user_id,
+          status,
+          note,
+          marked_by,
+          marked_at,
+          created_at,
+          updated_at
+        )
+        VALUES ${placeholders.join(', ')}
+        ON CONFLICT (live_session_id, user_id)
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          note = EXCLUDED.note,
+          marked_by = EXCLUDED.marked_by,
+          marked_at = now(),
+          updated_at = now()
+      `,
+      values,
+    );
+
+    return res.json({ updated: result.rowCount || normalized.length });
+  } catch (err) {
+    console.error('Failed to save live session attendance', err);
+    return res.status(500).json({ error: 'Failed to save live session attendance' });
+  }
+});
 
 // Creates a live session series for a group
 router.post('/groups/:groupId/live-series', async (req, res) => {

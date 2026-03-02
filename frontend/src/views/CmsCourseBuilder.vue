@@ -380,6 +380,10 @@
           </Card>
         </TabPanel>
 
+        <TabPanel header="Asistencia" v-if="canManageEnrollments">
+          <CmsCourseAttendanceTab :course-id="courseId" :groups="courseGroups" />
+        </TabPanel>
+
         <TabPanel header="Instructors" v-if="canManageEnrollments && hasContentAccess">
           <Card class="group-teachers-card">
             <template #title>
@@ -859,6 +863,7 @@ import SessionEditDialog from '../components/live/SessionEditDialog.vue';
 import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
 import CmsCourseAnnouncementsTab from '../components/cms/announcements/CmsCourseAnnouncementsTab.vue';
 import CmsCoursePostsTab from '../components/cms/posts/CmsCoursePostsTab.vue';
+import CmsCourseAttendanceTab from './cms/courses/attendance/CmsCourseAttendanceTab.vue';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 import Accordion from 'primevue/accordion';
@@ -951,6 +956,9 @@ const tabs = computed(() => {
   }
   if (isAdmin.value) {
     list.push({ key: 'live', label: 'Live sessions' });
+  }
+  if (canManageEnrollments.value) {
+    list.push({ key: 'attendance', label: 'Asistencia' });
   }
   if (canManageEnrollments.value && hasContentAccess.value) {
     list.push({ key: 'instructors', label: 'Instructors' });

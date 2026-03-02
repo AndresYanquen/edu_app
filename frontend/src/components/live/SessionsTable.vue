@@ -116,29 +116,50 @@
       </Column>
     <Column :header="t('liveSessions.sessionColumns.actions')" style="width: 15rem">
       <template #body="{ data }">
-        <Button
-          v-if="data.joinUrl"
-          :label="t('liveSessions.actions.join')"
-          class="p-button-text"
-          icon="pi pi-external-link"
-          @click="openJoinLink(data.joinUrl)"
-        />
-        <span v-else class="muted">—</span>
-        <Button
-          icon="pi pi-pencil"
-          class="p-button-text"
-          :label="t('common.edit')"
-          @click="emit('edit', data)"
-        />
+        <div class="session-actions-cell">
+          <Button
+            v-if="data.joinUrl"
+            :label="t('liveSessions.actions.join')"
+            class="p-button-text"
+            icon="pi pi-external-link"
+            @click="openJoinLink(data.joinUrl)"
+          />
+          <span v-else class="muted">—</span>
+          <Button
+            icon="pi pi-users"
+            class="p-button-text"
+            label="Asistencia"
+            @click="openAttendance(data)"
+          />
+          <small v-if="attendanceSummaryText(data.id)" class="muted attendance-mini-summary">
+            {{ attendanceSummaryText(data.id) }}
+          </small>
+          <Button
+            icon="pi pi-pencil"
+            class="p-button-text"
+            :label="t('common.edit')"
+            @click="emit('edit', data)"
+          />
+        </div>
       </template>
     </Column>
   </DataTable>
+
+  <SessionAttendanceDialog
+    v-model:visible="attendanceDialogVisible"
+    :session-id="selectedAttendanceSession?.id || ''"
+    :session-title="selectedAttendanceSession?.title || ''"
+    :session-starts-at="selectedAttendanceSession?.startsAt || ''"
+    @loaded="handleAttendanceSummary"
+    @saved="handleAttendanceSummary"
+  />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import SessionAttendanceDialog from './SessionAttendanceDialog.vue';
 
 const props = defineProps({
   sessions: {
@@ -175,6 +196,9 @@ const selectedRange = ref({ from: null, to: null });
 const filterClassType = ref(null);
 const filterModule = ref(null);
 const filterTeacher = ref(null);
+const attendanceDialogVisible = ref(false);
+const selectedAttendanceSession = ref(null);
+const attendanceSummaryBySession = ref({});
 
 // watch(
 //   () => props.range,
@@ -334,6 +358,28 @@ const openJoinLink = (url) => {
   window.open(url, '_blank', 'noopener');
 };
 
+const openAttendance = (session) => {
+  selectedAttendanceSession.value = session || null;
+  attendanceDialogVisible.value = true;
+};
+
+const handleAttendanceSummary = (summary) => {
+  if (!summary?.sessionId) return;
+  attendanceSummaryBySession.value = {
+    ...attendanceSummaryBySession.value,
+    [summary.sessionId]: {
+      presentCount: Number(summary.presentCount || 0),
+      totalCount: Number(summary.totalCount || 0),
+    },
+  };
+};
+
+const attendanceSummaryText = (sessionId) => {
+  const summary = attendanceSummaryBySession.value?.[sessionId];
+  if (!summary || !summary.totalCount) return '';
+  return `${summary.presentCount}/${summary.totalCount} presentes`;
+};
+
 </script>
 
 <style scoped>
@@ -380,5 +426,16 @@ const openJoinLink = (url) => {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+
+.session-actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+}
+
+.attendance-mini-summary {
+  width: 100%;
 }
 </style>

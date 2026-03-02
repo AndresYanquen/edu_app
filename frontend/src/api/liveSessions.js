@@ -21,6 +21,10 @@ export const regenerateSeries = (seriesId, payload = {}) =>
   unwrap(api.post(`/live-series/${seriesId}/regenerate`, payload));
 export const updateSession = (sessionId, payload = {}) =>
   unwrap(api.patch(`/live-sessions/${sessionId}`, payload));
+export const getSessionAttendance = (sessionId) =>
+  unwrap(api.get(`/live-sessions/${sessionId}/attendance`));
+export const saveSessionAttendance = (sessionId, payload = {}) =>
+  unwrap(api.put(`/live-sessions/${sessionId}/attendance`, payload));
 export const deleteSeries = (seriesId) =>
   unwrap(api.delete(`/live-series/${seriesId}`));
 export const listGroupSessions = (groupId, params = {}) =>
@@ -40,6 +44,8 @@ export default {
   generateSeries,
   regenerateSeries,
   updateSession,
+  getSessionAttendance,
+  saveSessionAttendance,
   deleteSeries,
   listGroupSessions,
   listMyLiveSessions,
