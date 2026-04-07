@@ -24,89 +24,125 @@
         />
       </template>
     </Dialog>
-    <Card>
+
+    <Card class="courses-card">
       <template #title>
         <div class="cms-header">
-          <div>
-            <h2>{{ t('cmsCourses.title') }}</h2>
-            <small>{{ t('cmsCourses.subtitle') }}</small>
+          <div class="cms-title-block">
+            <div class="cms-title-row">
+              <div class="cms-title-icon">
+                <i class="pi pi-book"></i>
+              </div>
+              <div class="cms-title-text">
+                <h2>{{ t('cmsCourses.title') }}</h2>
+                <small>{{ t('cmsCourses.subtitle') }}</small>
+              </div>
+            </div>
           </div>
+
           <div class="cms-actions">
-            <span class="p-input-icon-left">
+            <span class="p-input-icon-left search-box">
               <i class="pi pi-search" />
-              <InputText v-model="filter" :placeholder="t('cmsCourses.searchPlaceholder')" />
+              <InputText
+                v-model="filter"
+                :placeholder="t('cmsCourses.searchPlaceholder')"
+              />
             </span>
-            <Button :label="t('cmsCourses.createCourse')" icon="pi pi-plus" @click="openCreateDialog" />
+
+            <Button
+              :label="t('cmsCourses.createCourse')"
+              icon="pi pi-plus"
+              class="create-course-btn"
+              @click="openCreateDialog"
+            />
           </div>
         </div>
       </template>
+
       <template #content>
-        <div v-if="loading">
-          <Skeleton height="3rem" class="mb-2" />
-          <Skeleton height="3rem" class="mb-2" />
-          <Skeleton height="3rem" class="mb-2" />
+        <div v-if="loading" class="loading-state">
+          <Skeleton height="3rem" class="mb-2" borderRadius="14px" />
+          <Skeleton height="3rem" class="mb-2" borderRadius="14px" />
+          <Skeleton height="3rem" class="mb-2" borderRadius="14px" />
         </div>
+
         <div v-else>
-          <DataTable :value="filteredCourses" responsiveLayout="scroll">
-            <Column field="title" :header="t('cmsCourses.table.title')" />
-            <Column :header="t('cmsCourses.table.status')">
-              <template #body="{ data }">
-                <Tag
-                  :value="
-                    data.is_published
-                      ? t('cmsCourses.statusLabel.published')
-                      : t('cmsCourses.statusLabel.draft')
-                  "
-                  :severity="data.is_published ? 'success' : 'warning'"
-                />
-              </template>
-            </Column>
-            <Column :header="t('cmsCourses.table.updated')">
-              <template #body="{ data }">
-                {{ formatDate(data.updated_at || data.created_at) }}
-              </template>
-            </Column>
-            <Column :header="t('cmsCourses.table.actions')">
-              <template #body="{ data }">
-                <div class="table-actions">
-                  <Button
-                    :label="t('cmsCourses.table.manage')"
-                    icon="pi pi-folder"
-                    class="p-button-text"
-                    @click="goToBuilder(data.id)"
-                  />
-                  <Button
-                    :label="t('cmsCourses.table.edit')"
-                    icon="pi pi-pencil"
-                    class="p-button-text"
-                    @click="openEditDialog(data)"
-                  />
-                  <Button
-                    :label="
-                      data.is_published
-                        ? t('cmsCourses.table.unpublish')
-                        : t('cmsCourses.table.publish')
-                    "
-                    :icon="data.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                    class="p-button-text"
-                    @click="togglePublish(data)"
-                  />
-                  <Button
-                    icon="pi pi-trash"
-                    severity="danger"
-                    size="small"
-                    class="p-button-text"
-                    :loading="deletingCourseId === data.id"
-                    :disabled="deletingCourseId === data.id || isEnrollmentManager"
-                    @click.stop="openDeleteCourseDialog(data)"
-                    aria-label="Delete course"
-                  />
-                </div>
-              </template>
-            </Column>
-          </DataTable>
+          <div class="table-shell">
+            <DataTable
+              :value="filteredCourses"
+              responsiveLayout="scroll"
+              class="courses-table"
+            >
+              <Column field="title" :header="t('cmsCourses.table.title')">
+                <template #body="{ data }">
+                  <div class="course-title-cell">
+                    <div class="course-avatar">
+                      <i class="pi pi-bookmark"></i>
+                    </div>
+                    <div class="course-title-content">
+                      <span class="course-main-title">{{ data.title }}</span>
+                      <small class="course-subtext">
+                        {{ data.description || 'Sin descripción disponible' }}
+                      </small>
+                    </div>
+                  </div>
+                </template>
+              </Column>
+
+              <Column :header="t('cmsCourses.table.status')">
+                <template #body="{ data }">
+                  <div class="mobile-field mobile-status">
+                    <span class="mobile-label">Estado</span>
+                    <Tag
+                      :value="
+                        data.is_published
+                          ? t('cmsCourses.statusLabel.published')
+                          : t('cmsCourses.statusLabel.draft')
+                      "
+                      :severity="data.is_published ? 'success' : 'warning'"
+                      rounded
+                      class="status-tag"
+                    />
+                  </div>
+                </template>
+              </Column>
+
+              <Column :header="t('cmsCourses.table.updated')">
+                <template #body="{ data }">
+                  <div class="updated-cell">
+                    <span class="mobile-label">Actualizado</span>
+                    <div class="updated-inline">
+                      <i class="pi pi-clock"></i>
+                      <span>{{ formatDate(data.updated_at || data.created_at) }}</span>
+                    </div>
+                  </div>
+                </template>
+              </Column>
+
+              <Column :header="t('cmsCourses.table.actions')">
+                <template #body="{ data }">
+                  <div class="row-menu-cell">
+                    <Button
+                      icon="pi pi-ellipsis-v"
+                      class="p-button-text row-menu-trigger"
+                      @click="toggleRowMenu($event, data)"
+                      aria-label="More actions"
+                    />
+                  </div>
+                </template>
+              </Column>
+            </DataTable>
+
+            <Menu ref="rowMenu" :model="rowMenuItems" popup />
+          </div>
+
           <div v-if="!filteredCourses.length" class="empty-state">
-            {{ t('cmsCourses.table.empty') }}
+            <div class="empty-state-icon">
+              <i class="pi pi-inbox"></i>
+            </div>
+            <div class="empty-state-text">
+              {{ t('cmsCourses.table.empty') }}
+            </div>
           </div>
         </div>
       </template>
@@ -117,20 +153,26 @@
       :header="dialogTitle"
       modal
       :style="{ width: '30rem' }"
+      class="course-dialog"
     >
       <div class="dialog-field">
         <label>{{ t('cmsCourses.dialog.titleLabel') }}</label>
-        <InputText v-model="courseForm.title" :placeholder="t('cmsCourses.dialog.titlePlaceholder')" />
+        <InputText
+          v-model="courseForm.title"
+          :placeholder="t('cmsCourses.dialog.titlePlaceholder')"
+        />
       </div>
+
       <div class="dialog-field">
         <label>{{ t('cmsCourses.dialog.descriptionLabel') }}</label>
         <textarea
           v-model="courseForm.description"
           rows="4"
-          class="p-inputtextarea p-inputtext"
+          class="p-inputtextarea p-inputtext custom-textarea"
           :placeholder="t('cmsCourses.dialog.descriptionPlaceholder')"
         ></textarea>
       </div>
+
       <div class="dialog-field">
         <label>{{ t('cmsCourses.dialog.levelLabel') }}</label>
         <Dropdown
@@ -142,11 +184,17 @@
           :placeholder="t('cmsCourses.dialog.levelPlaceholder')"
         />
       </div>
+
       <template #footer>
-        <Button :label="t('cmsCourses.dialog.cancel')" class="p-button-text" @click="showCourseDialog = false" />
+        <Button
+          :label="t('cmsCourses.dialog.cancel')"
+          class="p-button-text"
+          @click="showCourseDialog = false"
+        />
         <Button
           :label="dialogMode === 'create' ? t('cmsCourses.dialog.create') : t('cmsCourses.dialog.save')"
           :loading="savingCourse"
+          class="create-course-btn"
           @click="submitCourse"
         />
       </template>
@@ -159,6 +207,7 @@ import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
+import Menu from 'primevue/menu';
 import {
   listCourses,
   createCourse,
@@ -191,6 +240,10 @@ const deletingCourseId = ref(null);
 const confirmDeleteDialogVisible = ref(false);
 const confirmDeleteDialogLoading = ref(false);
 const confirmDeleteCourse = ref(null);
+
+const rowMenu = ref();
+const selectedCourse = ref(null);
+
 const dialogTitle = computed(() =>
   dialogMode.value === 'create'
     ? t('cmsCourses.dialog.createHeader')
@@ -198,6 +251,46 @@ const dialogTitle = computed(() =>
 );
 
 const isEnrollmentManager = computed(() => auth.hasRole('enrollment_manager'));
+
+const rowMenuItems = computed(() => {
+  if (!selectedCourse.value) return [];
+
+  const course = selectedCourse.value;
+
+  return [
+    {
+      label: t('cmsCourses.table.manage'),
+      icon: 'pi pi-folder',
+      command: () => goToBuilder(course.id),
+    },
+    {
+      label: t('cmsCourses.table.edit'),
+      icon: 'pi pi-pencil',
+      command: () => openEditDialog(course),
+    },
+    {
+      label: course.is_published
+        ? t('cmsCourses.table.unpublish')
+        : t('cmsCourses.table.publish'),
+      icon: course.is_published ? 'pi pi-eye-slash' : 'pi pi-eye',
+      command: () => togglePublish(course),
+    },
+    {
+      separator: true,
+    },
+    {
+      label: t('common.delete'),
+      icon: 'pi pi-trash',
+      command: () => openDeleteCourseDialog(course),
+      disabled: isEnrollmentManager.value,
+    },
+  ];
+});
+
+const toggleRowMenu = (event, course) => {
+  selectedCourse.value = course;
+  rowMenu.value.toggle(event);
+};
 
 const loadCourses = async () => {
   loading.value = true;
@@ -222,6 +315,7 @@ const courseLevelOptions = computed(() =>
     value: level.code,
   })),
 );
+
 const getDefaultLevelCode = () => courseLevelOptions.value[0]?.value || '';
 
 const loadCourseLevels = async () => {
@@ -268,7 +362,11 @@ const confirmDeleteDialogMessage = computed(() => {
 const openCreateDialog = () => {
   dialogMode.value = 'create';
   editingId.value = null;
-  courseForm.value = { title: '', description: '', level: getDefaultLevelCode() };
+  courseForm.value = {
+    title: '',
+    description: '',
+    level: getDefaultLevelCode(),
+  };
   showCourseDialog.value = true;
 };
 
@@ -317,6 +415,7 @@ const submitCourse = async () => {
         life: 2000,
       });
     }
+
     showCourseDialog.value = false;
     await loadCourses();
   } catch (err) {
@@ -376,8 +475,10 @@ const confirmCourseDeletion = async () => {
     closeDeleteDialog();
     return;
   }
+
   confirmDeleteDialogLoading.value = true;
   deletingCourseId.value = course.id;
+
   try {
     await deleteCourse(course.id);
     toast.add({
@@ -415,37 +516,537 @@ loadCourses();
 </script>
 
 <style scoped>
+.cms-page {
+  padding: 0.25rem;
+}
+
+.courses-card {
+  border-radius: 22px;
+  border: 1px solid #e8edf5;
+  box-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.05),
+    0 2px 10px rgba(15, 23, 42, 0.03);
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+}
+
 .cms-header {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
   align-items: center;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.cms-title-block {
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+
+.cms-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.cms-title-text {
+  min-width: 0;
+}
+
+.cms-title-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+  color: #1d4ed8;
+  font-size: 1.25rem;
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.12);
+  flex-shrink: 0;
+}
+
+.cms-title-row h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.cms-title-row small {
+  display: block;
+  margin-top: 0.28rem;
+  color: #64748b;
+  font-size: 0.92rem;
+  line-height: 1.35;
 }
 
 .cms-actions {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+
+.search-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 320px;
+  min-width: 320px;
+}
+
+.search-box > i {
+  position: absolute;
+  left: 0.95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  font-size: 0.95rem;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.search-box :deep(.p-inputtext) {
+  width: 100%;
+  min-width: 100%;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid #dbe3ef;
+  background: #f8fafc;
+  box-shadow: none;
+  transition: all 0.2s ease;
+  padding-left: 2.6rem;
+}
+
+.search-box :deep(.p-inputtext:focus) {
+  background: #ffffff;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+.create-course-btn {
+  height: 44px;
+  border: none;
+  border-radius: 14px;
+  padding: 0 1.15rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #0f3d79 0%, #1457a8 100%);
+  box-shadow: 0 10px 20px rgba(20, 87, 168, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.create-course-btn:hover {
+  filter: brightness(1.03);
+  transform: translateY(-1px);
+}
+
+.loading-state {
+  padding-top: 0.5rem;
+}
+
+.table-shell {
+  border: 1px solid #ebf0f6;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.courses-table {
+  table-layout: fixed;
+}
+
+.courses-table :deep(.p-datatable-wrapper) {
+  border-radius: 18px;
+}
+
+.courses-table :deep(table) {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.courses-table :deep(.p-datatable-thead > tr > th) {
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 1rem 0.95rem;
+  border-bottom: 1px solid #e5eaf2;
+  white-space: nowrap;
+}
+
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(1)) {
+  width: 46%;
+}
+
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(2)) {
+  width: 14%;
+}
+
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(3)) {
+  width: 22%;
+}
+
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(4)) {
+  width: 18%;
+}
+
+.courses-table :deep(.p-datatable-tbody > tr:hover) {
+  background: #f8fbff;
+}
+
+.courses-table :deep(.p-datatable-tbody > tr > td) {
+  padding: 1rem 0.95rem;
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.course-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.course-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.course-title-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+}
+
+.course-main-title {
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.22;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.course-subtext {
+  margin-top: 0.2rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.status-tag {
+  font-weight: 700;
+  padding-inline: 0.8rem;
+}
+
+.mobile-label {
+  display: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.updated-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: #475569;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.updated-inline {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.42rem;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.updated-inline i {
+  color: #94a3b8;
+  font-size: 0.88rem;
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+}
+
+.updated-inline span {
+  word-break: break-word;
+}
+
+.row-menu-cell {
+  display: flex;
+  justify-content: flex-start;
   align-items: center;
 }
 
-.table-actions {
+.row-menu-trigger {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  color: #334155 !important;
+}
+
+.row-menu-trigger:hover {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.empty-state {
+  margin-top: 1rem;
+  border: 1px dashed #dbe3ef;
+  border-radius: 18px;
+  padding: 2rem 1rem;
+  text-align: center;
+  background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
+}
+
+.empty-state-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 0.85rem;
+  border-radius: 16px;
+  background: #eef4ff;
+  color: #2563eb;
   display: flex;
-  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
+.empty-state-text {
+  color: #64748b;
+  font-weight: 600;
 }
 
 .dialog-field {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.45rem;
   margin-bottom: 1rem;
+}
+
+.dialog-field label {
+  font-weight: 700;
+  color: #334155;
+}
+
+.custom-textarea {
+  resize: vertical;
+  min-height: 110px;
+  border-radius: 14px;
 }
 
 .confirm-message {
   margin-bottom: 1rem;
-  line-height: 1.4;
+  line-height: 1.45;
+  color: #334155;
 }
 
 .mb-2 {
   margin-bottom: 0.75rem;
+}
+
+.course-dialog :deep(.p-dialog-header) {
+  padding-bottom: 0.6rem;
+}
+
+.course-dialog :deep(.p-dialog-content) {
+  padding-top: 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .cms-header {
+    align-items: flex-start;
+  }
+
+  .cms-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .search-box {
+    flex: 1 1 auto;
+    width: 280px;
+    min-width: 240px;
+  }
+
+  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(1)) {
+    width: 43%;
+  }
+
+  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(2)) {
+    width: 14%;
+  }
+
+  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(3)) {
+    width: 23%;
+  }
+
+  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(4)) {
+    width: 20%;
+  }
+}
+
+@media (max-width: 768px) {
+  .cms-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cms-title-block {
+    min-width: 100%;
+  }
+
+  .cms-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .search-box {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .search-box :deep(.p-inputtext) {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .create-course-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .courses-table :deep(.p-datatable-thead) {
+    display: none;
+  }
+
+  .courses-table :deep(.p-datatable-tbody > tr) {
+    display: block;
+    border-bottom: 1px solid #e5eaf2;
+    padding: 0.2rem 0;
+  }
+
+  .courses-table :deep(.p-datatable-tbody > tr > td) {
+    display: block;
+    width: 100%;
+    border: none;
+    padding: 0.8rem 0.9rem;
+  }
+
+  .courses-table :deep(.p-datatable-tbody > tr > td:first-child) {
+    padding-top: 1rem;
+  }
+
+  .courses-table :deep(.p-datatable-tbody > tr > td:last-child) {
+    padding-bottom: 1rem;
+  }
+
+  .mobile-label {
+    display: inline-block;
+  }
+
+  .course-title-cell {
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  .course-title-content {
+    width: 100%;
+  }
+
+  .course-main-title {
+    display: block;
+    font-size: 1.02rem;
+    line-height: 1.25;
+    margin-bottom: 0.2rem;
+  }
+
+  .course-subtext {
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+
+  .updated-cell,
+  .mobile-status {
+    align-items: flex-start;
+  }
+
+  .table-shell {
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .row-menu-cell {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .cms-page {
+    padding: 0;
+  }
+
+  .courses-card {
+    border-radius: 18px;
+  }
+
+  .cms-title-row {
+    align-items: flex-start;
+  }
+
+  .cms-title-row h2 {
+    font-size: 1.45rem;
+  }
+
+  .cms-title-row small {
+    font-size: 0.88rem;
+  }
+
+  .cms-title-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+
+  .course-avatar {
+    width: 40px;
+    height: 40px;
+  }
 }
 </style>

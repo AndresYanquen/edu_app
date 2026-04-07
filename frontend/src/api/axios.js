@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import router from '../router'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
   withCredentials: true,
 })
 
@@ -46,11 +46,9 @@ api.interceptors.response.use(
 
       try {
         if (!refreshPromise) {
-          refreshPromise = auth
-            .refresh()
-            .finally(() => {
-              refreshPromise = null
-            })
+          refreshPromise = auth.refresh().finally(() => {
+            refreshPromise = null
+          })
         }
 
         await refreshPromise
