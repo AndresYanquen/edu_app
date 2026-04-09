@@ -1046,96 +1046,155 @@ const nextLessonText = computed(() =>
 </script>
 
 <style scoped>
+.page,
+.page * {
+  box-sizing: border-box;
+}
+
 .page {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 100%;
+  max-width: 100%;
 }
 
+/* =========================
+   PRIMEVUE BASE
+========================= */
+:deep(.p-card) {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+:deep(.p-card-body) {
+  padding: 1.15rem;
+}
+
+:deep(.p-card-title) {
+  margin-bottom: 0.9rem;
+}
+
+:deep(.p-card-content) {
+  padding-top: 0;
+}
+
+:deep(.p-breadcrumb) {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+:deep(.p-breadcrumb ul) {
+  flex-wrap: nowrap;
+  min-width: max-content;
+}
+
+:deep(.p-tabview-nav) {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+:deep(.p-tabview-nav::-webkit-scrollbar) {
+  display: none;
+}
+
+:deep(.p-tabview-nav li) {
+  flex: 0 0 auto;
+}
+
+:deep(.p-tabview-nav-link) {
+  white-space: nowrap;
+}
+
+:deep(.p-progressbar) {
+  height: 0.7rem;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* =========================
+   HEADER
+========================= */
 .course-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 2rem;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.course-header h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0f172a;
 }
 
 .description {
-  color: #6b7280;
+  margin: 0.75rem 0 0;
+  color: #64748b;
+  font-size: 1rem;
+  line-height: 1.55;
+  max-width: 720px;
 }
 
 .progress {
-  min-width: 250px;
-}
-
-.modules {
-  margin-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.continue-card {
-  background: #f8fafc;
+  min-width: 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef4ff 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
   padding: 1rem;
-  border-radius: 0.75rem;
-  margin-bottom: 1rem;
+  display: grid;
+  gap: 0.55rem;
 }
 
-.lessons {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.progress span {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.lessons li {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.lesson-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.lesson-title {
-  font-weight: 500;
-}
-
-.badge {
-  text-transform: capitalize;
-  font-size: 0.85rem;
+.progress small {
   color: #64748b;
+  line-height: 1.4;
 }
 
+/* =========================
+   HERO LESSONS
+========================= */
 .student-course-hero {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.6rem;
 }
 
 .continue-card,
 .progress-card {
   background: #ffffff;
-  border-radius: 18px;
-  padding: 1.5rem;
+  border-radius: 20px;
+  padding: 1.35rem;
   display: flex;
   align-items: center;
   gap: 1rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-  flex: 1;
-}
-
-.continue-image,
-.progress-image {
-  width: 140px;
-  height: auto;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  min-width: 0;
 }
 
 .student-course-hero .continue-card {
-  background-color: #eaf4fe;
+  background: linear-gradient(135deg, #eaf4fe 0%, #f4faff 100%);
 }
 
 .student-course-hero .progress-card {
@@ -1148,17 +1207,34 @@ const nextLessonText = computed(() =>
   box-shadow:
     0 10px 30px rgba(16, 185, 129, 0.08),
     0 20px 60px rgba(59, 130, 246, 0.08);
-  border-radius: 20px;
+}
+
+.continue-content {
+  min-width: 0;
+  flex: 1;
 }
 
 .continue-content h2 {
-  font-size: 1.25rem;
-  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #64748b;
+  margin: 0 0 0.2rem;
 }
 
 .continue-content h3 {
-  font-size: 1.5rem;
-  margin: 0.25rem 0;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  margin: 0 0 0.85rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.continue-image,
+.progress-image {
+  width: 120px;
+  max-width: 35%;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .btn-primary {
@@ -1169,15 +1245,33 @@ const nextLessonText = computed(() =>
 
 .progress-info {
   flex: 1;
+  min-width: 0;
 }
 
 .progress-info label {
-  font-size: 0.85rem;
-  color: #6b7280;
+  font-size: 0.82rem;
+  color: #64748b;
   display: block;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
+.progress-info p {
+  margin: 0.55rem 0 0.2rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.progress-info small {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* =========================
+   MODULES / LESSONS
+========================= */
 .student-modules-list {
   display: flex;
   flex-direction: column;
@@ -1187,28 +1281,41 @@ const nextLessonText = computed(() =>
 
 .module-card {
   background: #ffffff;
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid #e5e7eb;
   overflow: hidden;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
 }
 
 .module-header {
-  padding: 1rem;
+  padding: 1rem 1.1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
   cursor: pointer;
+  background: #fcfdff;
 }
 
 .module-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
+}
+
+.module-info h4 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.3;
+  color: #0f172a;
+  font-weight: 700;
 }
 
 .module-icon {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   color: #1d4ed8;
+  flex-shrink: 0;
 }
 
 .module-lessons {
@@ -1220,19 +1327,34 @@ const nextLessonText = computed(() =>
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
   border-top: 1px solid #e5e7eb;
 }
 
 .lesson-title-group {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.lesson-title-group span {
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.lesson-title-group small {
+  color: #64748b;
+  line-height: 1.3;
 }
 
 .lesson-actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .btn-open {
@@ -1255,6 +1377,46 @@ const nextLessonText = computed(() =>
   margin-top: 1rem;
 }
 
+/* =========================
+   LEGACY / SMALL HELPERS
+========================= */
+.modules {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.continue-card {
+  margin-bottom: 0;
+}
+
+.lessons {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.lessons li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.lesson-title {
+  font-weight: 500;
+}
+
+.badge {
+  text-transform: capitalize;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+/* =========================
+   LIVE SESSIONS
+========================= */
 .live-tab-skeleton {
   display: flex;
   flex-direction: column;
@@ -1268,14 +1430,16 @@ const nextLessonText = computed(() =>
 }
 
 .live-sessions-hero {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 1rem;
   background: #fff;
-  border-radius: 16px;
-  padding: 1rem 1.25rem;
+  border-radius: 18px;
+  padding: 1rem 1.15rem;
+  border: 1px solid #e5e7eb;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.35rem;
 }
 
 .live-sessions-hero .hero-icon {
@@ -1286,29 +1450,31 @@ const nextLessonText = computed(() =>
   height: 3rem;
   background: rgba(59, 130, 246, 0.08);
   border-radius: 50%;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   color: #1d4ed8;
   flex-shrink: 0;
 }
 
 .live-sessions-hero h2 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .live-sessions-hero small {
   color: #64748b;
+  line-height: 1.4;
 }
 
 .hero-info {
-  flex: 1;
+  min-width: 0;
 }
 
 .live-session-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.85rem;
   margin-bottom: 1.25rem;
   align-items: center;
 }
@@ -1335,7 +1501,7 @@ const nextLessonText = computed(() =>
 .live-sessions-layout {
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
+  gap: 1.5rem;
 }
 
 .current-week-section,
@@ -1347,17 +1513,18 @@ const nextLessonText = computed(() =>
 
 .section-header h3 {
   margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 800;
   color: #0f172a;
 }
 
 .section-header small {
   color: #64748b;
+  line-height: 1.4;
 }
 
 .other-weeks-accordion :deep(.p-accordion-header-link) {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .session-grid {
@@ -1367,10 +1534,10 @@ const nextLessonText = computed(() =>
 
 .session-card {
   display: grid;
-  grid-template-columns: 56px 1fr auto;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
   gap: 1rem;
-  padding: 1rem 1.1rem;
+  padding: 1rem 1.05rem;
   border-radius: 18px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -1403,7 +1570,7 @@ const nextLessonText = computed(() =>
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .session-topline {
@@ -1415,7 +1582,7 @@ const nextLessonText = computed(() =>
 
 .session-title-text {
   margin: 0;
-  font-size: 1.08rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: #0f172a;
   line-height: 1.25;
@@ -1424,7 +1591,7 @@ const nextLessonText = computed(() =>
 .session-details-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.85rem 1rem;
+  gap: 0.75rem 1rem;
 }
 
 .session-detail {
@@ -1432,12 +1599,13 @@ const nextLessonText = computed(() =>
   align-items: center;
   gap: 0.45rem;
   color: #475569;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .session-detail i {
   color: #64748b;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .session-actions {
@@ -1464,6 +1632,7 @@ const nextLessonText = computed(() =>
   font-size: 0.8rem;
   color: #64748b;
   text-align: right;
+  line-height: 1.3;
 }
 
 .session-status-tag {
@@ -1495,11 +1664,12 @@ const nextLessonText = computed(() =>
 }
 
 .live-session-image-card {
-  margin-bottom: 1rem;
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 18px;
+  padding: 1.2rem;
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   background:
     radial-gradient(
       circle at 80% 50%,
@@ -1517,16 +1687,40 @@ const nextLessonText = computed(() =>
       #e9f3ff 40%,
       #f5faff 100%
     );
+  min-width: 280px;
+}
+
+.live-session-image-card__text {
+  min-width: 0;
+}
+
+.live-session-image-card__text h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.live-session-image-card__text p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.live-session-image-card__media {
+  flex-shrink: 0;
 }
 
 .live-session-image-card img {
-  max-width: 200px;
+  max-width: 170px;
   height: auto;
 }
 
+/* =========================
+   LARGE TABLET
+========================= */
 @media (max-width: 1024px) {
   .session-card {
-    grid-template-columns: 52px 1fr;
+    grid-template-columns: 52px minmax(0, 1fr);
   }
 
   .session-actions {
@@ -1542,17 +1736,86 @@ const nextLessonText = computed(() =>
   }
 }
 
-@media (max-width: 768px) {
+/* =========================
+   TABLET
+========================= */
+@media (max-width: 900px) {
   .course-header {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .student-course-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .live-session-image-card {
+    min-width: 0;
+  }
+}
+
+/* =========================
+   MOBILE
+========================= */
+@media (max-width: 768px) {
+  .page {
+    gap: 0.9rem;
+  }
+
+  :deep(.p-card-body) {
+    padding: 0.95rem;
+  }
+
+  :deep(.p-breadcrumb) {
+    border-radius: 12px;
+  }
+
+  .course-header h2 {
+    font-size: 1.9rem;
+    line-height: 1.1;
+  }
+
+  .description {
+    font-size: 0.92rem;
+    line-height: 1.45;
+    margin-top: 0.55rem;
+  }
+
+  .progress {
+    padding: 0.9rem;
+    border-radius: 16px;
+  }
+
+  .student-course-hero {
+    gap: 0.95rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .continue-card,
+  .progress-card {
+    padding: 1rem;
+    border-radius: 16px;
     flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .continue-image,
+  .progress-image {
+    width: 92px;
+    max-width: 100%;
+    align-self: flex-end;
+  }
+
+  .continue-content h2 {
+    font-size: 0.86rem;
+  }
+
+  .continue-content h3 {
+    font-size: 1.2rem;
   }
 
   .live-sessions-hero {
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
     align-items: flex-start;
   }
 
@@ -1577,12 +1840,15 @@ const nextLessonText = computed(() =>
   .session-card {
     grid-template-columns: 1fr;
     gap: 0.9rem;
+    padding: 0.95rem;
+    border-radius: 16px;
   }
 
   .session-leading-icon {
     width: 48px;
     height: 48px;
     border-radius: 14px;
+    font-size: 1.2rem;
   }
 
   .session-actions {
@@ -1602,12 +1868,65 @@ const nextLessonText = computed(() =>
   .lesson-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: 0.8rem;
   }
 
   .lesson-actions {
     width: 100%;
     flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .lesson-actions :deep(.p-button) {
+    flex: 1 1 auto;
+  }
+
+  .live-session-image-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem;
+  }
+
+  .live-session-image-card__media {
+    align-self: center;
+  }
+
+  .live-session-image-card img {
+    max-width: 130px;
+  }
+}
+
+/* =========================
+   SMALL MOBILE
+========================= */
+@media (max-width: 420px) {
+  .course-header h2 {
+    font-size: 1.7rem;
+  }
+
+  .description {
+    font-size: 0.88rem;
+  }
+
+  .continue-content h3 {
+    font-size: 1.08rem;
+  }
+
+  .session-title-text {
+    font-size: 0.98rem;
+  }
+
+  .session-detail {
+    font-size: 0.86rem;
+  }
+
+  .lesson-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lesson-actions :deep(.p-button) {
+    width: 100%;
   }
 }
 </style>
