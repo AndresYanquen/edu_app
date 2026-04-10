@@ -637,8 +637,6 @@ const confirmDeletion = async () => {
         });
         if (selectedModuleId.value) {
           await loadLessons(selectedModuleId.value);
-        } else {
-          lessons.value = [];
         }
         closeConfirmDialog();
         break;
@@ -1583,7 +1581,6 @@ const loadModules = async () => {
   if (!hasContentAccess.value) {
     modules.value = [];
     selectedModuleId.value = null;
-    lessons.value = [];
     loadingModules.value = false;
     return;
   }
@@ -1609,14 +1606,20 @@ const loadModules = async () => {
 };
 
 const loadLessons = async (moduleId) => {
+  if (!moduleId) {
+    return;
+  }
   if (!hasContentAccess.value) {
-    lessons.value = [];
     loadingLessons.value = false;
     return;
   }
   loadingLessons.value = true;
   try {
-    lessons.value = await getLessons(moduleId);
+    const data = await getLessons(moduleId);
+    lessonsByModuleId.value = {
+      ...lessonsByModuleId.value,
+      [moduleId]: data,
+    };
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lessons', life: 3000 });
   } finally {
