@@ -5,23 +5,26 @@
       :header="t('common.confirm')"
       modal
       :closable="!confirmDeleteDialogLoading"
-      :style="{ width: '28rem' }"
+      :style="{ width: '28rem', maxWidth: '95vw' }"
     >
       <p class="confirm-message">{{ confirmDeleteDialogMessage }}</p>
+
       <template #footer>
-        <Button
-          label="Cancel"
-          class="p-button-text"
-          :disabled="confirmDeleteDialogLoading"
-          @click="closeDeleteDialog"
-        />
-        <Button
-          :label="t('common.delete')"
-          severity="danger"
-          :loading="confirmDeleteDialogLoading"
-          :disabled="confirmDeleteDialogLoading"
-          @click="confirmCourseDeletion"
-        />
+        <div class="dialog-footer-actions">
+          <Button
+            label="Cancel"
+            class="p-button-text"
+            :disabled="confirmDeleteDialogLoading"
+            @click="closeDeleteDialog"
+          />
+          <Button
+            :label="t('common.delete')"
+            severity="danger"
+            :loading="confirmDeleteDialogLoading"
+            :disabled="confirmDeleteDialogLoading"
+            @click="confirmCourseDeletion"
+          />
+        </div>
       </template>
     </Dialog>
 
@@ -33,6 +36,7 @@
               <div class="cms-title-icon">
                 <i class="pi pi-book"></i>
               </div>
+
               <div class="cms-title-text">
                 <h2>{{ t('cmsCourses.title') }}</h2>
                 <small>{{ t('cmsCourses.subtitle') }}</small>
@@ -67,7 +71,7 @@
         </div>
 
         <div v-else>
-          <div class="table-shell">
+          <div class="table-shell" v-if="filteredCourses.length">
             <DataTable
               :value="filteredCourses"
               responsiveLayout="scroll"
@@ -79,6 +83,7 @@
                     <div class="course-avatar">
                       <i class="pi pi-bookmark"></i>
                     </div>
+
                     <div class="course-title-content">
                       <span class="course-main-title">{{ data.title }}</span>
                       <small class="course-subtext">
@@ -122,6 +127,7 @@
               <Column :header="t('cmsCourses.table.actions')">
                 <template #body="{ data }">
                   <div class="row-menu-cell">
+                    <span class="mobile-label">Acciones</span>
                     <Button
                       icon="pi pi-ellipsis-v"
                       class="p-button-text row-menu-trigger"
@@ -136,7 +142,7 @@
             <Menu ref="rowMenu" :model="rowMenuItems" popup />
           </div>
 
-          <div v-if="!filteredCourses.length" class="empty-state">
+          <div v-else class="empty-state">
             <div class="empty-state-icon">
               <i class="pi pi-inbox"></i>
             </div>
@@ -152,7 +158,7 @@
       v-model:visible="showCourseDialog"
       :header="dialogTitle"
       modal
-      :style="{ width: '30rem' }"
+      :style="{ width: '30rem', maxWidth: '95vw' }"
       class="course-dialog"
     >
       <div class="dialog-field">
@@ -186,17 +192,19 @@
       </div>
 
       <template #footer>
-        <Button
-          :label="t('cmsCourses.dialog.cancel')"
-          class="p-button-text"
-          @click="showCourseDialog = false"
-        />
-        <Button
-          :label="dialogMode === 'create' ? t('cmsCourses.dialog.create') : t('cmsCourses.dialog.save')"
-          :loading="savingCourse"
-          class="create-course-btn"
-          @click="submitCourse"
-        />
+        <div class="dialog-footer-actions">
+          <Button
+            :label="t('cmsCourses.dialog.cancel')"
+            class="p-button-text"
+            @click="showCourseDialog = false"
+          />
+          <Button
+            :label="dialogMode === 'create' ? t('cmsCourses.dialog.create') : t('cmsCourses.dialog.save')"
+            :loading="savingCourse"
+            class="create-course-btn"
+            @click="submitCourse"
+          />
+        </div>
       </template>
     </Dialog>
   </div>
@@ -516,12 +524,23 @@ loadCourses();
 </script>
 
 <style scoped>
+.cms-page,
+.cms-page * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
 .cms-page {
+  width: 100%;
+  max-width: 100%;
   padding: 0.25rem;
+  overflow-x: hidden;
 }
 
 .courses-card {
-  border-radius: 22px;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 24px;
   border: 1px solid #e8edf5;
   box-shadow:
     0 12px 32px rgba(15, 23, 42, 0.05),
@@ -530,14 +549,28 @@ loadCourses();
   background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
 }
 
+.courses-card :deep(.p-card-body) {
+  padding: 1.2rem 1.4rem;
+}
+
+.courses-card :deep(.p-card-title) {
+  margin-bottom: 0.7rem;
+}
+
+.courses-card :deep(.p-card-content) {
+  padding-top: 0 !important;
+  margin-top: 0;
+}
+
+/* HEADER */
 .cms-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1.1rem;
+  gap: 1rem;
   flex-wrap: wrap;
   width: 100%;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0;
 }
 
 .cms-title-block {
@@ -548,7 +581,7 @@ loadCourses();
 .cms-title-row {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
+  gap: 0.95rem;
 }
 
 .cms-title-text {
@@ -556,43 +589,43 @@ loadCourses();
 }
 
 .cms-title-icon {
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
   color: #1d4ed8;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.12);
   flex-shrink: 0;
 }
 
 .cms-title-row h2 {
   margin: 0;
-  font-size: 1.75rem;
+  font-size: 1.8rem;
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.08;
 }
 
 .cms-title-row small {
   display: block;
-  margin-top: 0.28rem;
+  margin-top: 0.3rem;
   color: #64748b;
-  font-size: 0.92rem;
-  line-height: 1.35;
+  font-size: 0.94rem;
+  line-height: 1.42;
 }
 
 .cms-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.7rem;
+  gap: 0.75rem;
   flex: 0 1 auto;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   margin-left: auto;
 }
 
@@ -600,8 +633,8 @@ loadCourses();
   position: relative;
   display: inline-flex;
   align-items: center;
-  width: 320px;
-  min-width: 320px;
+  width: 340px;
+  min-width: 300px;
 }
 
 .search-box > i {
@@ -618,13 +651,13 @@ loadCourses();
 .search-box :deep(.p-inputtext) {
   width: 100%;
   min-width: 100%;
-  height: 44px;
-  border-radius: 14px;
+  height: 46px;
+  border-radius: 15px;
   border: 1px solid #dbe3ef;
   background: #f8fafc;
   box-shadow: none;
   transition: all 0.2s ease;
-  padding-left: 2.6rem;
+  padding-left: 2.65rem;
 }
 
 .search-box :deep(.p-inputtext:focus) {
@@ -634,9 +667,9 @@ loadCourses();
 }
 
 .create-course-btn {
-  height: 44px;
+  min-height: 46px;
   border: none;
-  border-radius: 14px;
+  border-radius: 15px;
   padding: 0 1.15rem;
   font-weight: 700;
   background: linear-gradient(135deg, #0f3d79 0%, #1457a8 100%);
@@ -654,10 +687,12 @@ loadCourses();
 }
 
 .loading-state {
-  padding-top: 0.5rem;
+  padding-top: 0.2rem;
 }
 
+/* TABLE */
 .table-shell {
+  margin-top: 0.2rem;
   border: 1px solid #ebf0f6;
   border-radius: 18px;
   overflow: hidden;
@@ -665,6 +700,7 @@ loadCourses();
 }
 
 .courses-table {
+  width: 100%;
   table-layout: fixed;
 }
 
@@ -680,28 +716,17 @@ loadCourses();
 .courses-table :deep(.p-datatable-thead > tr > th) {
   background: #f8fafc;
   color: #334155;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   font-weight: 700;
   padding: 1rem 0.95rem;
   border-bottom: 1px solid #e5eaf2;
   white-space: nowrap;
 }
 
-.courses-table :deep(.p-datatable-thead > tr > th:nth-child(1)) {
-  width: 46%;
-}
-
-.courses-table :deep(.p-datatable-thead > tr > th:nth-child(2)) {
-  width: 14%;
-}
-
-.courses-table :deep(.p-datatable-thead > tr > th:nth-child(3)) {
-  width: 22%;
-}
-
-.courses-table :deep(.p-datatable-thead > tr > th:nth-child(4)) {
-  width: 18%;
-}
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(1)) { width: 46%; }
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(2)) { width: 14%; }
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(3)) { width: 22%; }
+.courses-table :deep(.p-datatable-thead > tr > th:nth-child(4)) { width: 18%; }
 
 .courses-table :deep(.p-datatable-tbody > tr:hover) {
   background: #f8fbff;
@@ -717,14 +742,14 @@ loadCourses();
 .course-title-cell {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.9rem;
   min-width: 0;
 }
 
 .course-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
   background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   color: #2563eb;
   display: flex;
@@ -741,7 +766,7 @@ loadCourses();
 }
 
 .course-main-title {
-  font-weight: 700;
+  font-weight: 800;
   color: #0f172a;
   line-height: 1.22;
   display: -webkit-box;
@@ -751,10 +776,10 @@ loadCourses();
 }
 
 .course-subtext {
-  margin-top: 0.2rem;
+  margin-top: 0.22rem;
   color: #64748b;
-  font-size: 0.82rem;
-  line-height: 1.3;
+  font-size: 0.84rem;
+  line-height: 1.38;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -768,11 +793,12 @@ loadCourses();
 
 .mobile-label {
   display: none;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 800;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
 }
 
 .updated-cell {
@@ -789,7 +815,7 @@ loadCourses();
   align-items: flex-start;
   gap: 0.42rem;
   min-width: 0;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .updated-inline i {
@@ -801,6 +827,7 @@ loadCourses();
 
 .updated-inline span {
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .row-menu-cell {
@@ -810,8 +837,8 @@ loadCourses();
 }
 
 .row-menu-trigger {
-  width: 2.2rem;
-  height: 2.2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 999px;
   color: #334155 !important;
 }
@@ -821,8 +848,9 @@ loadCourses();
   color: #1d4ed8 !important;
 }
 
+/* EMPTY */
 .empty-state {
-  margin-top: 1rem;
+  margin-top: 0.6rem;
   border: 1px dashed #dbe3ef;
   border-radius: 18px;
   padding: 2rem 1rem;
@@ -848,6 +876,7 @@ loadCourses();
   font-weight: 600;
 }
 
+/* DIALOGS */
 .dialog-field {
   display: flex;
   flex-direction: column;
@@ -867,9 +896,16 @@ loadCourses();
 }
 
 .confirm-message {
-  margin-bottom: 1rem;
-  line-height: 1.45;
+  margin: 0;
+  line-height: 1.55;
   color: #334155;
+}
+
+.dialog-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .mb-2 {
@@ -884,6 +920,7 @@ loadCourses();
   padding-top: 0.5rem;
 }
 
+/* TABLET */
 @media (max-width: 1024px) {
   .cms-header {
     align-items: flex-start;
@@ -897,42 +934,60 @@ loadCourses();
 
   .search-box {
     flex: 1 1 auto;
-    width: 280px;
+    width: 300px;
     min-width: 240px;
-  }
-
-  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(1)) {
-    width: 43%;
-  }
-
-  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(2)) {
-    width: 14%;
-  }
-
-  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(3)) {
-    width: 23%;
-  }
-
-  .courses-table :deep(.p-datatable-thead > tr > th:nth-child(4)) {
-    width: 20%;
   }
 }
 
+/* MOBILE */
 @media (max-width: 768px) {
+  .cms-page {
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  .courses-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 18px;
+  }
+
+  .courses-card :deep(.p-card-body) {
+    padding: 1rem;
+  }
+
+  .courses-card :deep(.p-card-title) {
+    margin-bottom: 0.55rem;
+  }
+
+  .courses-card :deep(.p-card-content) {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+  }
+
   .cms-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
+    margin-bottom: 0;
   }
 
   .cms-title-block {
-    min-width: 100%;
+    flex: none;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .cms-title-row {
+    align-items: flex-start;
   }
 
   .cms-actions {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.75rem;
+    gap: 0.7rem;
+    margin-left: 0;
   }
 
   .search-box {
@@ -950,49 +1005,66 @@ loadCourses();
     justify-content: center;
   }
 
+  .table-shell {
+    margin-top: 0.2rem;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+  }
+
   .courses-table :deep(.p-datatable-thead) {
     display: none;
   }
 
+  .courses-table :deep(.p-datatable-tbody) {
+    display: grid;
+    gap: 0.85rem;
+  }
+
   .courses-table :deep(.p-datatable-tbody > tr) {
-    display: block;
-    border-bottom: 1px solid #e5eaf2;
-    padding: 0.2rem 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    border: 1px solid #e5eaf2;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
   }
 
   .courses-table :deep(.p-datatable-tbody > tr > td) {
     display: block;
     width: 100%;
     border: none;
-    padding: 0.8rem 0.9rem;
+    padding: 0.9rem;
   }
 
-  .courses-table :deep(.p-datatable-tbody > tr > td:first-child) {
-    padding-top: 1rem;
+  .courses-table :deep(.p-datatable-tbody > tr > td:nth-child(1)) {
+    padding-bottom: 0.78rem;
+    border-bottom: 1px solid #f1f5f9;
   }
 
-  .courses-table :deep(.p-datatable-tbody > tr > td:last-child) {
-    padding-bottom: 1rem;
+  .courses-table :deep(.p-datatable-tbody > tr > td:nth-child(2)),
+  .courses-table :deep(.p-datatable-tbody > tr > td:nth-child(3)) {
+    padding-top: 0.72rem;
+    padding-bottom: 0.72rem;
   }
 
-  .mobile-label {
-    display: inline-block;
+  .courses-table :deep(.p-datatable-tbody > tr > td:nth-child(4)) {
+    padding-top: 0.78rem;
+    border-top: 1px solid #f1f5f9;
   }
 
   .course-title-cell {
-    min-width: 0;
     align-items: flex-start;
-  }
-
-  .course-title-content {
-    width: 100%;
+    gap: 0.8rem;
   }
 
   .course-main-title {
     display: block;
     font-size: 1.02rem;
-    line-height: 1.25;
-    margin-bottom: 0.2rem;
+    line-height: 1.28;
+    margin-bottom: 0.22rem;
   }
 
   .course-subtext {
@@ -1002,36 +1074,44 @@ loadCourses();
     text-overflow: unset;
   }
 
-  .updated-cell,
-  .mobile-status {
+  .mobile-label {
+    display: inline-block;
+  }
+
+  .mobile-status,
+  .updated-cell {
+    display: flex;
+    flex-direction: column;
     align-items: flex-start;
   }
 
-  .table-shell {
-    border-radius: 16px;
-    overflow: hidden;
+  .row-menu-cell {
+    justify-content: space-between;
+    align-items: center;
   }
 
-  .row-menu-cell {
-    justify-content: flex-start;
+  .dialog-footer-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dialog-footer-actions :deep(.p-button) {
+    width: 100%;
   }
 }
 
+/* SMALL MOBILE */
 @media (max-width: 640px) {
   .cms-page {
     padding: 0;
   }
 
-  .courses-card {
-    border-radius: 18px;
-  }
-
-  .cms-title-row {
-    align-items: flex-start;
+  .courses-card :deep(.p-card-body) {
+    padding: 0.9rem;
   }
 
   .cms-title-row h2 {
-    font-size: 1.45rem;
+    font-size: 1.42rem;
   }
 
   .cms-title-row small {
@@ -1042,11 +1122,22 @@ loadCourses();
     width: 48px;
     height: 48px;
     border-radius: 14px;
+    font-size: 1.15rem;
   }
 
   .course-avatar {
     width: 40px;
     height: 40px;
+    border-radius: 12px;
+  }
+
+  .courses-table :deep(.p-datatable-tbody > tr) {
+    border-radius: 16px;
+  }
+
+  .courses-table :deep(.p-datatable-tbody > tr > td) {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
   }
 }
 </style>

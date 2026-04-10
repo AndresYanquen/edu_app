@@ -1,45 +1,151 @@
 <template>
-  <div class="page cms-page">
-    <Card>
+  <div class="page cms-page lesson-page-pro">
+    <Card class="lesson-shell">
       <template #title>
-        <div class="lesson-header">
-          <div>
+        <div class="lesson-topbar">
+          <div class="lesson-topbar-left">
             <Button icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
-            <h2>Edit lesson</h2>
+            <div class="lesson-topbar-copy">
+              <p class="lesson-kicker">Lesson editor</p>
+              <h1>{{ form.title || 'Untitled lesson' }}</h1>
+              <div class="lesson-meta">
+                <span>{{ form.estimatedMinutes || 0 }} min</span>
+                <span v-if="courseId">Course active</span>
+                <Tag
+                  :value="lesson?.is_published ? 'Published' : 'Draft'"
+                  :severity="lesson?.is_published ? 'success' : 'warning'"
+                />
+              </div>
+            </div>
           </div>
-          <Tag
-            :value="lesson?.is_published ? 'Published' : 'Draft'"
-            :severity="lesson?.is_published ? 'success' : 'warning'"
-          />
+
+          <div class="lesson-topbar-actions" v-if="lesson">
+            <Button
+              :label="lesson.is_published ? 'Unpublish' : 'Publish'"
+              :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
+              class="p-button-text"
+              @click="togglePublish"
+            />
+            <Button label="Save changes" :loading="saving" @click="saveLesson" />
+          </div>
         </div>
       </template>
 
       <template #content>
-        <div v-if="loading">
+        <div v-if="loading" class="lesson-loading">
           <Skeleton height="3rem" class="mb-2" />
-          <Skeleton height="10rem" />
+          <Skeleton height="10rem" class="mb-2" />
+          <Skeleton height="18rem" />
         </div>
 
         <div v-else-if="!lesson">
           <div class="empty-state">Lesson not found.</div>
         </div>
 
-        <div v-else>
-          <div class="lesson-grid">
-            <div class="lesson-form">
-              <div class="dialog-field">
-                <label>Title</label>
-                <InputText v-model="form.title" placeholder="Lesson title" />
+        <div v-else class="lesson-layout">
+          <main class="lesson-main">
+            <section class="lesson-hero-card">
+              <div class="lesson-hero-copy">
+                <p class="lesson-kicker">Now editing</p>
+                <h2>{{ form.title || 'Untitled lesson' }}</h2>
+                <p class="lesson-hero-text">
+                  Organiza el video, el contenido, los recursos y la evaluación de esta lección
+                  en una experiencia más clara y agradable para el alumno.
+                </p>
+
+                <div class="lesson-hero-badges">
+                  <span class="lesson-chip">
+                    <i class="pi pi-clock"></i>
+                    {{ form.estimatedMinutes || 0 }} min
+                  </span>
+                  <span class="lesson-chip">
+                    <i class="pi pi-file-edit"></i>
+                    Content + Quiz
+                  </span>
+                  <span class="lesson-chip">
+                    <i class="pi pi-images"></i>
+                    Media enabled
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section class="lesson-section-card">
+              <div class="section-head">
+                <div>
+                  <h3>Basic information</h3>
+                  <small>Define los datos principales de la lección</small>
+                </div>
               </div>
 
-              <div class="dialog-field">
-                <label>Estimated minutes</label>
-                <InputNumber v-model="form.estimatedMinutes" showButtons />
+              <div class="lesson-info-grid">
+                <div class="dialog-field">
+                  <label>Title</label>
+                  <InputText v-model="form.title" placeholder="Lesson title" />
+                </div>
+
+                <div class="dialog-field">
+                  <label>Estimated minutes</label>
+                  <InputNumber v-model="form.estimatedMinutes" showButtons />
+                </div>
+              </div>
+            </section>
+
+            <section class="lesson-section-card">
+              <div class="section-head section-head-split">
+                <div>
+                  <h3>Video</h3>
+                  <small>Agrega el enlace principal del video o clase</small>
+                </div>
+
+                <Button
+                  v-if="form.videoUrl"
+                  label="Open video"
+                  icon="pi pi-external-link"
+                  class="p-button-text"
+                  @click="openVideo"
+                />
               </div>
 
               <div class="dialog-field">
                 <label>Video URL</label>
                 <InputText v-model="form.videoUrl" placeholder="https://..." />
+              </div>
+
+              <div class="video-preview-card" :class="{ 'is-empty': !form.videoUrl }">
+                <template v-if="form.videoUrl">
+                  <div class="video-preview-icon">
+                    <i class="pi pi-play-circle"></i>
+                  </div>
+                  <div class="video-preview-copy">
+                    <strong>Video ready</strong>
+                    <p>
+                      El enlace ya está cargado. El alumno podrá identificar esta lección como
+                      contenido principal de estudio.
+                    </p>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <div class="video-preview-icon">
+                    <i class="pi pi-video"></i>
+                  </div>
+                  <div class="video-preview-copy">
+                    <strong>No video linked yet</strong>
+                    <p>
+                      Agrega un enlace para que esta lección tenga un recurso principal más claro.
+                    </p>
+                  </div>
+                </template>
+              </div>
+            </section>
+
+            <section class="lesson-section-card">
+              <div class="section-head section-head-split">
+                <div>
+                  <h3>Lesson content</h3>
+                  <small>Texto, imágenes, audio, archivos y quizzes inline</small>
+                </div>
               </div>
 
               <div class="assets-inline-hint">
@@ -52,18 +158,10 @@
                   aria-label="Open Media Library"
                 />
               </div>
+
               <div class="dialog-field">
                 <div class="content-header-row">
-                  <label>Content</label>
-                    <!-- <Button
-                      icon="pi pi-images"
-                      label="Media Library"
-                      class="p-button-text"
-                      :badge="String(recentAssets.length)"
-                      badgeClass="p-badge-info"
-                      @click="openMediaLibrary"
-                      aria-label="Open Media Library"
-                    /> -->
+                  <label>Content editor</label>
                 </div>
 
                 <div class="editor-wrapper">
@@ -74,7 +172,6 @@
                     licenseKey="gpl"
                     tinymce-script-src="/tinymce/tinymce.min.js"
                     :init="tinymceInit"
-                    
                   />
                 </div>
 
@@ -109,27 +206,39 @@
                   />
                 </div>
               </div>
+            </section>
 
-              <div class="form-actions">
-                <Button
-                  :label="lesson.is_published ? 'Unpublish' : 'Publish'"
-                  :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                  class="p-button-text"
-                  @click="togglePublish"
-                />
-                <Button label="Save" :loading="saving" @click="saveLesson" />
+            <section class="lesson-section-card quiz-card">
+              <div class="section-head section-head-split quiz-head-pro">
+                <div>
+                  <h3>Quiz</h3>
+                  <small>Configura las preguntas y mejora la experiencia de evaluación</small>
+                </div>
+
+                <div class="quiz-status-box">
+                  <span class="quiz-status-label">Status</span>
+                  <Tag
+                    :value="quizReady ? 'Ready' : 'Needs setup'"
+                    :severity="quizReady ? 'success' : 'warning'"
+                  />
+                </div>
               </div>
-            </div>
-          </div>
 
-          <Divider />
-
-          <div class="quiz-section">
-            <div class="quiz-header">
-              <div>
-                <h3>Quiz</h3>
-                <Tag :value="quizReady ? 'Ready' : 'Needs setup'" :severity="quizReady ? 'success' : 'warning'" />
+              <div class="quiz-overview">
+                <div class="quiz-stat-card">
+                  <span>Total questions</span>
+                  <strong>{{ quizQuestions.length }}</strong>
+                </div>
+                <div class="quiz-stat-card">
+                  <span>Inline quizzes</span>
+                  <strong>{{ discoveredQuizIds.length }}</strong>
+                </div>
+                <div class="quiz-stat-card">
+                  <span>Readiness</span>
+                  <strong>{{ quizReady ? 'Complete' : 'Pending' }}</strong>
+                </div>
               </div>
+
               <div class="quiz-actions">
                 <Button
                   label="Reload"
@@ -140,77 +249,146 @@
                 />
                 <Button label="Add question" icon="pi pi-plus" @click="openQuestionDialog()" />
               </div>
-            </div>
 
-            <div v-if="quizLoading">
-              <Skeleton height="3rem" class="mb-2" />
-              <Skeleton height="3rem" class="mb-2" />
-            </div>
+              <div v-if="quizLoading">
+                <Skeleton height="3rem" class="mb-2" />
+                <Skeleton height="3rem" class="mb-2" />
+              </div>
 
-            <div v-else-if="quizError" class="empty-state">
-              Failed to load quiz.
-              <Button label="Retry" class="p-button-text" @click="loadQuiz" />
-            </div>
-
-            <div v-else>
-              <div v-if="!quizQuestions.length" class="empty-state">
-                No questions yet. Click "Add question" to start.
+              <div v-else-if="quizError" class="empty-state">
+                Failed to load quiz.
+                <Button label="Retry" class="p-button-text" @click="loadQuiz" />
               </div>
 
               <div v-else>
-                <DataTable
-                  :value="sortedQuestions"
-                  v-model:selection="selectedQuestion"
-                  selectionMode="single"
-                  dataKey="id"
-                  class="mb-3"
-                >
-                  <Column field="orderIndex" header="#" style="width: 5rem" />
-                  <Column field="questionText" header="Question" />
-                  <Column header="Points" style="width: 6rem">
-                    <template #body="{ data }">
-                      {{ data.points ?? 1 }}
-                    </template>
-                  </Column>
-                  <Column header="Type" style="width: 10rem">
-                    <template #body="{ data }">
-                      <Tag :value="questionTypeLabel(data.questionType)" severity="info" />
-                    </template>
-                  </Column>
-                  <Column header="Options" style="width: 8rem">
-                    <template #body="{ data }">
-                      {{ data.options?.length || 0 }}
-                    </template>
-                  </Column>
-                  <Column header="Actions" style="width: 14rem">
-                    <template #body="{ data }">
-                      <div class="question-actions">
-                        <Button
-                          icon="pi pi-arrow-up"
-                          class="p-button-text"
-                          @click.stop="moveQuestion(data, -1)"
-                          :disabled="!canMoveQuestion(data, -1)"
-                        />
-                        <Button
-                          icon="pi pi-arrow-down"
-                          class="p-button-text"
-                          @click.stop="moveQuestion(data, 1)"
-                          :disabled="!canMoveQuestion(data, 1)"
-                        />
-                        <Button icon="pi pi-pencil" class="p-button-text" @click.stop="openQuestionDialog(data)" />
-                        <Button
-                          icon="pi pi-trash"
-                          class="p-button-text p-button-danger"
-                          @click.stop="removeQuestion(data)"
-                        />
-                      </div>
-                    </template>
-                  </Column>
-                </DataTable>
+                <div v-if="!quizQuestions.length" class="empty-state quiz-empty-pro">
+                  <div class="empty-quiz-icon">
+                    <i class="pi pi-question-circle"></i>
+                  </div>
+                  <div>
+                    <strong>No questions yet</strong>
+                    <p>Click “Add question” to start building the lesson quiz.</p>
+                  </div>
+                </div>
+
+                <div v-else>
+                  <DataTable
+                    :value="sortedQuestions"
+                    v-model:selection="selectedQuestion"
+                    selectionMode="single"
+                    dataKey="id"
+                    class="mb-3 lesson-quiz-table"
+                    responsiveLayout="scroll"
+                  >
+                    <Column field="orderIndex" header="#" style="width: 5rem" />
+                    <Column field="questionText" header="Question" />
+                    <Column header="Points" style="width: 6rem">
+                      <template #body="{ data }">
+                        {{ data.points ?? 1 }}
+                      </template>
+                    </Column>
+                    <Column header="Type" style="width: 10rem">
+                      <template #body="{ data }">
+                        <Tag :value="questionTypeLabel(data.questionType)" severity="info" />
+                      </template>
+                    </Column>
+                    <Column header="Options" style="width: 8rem">
+                      <template #body="{ data }">
+                        {{ data.options?.length || 0 }}
+                      </template>
+                    </Column>
+                    <Column header="Actions" style="width: 14rem">
+                      <template #body="{ data }">
+                        <div class="question-actions">
+                          <Button
+                            icon="pi pi-arrow-up"
+                            class="p-button-text"
+                            @click.stop="moveQuestion(data, -1)"
+                            :disabled="!canMoveQuestion(data, -1)"
+                          />
+                          <Button
+                            icon="pi pi-arrow-down"
+                            class="p-button-text"
+                            @click.stop="moveQuestion(data, 1)"
+                            :disabled="!canMoveQuestion(data, 1)"
+                          />
+                          <Button icon="pi pi-pencil" class="p-button-text" @click.stop="openQuestionDialog(data)" />
+                          <Button
+                            icon="pi pi-trash"
+                            class="p-button-text p-button-danger"
+                            @click.stop="removeQuestion(data)"
+                          />
+                        </div>
+                      </template>
+                    </Column>
+                  </DataTable>
+                </div>
+              </div>
+            </section>
+          </main>
+
+          <aside class="lesson-sidebar">
+            <div class="sidebar-card">
+              <h4>Lesson details</h4>
+
+              <div class="sidebar-stat">
+                <span>Title</span>
+                <strong>{{ form.title || 'Untitled' }}</strong>
               </div>
 
+              <div class="sidebar-stat">
+                <span>Duration</span>
+                <strong>{{ form.estimatedMinutes || 0 }} min</strong>
+              </div>
+
+              <div class="sidebar-stat">
+                <span>Status</span>
+                <strong>{{ lesson?.is_published ? 'Published' : 'Draft' }}</strong>
+              </div>
+
+              <div class="sidebar-stat">
+                <span>Questions</span>
+                <strong>{{ quizQuestions.length }}</strong>
+              </div>
             </div>
-          </div>
+
+            <div class="sidebar-card">
+              <h4>Quick actions</h4>
+              <div class="sidebar-actions">
+                <Button
+                  label="Open Media Library"
+                  icon="pi pi-images"
+                  class="p-button-outlined w-full"
+                  @click="openMediaLibrary"
+                />
+                <Button
+                  label="Open video"
+                  icon="pi pi-external-link"
+                  class="p-button-text w-full"
+                  @click="openVideo"
+                  :disabled="!form.videoUrl"
+                />
+              </div>
+            </div>
+
+            <div class="sidebar-card">
+              <h4>Content guidance</h4>
+              <ul class="sidebar-list">
+                <li>Usa un título claro y directo</li>
+                <li>Agrega un video principal si aplica</li>
+                <li>Separa el contenido por bloques</li>
+                <li>Incluye quiz para reforzar aprendizaje</li>
+              </ul>
+            </div>
+
+            <div class="sidebar-card sidebar-save-card">
+              <h4>Save</h4>
+              <p class="sidebar-save-text">
+                Guarda los cambios cuando termines de organizar la lección.
+              </p>
+              <Button label="Save changes" :loading="saving" class="w-full" @click="saveLesson" />
+            </div>
+          </aside>
         </div>
       </template>
     </Card>
@@ -562,6 +740,7 @@
         v-model:selection="inlineSelectedQuestion"
         selectionMode="single"
         dataKey="id"
+        responsiveLayout="scroll"
       >
         <Column field="orderIndex" header="#" style="width: 5rem" />
         <Column field="questionText" header="Question" />
@@ -602,7 +781,6 @@
       </DataTable>
       <small class="muted">Options are edited in the question dialog.</small>
     </Dialog>
-
   </div>
 </template>
 
@@ -616,11 +794,6 @@ import { uploadLessonAsset } from '../lib/storageAssets';
 import DOMPurify from 'dompurify';
 import Editor from '@tinymce/tinymce-vue';
 import Textarea from 'primevue/textarea';
-
-
-// theme
-
-
 
 import {
   getLessons,
@@ -981,7 +1154,6 @@ const toHtmlFallback = (value) => {
     .join('');
 };
 
-// ✅ estable: extrae texto plano desde HTML
 const updatePlainTextFromEditor = () => {
   if (typeof document === 'undefined') {
     form.value.contentMarkdown = '';
@@ -1003,13 +1175,28 @@ const escapeHtml = (value = '') =>
 const buildAssetSnippet = (asset) => {
   const url = resolveAssetUrl(asset.url);
   const safeLabel = escapeHtml(asset.originalName || url);
+
   if (asset.kind === 'image' || asset.kind === 'images') {
-    return `<p><img src="${url}" alt="${safeLabel}" /></p>`;
+    return `
+      <figure class="lesson-media lesson-media-image">
+        <img src="${url}" alt="${safeLabel}" />
+      </figure>
+    `;
   }
+
   if (asset.kind === 'audio') {
-    return `<p><audio controls src="${url}"></audio></p>`;
+    return `
+      <figure class="lesson-media lesson-media-audio">
+        <audio controls src="${url}"></audio>
+      </figure>
+    `;
   }
-  return `<p><a href="${url}" target="_blank" rel="noopener">${safeLabel}</a></p>`;
+
+  return `
+    <p class="lesson-file-link">
+      <a href="${url}" target="_blank" rel="noopener">${safeLabel}</a>
+    </p>
+  `;
 };
 
 const buildInlineQuizMarkerHtml = (targetLessonId, questionId) => {
@@ -1200,7 +1387,6 @@ const handleTinyMceImageUpload = async (blobInfo, success, failure) => {
   try {
     const entry = await uploadAndRegisterAsset('image', file);
     addRecentAsset(entry);
-    editorInsertContent(entry);
     success(entry.url);
   } catch (err) {
     toast.add({
@@ -1225,7 +1411,11 @@ const determineAssetKind = (file, meta) => {
 const handleTinyMceFilePicker = (cb, value, meta) => {
   const input = document.createElement('input');
   input.setAttribute('type', 'file');
-  input.accept = meta?.filetype === 'media' ? 'audio/*,video/*' : meta?.filetype === 'image' ? 'image/*' : '.pdf,.doc,.docx,.ppt,.pptx,.zip';
+  input.accept = meta?.filetype === 'media'
+    ? 'audio/*,video/*'
+    : meta?.filetype === 'image'
+      ? 'image/*'
+      : '.pdf,.doc,.docx,.ppt,.pptx,.zip';
 
   input.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
@@ -1235,10 +1425,11 @@ const handleTinyMceFilePicker = (cb, value, meta) => {
     try {
       const kind = determineAssetKind(file, meta);
       const entry = await uploadAndRegisterAsset(kind, file);
-      addRecentAsset(entry);
 
       if (meta?.filetype === 'image') {
         cb(entry.url, { alt: file.name });
+      } else if (meta?.filetype === 'media') {
+        cb(entry.url, { source2: entry.url });
       } else {
         cb(entry.url, { text: file.name });
       }
@@ -1260,63 +1451,240 @@ const tinymceInit = {
   base_url: '/tinymce',
   suffix: '.min',
   menubar: true,
-  height: 400,
+  height: 460,
   plugins: 'link lists table code image media autoresize preview fullscreen noneditable',
   toolbar:
-    'undo redo | insertQuiz | link image media | blocks | bold italic underline | bullist numlist | table | code | removeformat',
+    'undo redo | insertQuiz | link image media | blocks | bold italic underline | bullist numlist | alignleft aligncenter alignright | table | code | removeformat',
   branding: false,
   convert_urls: false,
   relative_urls: false,
 
   extended_valid_elements:
-    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox],script[src|async|defer],audio[controls|src],source[src|type],div[class|style|data-lesson-id|data-question-id|contenteditable],label[class|style],input[type|disabled|checked|class|style],p[class|style],span[class|style],small[class|style]',
-  valid_children: '+body[iframe|script]',
-  sandbox_iframes: false,    
-  
+    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox|class],script[src|async|defer],audio[controls|src|class],video[controls|src|width|height|poster|class],source[src|type],figure[class|style],figcaption[class|style],div[class|style|data-lesson-id|data-question-id|contenteditable],label[class|style],input[type|disabled|checked|class|style],p[class|style],span[class|style],small[class|style],a[href|target|rel|class],img[src|alt|width|height|class|style]',
+  valid_children: '+body[iframe|script|figure]',
+  sandbox_iframes: false,
+
   automatic_uploads: true,
   file_picker_types: 'image media file',
   images_upload_handler: handleTinyMceImageUpload,
   file_picker_callback: handleTinyMceFilePicker,
+  object_resizing: false,
+  image_dimensions: false,
+  media_dimensions: false,
+  resize: false,
+  autoresize_bottom_margin: 24,
+  forced_root_block: 'p',
   content_style: `
-    .cms-quiz {
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
+    html, body {
       background: #f8fafc;
-      padding: 10px 12px;
-      margin: 8px 0;
+    }
+
+    body {
+      font-family: Inter, Arial, sans-serif;
+      background: #ffffff;
+      color: #1e293b;
+      line-height: 1.8;
+      padding: 28px 32px;
+      max-width: 900px;
+      margin: 24px auto;
+      border-radius: 22px;
+      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+      font-size: 15px;
+      word-wrap: break-word;
+    }
+
+    h1, h2, h3, h4 {
+      color: #0f172a;
+      margin-top: 1.4rem;
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.6rem; }
+    h3 { font-size: 1.28rem; }
+    h4 { font-size: 1.08rem; }
+
+    p {
+      margin: 0 0 1rem;
+    }
+
+    ul, ol {
+      margin: 0 0 1rem;
+      padding-left: 1.4rem;
+    }
+
+    li {
+      margin-bottom: 0.45rem;
+    }
+
+    a {
+      color: #4f46e5;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    hr {
+      border: 0;
+      border-top: 1px solid #e2e8f0;
+      margin: 2rem 0;
+    }
+
+    blockquote {
+      margin: 1.3rem 0;
+      padding: 1rem 1.2rem;
+      border-left: 4px solid #6366f1;
+      background: #f8fafc;
+      color: #475569;
+      border-radius: 0 16px 16px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+
+    table th,
+    table td {
+      border: 1px solid #e2e8f0;
+      padding: 0.8rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    table th {
+      background: #f8fafc;
+      color: #334155;
+      font-weight: 700;
+    }
+
+    .lesson-media,
+    figure.lesson-media {
+      display: block;
+      width: 100%;
+      max-width: 760px;
+      margin: 1.6rem auto;
+      text-align: center;
+    }
+
+    .lesson-media-video {
+      width: 100%;
+      max-width: 760px;
+    }
+
+    .lesson-media img,
+    figure.lesson-media img,
+    img {
+      display: block;
+      width: 100%;
+      max-width: 760px;
+      height: auto;
+      margin: 0 auto;
+      border-radius: 18px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+      object-fit: cover;
+    }
+
+    iframe,
+    video {
+      display: block;
+      width: 100% !important;
+      max-width: 760px !important;
+      min-width: 760px;
+      aspect-ratio: 16 / 9;
+      height: auto !important;
+      min-height: 427px;
+      margin: 1.6rem auto !important;
+      border: 0;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+      background: #000;
+    }
+
+    audio {
+      display: block;
+      width: 100%;
+      max-width: 680px;
+      margin: 1.2rem auto;
+    }
+
+    .lesson-file-link {
+      text-align: center;
+      margin: 1.2rem 0;
+    }
+
+    .lesson-file-link a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.8rem 1rem;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #1e293b;
+      text-decoration: none;
+    }
+
+    .cms-quiz {
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      background: #ffffff;
+      padding: 18px;
+      margin: 1.5rem 0;
       min-height: 40px;
       cursor: default;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
     }
+
     .cms-quiz.mceNonEditable {
       user-select: none;
     }
+
     .cms-quiz-placeholder {
-      font-weight: 600;
+      font-weight: 700;
       color: #0f172a;
     }
+
     .cms-quiz-preview {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-align: left;
+    }
+
+    .cms-quiz-question {
+      margin: 0;
+      color: #0f172a;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .cms-quiz-options {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
-    .cms-quiz-question {
-      margin: 0;
-      color: #0f172a;
-      font-weight: 600;
-      line-height: 1.4;
-    }
-    .cms-quiz-options {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
+
     .cms-quiz-option {
       display: flex;
       align-items: center;
       gap: 8px;
       color: #1e293b;
-      font-size: 13px;
+      font-size: 14px;
+      background: #f8fafc;
+      padding: 10px 12px;
+      border-radius: 12px;
     }
+
     .cms-quiz-option input {
       margin: 0;
     }
@@ -1326,6 +1694,7 @@ const tinymceInit = {
       tinymceEditor.value = editor;
       renderInlineQuizMarkersInEditor(editor);
     });
+
     editor.on('remove', () => {
       if (tinymceEditor.value === editor) {
         tinymceEditor.value = null;
@@ -1363,9 +1732,7 @@ const tinymceInit = {
       scheduleQuizEmbedScan();
     });
   },
-}
-
-
+};
 
 const loadLesson = async () => {
   if (!moduleId) {
@@ -1406,9 +1773,10 @@ const loadLesson = async () => {
     refreshDiscoveredQuizIds();
   } catch (err) {
     loading.value = false;
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson'+ err, life: 3000 });
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson' + err, life: 3000 });
   }
 };
+
 const triggerAssetInput = (kind) => {
   const map = { image: imageInputRef, audio: audioInputRef, file: fileInputRef };
   const target = map[kind];
@@ -1480,7 +1848,6 @@ const handleInsertAsset = (asset) => {
   editorInsertContent(asset);
   toast.add({ severity: 'success', summary: 'Inserted', detail: 'Asset inserted into editor', life: 2000 });
 };
-
 
 const copyAssetUrl = async (url) => {
   if (!url) return;
@@ -1606,7 +1973,7 @@ const loadInlineQuiz = async () => {
 
 const sanitizerConfig = {
   USE_PROFILES: { html: true },
-  ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track', 'code', 'pre'],
+  ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track', 'code', 'pre', 'figure', 'figcaption'],
   ADD_ATTR: [
     'allow',
     'allowfullscreen',
@@ -1621,6 +1988,10 @@ const sanitizerConfig = {
     'contenteditable',
     'class',
     'style',
+    'width',
+    'height',
+    'target',
+    'rel',
   ],
 };
 
@@ -1650,7 +2021,6 @@ const saveLesson = async () => {
 
     toast.add({ severity: 'success', summary: 'Lesson saved', life: 2000 });
 
-    // ✅ reload to refresh the content after saving
     await loadLesson();
   } catch (err) {
     toast.add({
@@ -1873,14 +2243,12 @@ const saveQuestion = async () => {
       const originalById = new Map(existingOptions.map((option) => [option.id, option]));
       const nextIds = new Set(next.filter((option) => option.id).map((option) => option.id));
 
-      // a) deletes
       for (const option of existingOptions) {
         if (option?.id && !nextIds.has(option.id)) {
           await deleteQuizOption(option.id);
         }
       }
 
-      // b) creates
       for (let index = 0; index < next.length; index += 1) {
         const option = next[index];
         if (option.id) continue;
@@ -1892,7 +2260,6 @@ const saveQuestion = async () => {
         await createQuizOption(savedQuestionId, optionPayload);
       }
 
-      // c) updates
       for (let index = 0; index < next.length; index += 1) {
         const option = next[index];
         if (!option.id) continue;
@@ -2078,49 +2445,239 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.lesson-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.lesson-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  padding: 2rem;
-}
-
-.lesson-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.editor-wrapper {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
+.lesson-shell {
+  border-radius: 24px;
   overflow: hidden;
 }
 
-.editor-wrapper :deep(.tox-tinymce) {
-  min-height: 220px;
-  border-radius: 0.75rem;
+.lesson-page-pro {
+  width: 100%;
 }
 
-.lesson-preview {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 1rem;
+.lesson-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: 0.5rem 0 0.25rem;
 }
 
-.preview-text {
-  white-space: pre-wrap;
-  line-height: 1.6;
+.lesson-topbar-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
-.preview-actions {
+.lesson-topbar-copy {
+  min-width: 0;
+}
+
+.lesson-topbar-copy h1 {
+  margin: 0;
+  font-size: clamp(1.45rem, 2vw, 2rem);
+  line-height: 1.1;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.lesson-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4f46e5;
+}
+
+.lesson-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.55rem;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.lesson-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lesson-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lesson-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.5rem;
+  align-items: start;
   margin-top: 1rem;
+}
+
+.lesson-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.lesson-hero-card,
+.lesson-section-card,
+.sidebar-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.04);
+}
+
+.lesson-hero-card {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef2ff 55%, #ffffff 100%);
+  border-color: #e2e8f0;
+}
+
+.lesson-hero-copy h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 1.8vw, 1.7rem);
+  color: #0f172a;
+  line-height: 1.15;
+}
+
+.lesson-hero-text {
+  margin: 0.8rem 0 0;
+  color: #64748b;
+  line-height: 1.65;
+  max-width: 60ch;
+}
+
+.lesson-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.lesson-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #dbeafe;
+  color: #1e293b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.lesson-section-card {
+  padding: 1.25rem;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  color: #0f172a;
+}
+
+.section-head small {
+  color: #64748b;
+}
+
+.section-head-split {
+  align-items: center;
+}
+
+.lesson-info-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 1rem;
+}
+
+.video-preview-card {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid #dbeafe;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.video-preview-card.is-empty {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+}
+
+.video-preview-icon {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #4f46e5;
+  font-size: 1.35rem;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.video-preview-copy strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 0.2rem;
+}
+
+.video-preview-copy p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.editor-wrapper {
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.editor-wrapper :deep(.tox-tinymce) {
+  min-height: 300px;
+  border-radius: 20px;
+  border: 0 !important;
+}
+
+.editor-wrapper :deep(.tox-editor-header) {
+  border-bottom: 1px solid #e2e8f0 !important;
+  background: #f8fafc;
+}
+
+.editor-wrapper :deep(.tox-toolbar),
+.editor-wrapper :deep(.tox-toolbar__primary),
+.editor-wrapper :deep(.tox-menubar) {
+  background: #f8fafc !important;
+}
+
+.editor-wrapper :deep(.tox-edit-area__iframe) {
+  background: #f8fafc;
 }
 
 .form-actions {
@@ -2137,21 +2694,162 @@ onBeforeUnmount(() => {
 }
 
 .assets-inline-hint {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem 0.95rem;
   border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
+  border-radius: 14px;
   background: #f8fafc;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+}
+
+.quiz-card {
+  overflow: hidden;
+}
+
+.quiz-head-pro {
+  margin-bottom: 1.1rem;
+}
+
+.quiz-status-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.quiz-status-label {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.quiz-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.quiz-stat-card {
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.quiz-stat-card span {
+  display: block;
+  color: #64748b;
+  font-size: 0.86rem;
+  margin-bottom: 0.35rem;
+}
+
+.quiz-stat-card strong {
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.quiz-actions {
+  display: flex;
   gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.quiz-empty-pro {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.empty-quiz-icon {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: #fff;
+  color: #6366f1;
+  font-size: 1.4rem;
+}
+
+.lesson-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sidebar-card {
+  padding: 1.15rem;
+}
+
+.sidebar-card h4 {
+  margin: 0 0 1rem;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.sidebar-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.sidebar-stat:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.sidebar-stat span {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.sidebar-stat strong {
+  color: #0f172a;
+  text-align: right;
+  word-break: break-word;
+}
+
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.sidebar-list {
+  margin: 0;
+  padding-left: 1rem;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.sidebar-save-text {
+  margin: 0 0 1rem;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.w-full {
+  width: 100%;
 }
 
 .assets-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .asset-input-row {
@@ -2168,7 +2866,8 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0;
+  gap: 0.85rem;
+  padding: 0.85rem 0;
   border-top: 1px solid #e5e7eb;
 }
 
@@ -2177,14 +2876,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .asset-preview {
   width: 48px;
   height: 48px;
   min-width: 48px;
-  margin-right: 0.75rem;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   display: flex;
   flex: 0 0 48px;
   align-items: center;
@@ -2207,12 +2906,15 @@ onBeforeUnmount(() => {
 
 .asset-title {
   font-weight: 600;
+  color: #0f172a;
+  word-break: break-word;
 }
 
 .asset-meta {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
   color: #475569;
   font-size: 0.85rem;
 }
@@ -2220,6 +2922,7 @@ onBeforeUnmount(() => {
 .asset-actions {
   display: flex;
   gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .assets-loading {
@@ -2256,7 +2959,7 @@ onBeforeUnmount(() => {
   gap: 0.75rem;
 }
 
-.media-library-header  div{
+.media-library-header div {
   display: flex;
   justify-content: space-between;
   width: 100%;
@@ -2284,6 +2987,7 @@ onBeforeUnmount(() => {
 .media-library-tabs {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .media-library-upload {
@@ -2335,30 +3039,35 @@ onBeforeUnmount(() => {
 }
 
 :deep(.cms-quiz) {
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 16px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+
+:deep(.lesson-quiz-table .p-datatable-wrapper) {
+  border-radius: 16px;
+  overflow: auto;
+}
+
+:deep(.lesson-quiz-table table) {
+  min-width: 780px;
+}
+
+:deep(.lesson-quiz-table .p-datatable-thead > tr > th) {
   background: #f8fafc;
-  padding: 10px 12px;
+  color: #334155;
+  border-color: #e2e8f0;
+  font-weight: 700;
+}
+
+:deep(.lesson-quiz-table .p-datatable-tbody > tr > td) {
+  border-color: #eef2f7;
 }
 
 .mb-2 {
   margin-bottom: 0.75rem;
-}
-
-.quiz-section {
-  margin-top: 1.5rem;
-}
-
-.quiz-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.quiz-actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 .inline-quiz-header {
@@ -2372,6 +3081,7 @@ onBeforeUnmount(() => {
 .question-actions {
   display: flex;
   gap: 0.25rem;
+  flex-wrap: wrap;
 }
 
 .muted {
@@ -2393,20 +3103,95 @@ onBeforeUnmount(() => {
   margin-top: 1.5rem;
 }
 
-@media (max-width: 900px) {
-  .lesson-grid {
+@media (max-width: 1200px) {
+  .lesson-layout {
+    grid-template-columns: 1fr 290px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .lesson-layout {
     grid-template-columns: 1fr;
   }
 
-  .quiz-header {
+  .lesson-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .lesson-topbar {
+    flex-direction: column;
+  }
+
+  .lesson-topbar-actions {
+    width: 100%;
+  }
+
+  .lesson-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-head-pro {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.5rem;
   }
 
   .quiz-actions {
     width: 100%;
     justify-content: flex-start;
   }
+
+  .option-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .asset-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .asset-actions {
+    width: 100%;
+  }
 }
-</style>
+
+@media (max-width: 640px) {
+  .lesson-shell :deep(.p-card-body) {
+    padding: 1rem;
+  }
+
+  .lesson-topbar-copy h1 {
+    font-size: 1.3rem;
+  }
+
+  .lesson-section-card,
+  .lesson-hero-card,
+  .sidebar-card {
+    padding: 1rem;
+    border-radius: 18px;
+  }
+
+  .assets-inline-hint {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .video-preview-card {
+    align-items: flex-start;
+  }
+
+  .question-actions {
+    gap: 0.15rem;
+  }
+
+  .editor-wrapper :deep(.tox-tinymce) {
+    min-height: 240px;
+  }
+}
+</style>  

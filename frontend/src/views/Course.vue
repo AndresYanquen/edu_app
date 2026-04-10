@@ -1664,39 +1664,45 @@ const nextLessonText = computed(() =>
 }
 
 .live-session-image-card {
-  border-radius: 18px;
-  padding: 1.2rem;
-  display: flex;
+  border-radius: 20px;
+  padding: 1.15rem 1.2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   background:
     radial-gradient(
-      circle at 80% 50%,
-      rgba(59, 130, 246, 0.18),
-      transparent 45%
+      circle at 85% 50%,
+      rgba(59, 130, 246, 0.16),
+      transparent 42%
     ),
     radial-gradient(
-      circle at 65% 40%,
-      rgba(34, 197, 94, 0.12),
-      transparent 50%
+      circle at 68% 36%,
+      rgba(34, 197, 94, 0.1),
+      transparent 48%
     ),
     linear-gradient(
       135deg,
       #eef6ff 0%,
-      #e9f3ff 40%,
-      #f5faff 100%
+      #eaf4ff 42%,
+      #f7fbff 100%
     );
-  min-width: 280px;
+  border: 1px solid #dbeafe;
+  min-width: 320px;
+  max-width: 100%;
 }
 
 .live-session-image-card__text {
   min-width: 0;
+  display: grid;
+  gap: 0.3rem;
 }
 
 .live-session-image-card__text h3 {
-  margin: 0 0 0.3rem;
-  font-size: 1.15rem;
+  margin: 0;
+  font-size: 1.18rem;
+  line-height: 1.15;
+  font-weight: 800;
   color: #0f172a;
 }
 
@@ -1704,14 +1710,19 @@ const nextLessonText = computed(() =>
   margin: 0;
   color: #64748b;
   line-height: 1.45;
+  font-size: 0.94rem;
+  max-width: 320px;
 }
 
 .live-session-image-card__media {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .live-session-image-card img {
-  max-width: 170px;
+  max-width: 150px;
   height: auto;
 }
 
@@ -1742,14 +1753,41 @@ const nextLessonText = computed(() =>
 @media (max-width: 900px) {
   .course-header {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .student-course-hero {
     grid-template-columns: 1fr;
   }
 
+  .course-header h2 {
+    font-size: 2.25rem;
+    line-height: 1.08;
+  }
+
+  .description {
+    max-width: 100%;
+  }
+
   .live-session-image-card {
     min-width: 0;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) 140px;
+    padding: 1rem 1.1rem;
+    gap: 0.9rem;
+  }
+
+  .live-session-image-card__text h3 {
+    font-size: 1.08rem;
+  }
+
+  .live-session-image-card__text p {
+    font-size: 0.9rem;
+    max-width: 100%;
+  }
+
+  .live-session-image-card img {
+    max-width: 120px;
   }
 }
 
@@ -1882,17 +1920,25 @@ const nextLessonText = computed(() =>
   }
 
   .live-session-image-card {
-    flex-direction: column;
-    align-items: flex-start;
+    grid-template-columns: 1fr;
     padding: 1rem;
+    gap: 0.85rem;
+  }
+
+  .live-session-image-card__text h3 {
+    font-size: 1rem;
+  }
+
+  .live-session-image-card__text p {
+    font-size: 0.88rem;
   }
 
   .live-session-image-card__media {
-    align-self: center;
+    justify-content: center;
   }
 
   .live-session-image-card img {
-    max-width: 130px;
+    max-width: 120px;
   }
 }
 

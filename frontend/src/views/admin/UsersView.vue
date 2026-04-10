@@ -4,25 +4,37 @@
       <template #title>
         <div class="card-title-row">
           <div class="card-title">
-            <span class="icon-circle"><i class="pi pi-user-plus" aria-hidden="true"></i></span>
+            <span class="icon-circle">
+              <i class="pi pi-user-plus" aria-hidden="true"></i>
+            </span>
+
             <div>
               <h2>Crear usuario</h2>
               <p>Invita y asigna rol en segundos</p>
             </div>
           </div>
-          <Button label="Crear usuario" icon="pi pi-plus" :loading="creating" @click="submit" />
+
+          <Button
+            label="Crear usuario"
+            icon="pi pi-plus"
+            :loading="creating"
+            @click="submit"
+          />
         </div>
       </template>
+
       <template #content>
         <div class="form-grid">
           <div class="dialog-field">
             <label>Full name</label>
             <InputText v-model="form.fullName" placeholder="Ava Parker" />
           </div>
+
           <div class="dialog-field">
             <label>Email</label>
             <InputText v-model="form.email" placeholder="user@academy.local" />
           </div>
+
           <div class="dialog-field">
             <label>Role</label>
             <Dropdown
@@ -39,15 +51,17 @@
     <Card class="card users-card">
       <template #title>
         <div class="users-header">
-          <div>
+          <div class="users-header__intro">
             <h2>Usuarios</h2>
             <p>Estudiantes e instructores</p>
           </div>
+
           <div class="users-header__actions">
             <span class="search-input">
               <i class="pi pi-search" />
               <InputText v-model="userSearch" placeholder="Search name or email" />
             </span>
+
             <Dropdown
               v-model="filterRole"
               :options="filterOptions"
@@ -57,26 +71,31 @@
               showClear
               class="filter-dropdown"
             />
+
             <span class="total-pill">Total: {{ totalUsers }} usuarios</span>
+
             <Button
               icon="pi pi-refresh"
-              class="p-button-text"
+              class="p-button-text refresh-btn"
               :loading="loadingUsers"
               @click="loadUsers"
             />
           </div>
         </div>
       </template>
+
       <template #content>
         <div v-if="loadingUsers">
           <Skeleton height="2.5rem" class="mb-2" />
           <Skeleton height="2.5rem" class="mb-2" />
           <Skeleton height="2.5rem" class="mb-2" />
         </div>
+
         <div v-else-if="!users.length" class="empty-state">
           No users found for this filter.
         </div>
-        <div v-else>
+
+        <div v-else class="table-wrap">
           <DataTable
             :value="users"
             responsiveLayout="scroll"
@@ -96,17 +115,19 @@
               <template #body="{ data }">
                 <div class="user-meta">
                   <span class="user-avatar">{{ getInitials(data.full_name) }}</span>
-                  <div>
+                  <div class="user-meta__text">
                     <strong>{{ data.full_name }}</strong>
                   </div>
                 </div>
               </template>
             </Column>
+
             <Column field="email" header="Email" style="width: 18rem">
               <template #body="{ data }">
-                <span class="muted">{{ data.email }}</span>
+                <span class="muted muted-email">{{ data.email }}</span>
               </template>
             </Column>
+
             <Column header="Role" style="width: 12rem">
               <template #body="{ data }">
                 <div class="role-tag-wrap">
@@ -119,6 +140,7 @@
                 </div>
               </template>
             </Column>
+
             <Column header="Activation" style="width: 12rem">
               <template #body="{ data }">
                 <Tag
@@ -127,6 +149,7 @@
                 />
               </template>
             </Column>
+
             <Column header="Access" style="width: 10rem">
               <template #body="{ data }">
                 <Tag
@@ -135,6 +158,7 @@
                 />
               </template>
             </Column>
+
             <Column header="Actions" style="width: 16rem">
               <template #body="{ data }">
                 <div class="actions-row">
@@ -144,6 +168,7 @@
                     :loading="resettingId === data.id"
                     @click="resetPassword(data.id)"
                   />
+
                   <Button
                     :label="data.is_active ? 'Desactivar' : 'Activar'"
                     class="p-button-text"
@@ -159,9 +184,15 @@
       </template>
     </Card>
 
-    <Dialog v-model:visible="linkDialogVisible" modal header="Activation link" :style="{ width: '44rem', maxWidth: '95vw' }">
+    <Dialog
+      v-model:visible="linkDialogVisible"
+      modal
+      header="Activation link"
+      :style="{ width: '44rem', maxWidth: '95vw' }"
+    >
       <div class="link-dialog-body">
         <InputText :modelValue="activationLink" readonly class="activation-link-input" />
+
         <div class="dialog-actions">
           <Button label="Copiar" icon="pi pi-copy" @click="copyLink" />
         </div>
@@ -188,6 +219,7 @@ const form = ref({
   email: '',
   role: 'student',
 });
+
 const creating = ref(false);
 const users = ref([]);
 const loadingUsers = ref(false);
@@ -213,6 +245,7 @@ const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({ label
 const filterOptions = [...roleOptions];
 
 const roleLabel = (role) => ROLE_LABELS[role] || role;
+
 const userRoles = (user) =>
   Array.isArray(user.global_roles) ? user.global_roles.filter(Boolean) : [];
 
@@ -230,33 +263,42 @@ const buildUserQuery = () => {
     page: page.value + 1,
     pageSize: rows.value,
   };
+
   if (filterRole.value) {
     params.role = filterRole.value;
   }
+
   if (userSearch.value.trim()) {
     params.search = userSearch.value.trim();
   }
+
   return params;
 };
 
 const loadUsers = async () => {
   loadingUsers.value = true;
+
   try {
     const response = await listUsers(buildUserQuery());
+
     const dataRows = Array.isArray(response?.users)
       ? response.users
       : Array.isArray(response)
       ? response
       : [];
+
     const currentRows = rows.value || 20;
+
     const nextPageSize =
       typeof response?.pageSize === 'number' && response.pageSize > 0
         ? response.pageSize
         : currentRows;
+
     const nextPage =
       typeof response?.page === 'number' && response.page > 0
         ? response.page - 1
         : 0;
+
     const nextTotal =
       typeof response?.total === 'number' && response.total >= 0
         ? response.total
@@ -286,17 +328,29 @@ const onPageChange = (event) => {
 
 const submit = async () => {
   if (!form.value.fullName.trim() || !form.value.email.trim()) {
-    toast.add({ severity: 'warn', summary: 'Fill all fields', life: 2500 });
+    toast.add({
+      severity: 'warn',
+      summary: 'Fill all fields',
+      life: 2500,
+    });
     return;
   }
+
   creating.value = true;
+
   try {
     const result = await createUser({
       fullName: form.value.fullName.trim(),
       email: form.value.email.trim(),
       role: form.value.role,
     });
-    toast.add({ severity: 'success', summary: 'User created', life: 2000 });
+
+    toast.add({
+      severity: 'success',
+      summary: 'User created',
+      life: 2000,
+    });
+
     activationLink.value = result.activationLink;
     linkDialogVisible.value = true;
     form.value.fullName = '';
@@ -316,11 +370,18 @@ const submit = async () => {
 
 const resetPassword = async (userId) => {
   resettingId.value = userId;
+
   try {
     const result = await resetUserPassword(userId);
     activationLink.value = result.activationLink;
     linkDialogVisible.value = true;
-    toast.add({ severity: 'info', summary: 'New activation link generated', life: 2500 });
+
+    toast.add({
+      severity: 'info',
+      summary: 'New activation link generated',
+      life: 2500,
+    });
+
     await loadUsers();
   } catch (err) {
     toast.add({
@@ -336,14 +397,17 @@ const resetPassword = async (userId) => {
 
 const toggleUser = async (user) => {
   const shouldActivate = !user.is_active;
+
   const confirmMsg = shouldActivate
     ? 'Activate this user and restore access?'
     : 'Deactivate this user and block access?';
+
   if (!window.confirm(confirmMsg)) {
     return;
   }
 
   togglingId.value = user.id;
+
   try {
     if (shouldActivate) {
       await activateUser(user.id);
@@ -352,6 +416,7 @@ const toggleUser = async (user) => {
       await deactivateUser(user.id);
       toast.add({ severity: 'info', summary: 'User deactivated', life: 2000 });
     }
+
     await loadUsers();
   } catch (err) {
     toast.add({
@@ -390,17 +455,26 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.admin-users-view,
+.admin-users-view * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
 .admin-users-view {
+  width: 100%;
   display: grid;
   gap: 1rem;
 }
 
 .card {
+  width: 100%;
   background: #fff;
   border-radius: 22px;
   border: 1px solid var(--app-border);
   box-shadow: var(--shadow-sm);
   padding: 1.2rem 1.4rem;
+  overflow: hidden;
 }
 
 .card-title-row {
@@ -414,16 +488,20 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.9rem;
+  min-width: 0;
 }
 
 .card-title h2 {
   margin: 0;
   font-size: 1.3rem;
+  line-height: 1.15;
+  color: #1e3a5f;
 }
 
 .card-title p {
-  margin: 0;
+  margin: 0.15rem 0 0;
   color: var(--text-secondary);
+  line-height: 1.45;
 }
 
 .icon-circle {
@@ -435,11 +513,12 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   color: var(--brand-primary);
+  flex-shrink: 0;
 }
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -457,29 +536,50 @@ onMounted(() => {
 .users-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
   margin-bottom: 0.5rem;
+}
+
+.users-header__intro {
+  min-width: 0;
+}
+
+.users-header__intro h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.1;
+  color: #1e3a5f;
+}
+
+.users-header__intro p {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
 }
 
 .users-header__actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .total-pill {
   background: rgba(13, 59, 102, 0.08);
   border-radius: 999px;
-  padding: 0.35rem 0.95rem;
+  padding: 0.38rem 0.95rem;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .search-input {
   position: relative;
+  min-width: 0;
 }
 
 .search-input i {
@@ -488,17 +588,63 @@ onMounted(() => {
   left: 0.8rem;
   transform: translateY(-50%);
   color: #94a3b8;
+  z-index: 1;
 }
 
 .search-input :deep(.p-inputtext) {
+  width: 100%;
+  min-width: 16rem;
   padding-left: 2.5rem;
-  min-width: 14rem;
+}
+
+.filter-dropdown {
+  min-width: 12rem;
+}
+
+.refresh-btn {
+  flex-shrink: 0;
+}
+
+.table-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.user-table {
+  width: 100%;
+}
+
+.user-table :deep(.p-datatable-wrapper) {
+  max-height: 420px;
+}
+
+.user-table :deep(.p-datatable-table) {
+  min-width: 1000px;
+}
+
+.user-table :deep(.p-datatable-thead > tr > th),
+.user-table :deep(.p-datatable-tbody > tr > td) {
+  font-size: 0.9rem;
+  vertical-align: middle;
 }
 
 .user-meta {
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  min-width: 0;
+}
+
+.user-meta__text {
+  min-width: 0;
+}
+
+.user-meta__text strong {
+  display: block;
+  color: #0f172a;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .user-avatar {
@@ -510,6 +656,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .role-tag-wrap {
@@ -522,6 +669,7 @@ onMounted(() => {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .link-dialog-body {
@@ -539,27 +687,110 @@ onMounted(() => {
 }
 
 .muted {
-  color: #94a3b8;
-  font-size: 0.9rem;
+  color: #64748b;
+  font-size: 0.92rem;
 }
 
-.user-table :deep(.p-datatable-wrapper) {
-  max-height: 420px;
+.muted-email {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.user-table :deep(.p-datatable-thead > tr > th),
-.user-table :deep(.p-datatable-tbody > tr > td) {
-  font-size: 0.9rem;
-}
+@media (max-width: 1100px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
-@media (max-width: 900px) {
-  .card-title-row,
   .users-header {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .users-header__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .card {
+    padding: 1rem;
+    border-radius: 18px;
+  }
+
+  .card-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-title-row :deep(.p-button) {
+    width: 100%;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .search-input,
+  .filter-dropdown {
+    width: 100%;
+  }
+
+  .search-input :deep(.p-inputtext),
+  .filter-dropdown :deep(.p-dropdown) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .total-pill {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-users-view {
+    gap: 0.9rem;
+  }
+
+  .card {
+    padding: 0.9rem;
+    border-radius: 16px;
+  }
+
+  .card-title {
+    align-items: flex-start;
+  }
+
+  .card-title h2,
+  .users-header__intro h2 {
+    font-size: 1.2rem;
+  }
+
+  .card-title p,
+  .users-header__intro p {
+    font-size: 0.92rem;
+  }
+
+  .users-header__actions {
+    gap: 0.65rem;
+  }
+
+  .actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions-row :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dialog-actions {
+    justify-content: stretch;
+  }
+
+  .dialog-actions :deep(.p-button) {
     width: 100%;
   }
 }
