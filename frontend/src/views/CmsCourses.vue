@@ -85,7 +85,14 @@
                     </div>
 
                     <div class="course-title-content">
-                      <span class="course-main-title">{{ data.title }}</span>
+                      <button
+                        type="button"
+                        class="course-main-title course-main-title-link"
+                        :aria-label="`Manage ${data.title}`"
+                        @click="goToBuilder(data.id)"
+                      >
+                        {{ data.title }}
+                      </button>
                       <small class="course-subtext">
                         {{ data.description || 'Sin descripción disponible' }}
                       </small>
@@ -766,6 +773,10 @@ loadCourses();
 }
 
 .course-main-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
   font-weight: 800;
   color: #0f172a;
   line-height: 1.22;
@@ -773,6 +784,15 @@ loadCourses();
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.course-main-title-link {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.course-main-title-link:hover {
+  color: #1d4ed8;
 }
 
 .course-subtext {

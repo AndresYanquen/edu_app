@@ -56,11 +56,23 @@
 
       <template #content>
         <TabView class="course-tabs" v-model:activeIndex="activeTabIndex">
-          <TabPanel header="Posts">
+          <TabPanel>
+            <template #header>
+              <span class="course-tab-title">
+                <i class="pi pi-comment" />
+                <span>Posts</span>
+              </span>
+            </template>
             <CoursePostsFeed :course-id="route.params.id" />
           </TabPanel>
 
-          <TabPanel :header="t('course.tabs.lessons')">
+          <TabPanel>
+            <template #header>
+              <span class="course-tab-title">
+                <i class="pi pi-book" />
+                <span>{{ t('course.tabs.lessons') }}</span>
+              </span>
+            </template>
             <section class="student-course-hero">
               <div class="continue-card">
                 <div class="continue-content">
@@ -160,7 +172,13 @@
             </section>
           </TabPanel>
 
-          <TabPanel :header="t('course.tabs.liveSessions')">
+          <TabPanel>
+            <template #header>
+              <span class="course-tab-title">
+                <i class="pi pi-video" />
+                <span>{{ t('course.tabs.liveSessions') }}</span>
+              </span>
+            </template>
             <div v-if="liveSessionsLoading" class="live-tab-skeleton">
               <Skeleton height="2rem" class="mb-2" />
               <Skeleton height="2rem" class="mb-2" />
@@ -1112,6 +1130,12 @@ const nextLessonText = computed(() =>
 
 :deep(.p-tabview-nav-link) {
   white-space: nowrap;
+}
+
+.course-tab-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 :deep(.p-progressbar) {

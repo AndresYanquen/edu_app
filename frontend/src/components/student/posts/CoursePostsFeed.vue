@@ -6,7 +6,9 @@
     </div>
 
     <div v-else-if="!items.length" class="empty-state">
-      No posts yet.
+      <i class="pi pi-megaphone empty-icon" aria-hidden="true" />
+      <strong>Aún no hay publicaciones</strong>
+      <small>Cuando tu instructor comparta anuncios o novedades del curso, aparecerán aquí.</small>
     </div>
 
     <div v-else class="feed-list">
@@ -258,9 +260,28 @@ onMounted(async () => {
 
 .empty-state {
   min-height: 200px;
-  display: grid;
-  place-content: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   color: #64748b;
+  text-align: center;
+}
+
+.empty-state strong {
+  color: #334155;
+  font-size: 1.02rem;
+}
+
+.empty-state small {
+  max-width: 34rem;
+  line-height: 1.35;
+}
+
+.empty-icon {
+  font-size: 1.35rem;
+  color: #94a3b8;
 }
 
 .read-more-btn {

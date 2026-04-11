@@ -60,16 +60,52 @@
         </template>
       </Card>
 
-      <div class="course-tabs">
-        <RouterLink
-          v-for="tab in tabs"
-          :key="tab.key"
-          :to="{ name: tab.routeName, params: { id: courseId } }"
-          class="course-tab-link"
-          :class="{ 'is-active': currentTabKey === tab.key }"
+      <div class="course-tabs-shell" :class="{ 'has-overflow': hasTabsOverflow }">
+        <button
+          type="button"
+          class="tabs-scroll-btn tabs-scroll-btn-left"
+          :class="{ 'is-visible': canScrollTabsLeft }"
+          aria-label="Scroll tabs left"
+          @click="scrollTabsBy('left')"
         >
-          {{ tab.label }}
-        </RouterLink>
+          <i class="pi pi-chevron-left" />
+        </button>
+
+        <div ref="tabsScrollRef" class="course-tabs" @scroll.passive="onTabsScroll">
+          <RouterLink
+            v-for="tab in tabs"
+            :key="tab.key"
+            :to="{ name: tab.routeName, params: { id: courseId } }"
+            class="course-tab-link"
+            :class="{ 'is-active': currentTabKey === tab.key }"
+          >
+            <i class="course-tab-icon" :class="tab.icon" />
+            <span class="course-tab-label">{{ tab.label }}</span>
+          </RouterLink>
+        </div>
+
+        <button
+          type="button"
+          class="tabs-scroll-btn tabs-scroll-btn-right"
+          :class="{ 'is-visible': canScrollTabsRight }"
+          aria-label="Scroll tabs right"
+          @click="scrollTabsBy('right')"
+        >
+          <i class="pi pi-chevron-right" />
+        </button>
+
+        <span
+          v-if="hasTabsOverflow"
+          class="tabs-edge-fade tabs-edge-fade-left"
+          :class="{ 'is-visible': canScrollTabsLeft }"
+          aria-hidden="true"
+        />
+        <span
+          v-if="hasTabsOverflow"
+          class="tabs-edge-fade tabs-edge-fade-right"
+          :class="{ 'is-visible': canScrollTabsRight }"
+          aria-hidden="true"
+        />
       </div>
 
       <div class="course-tab-panel">
@@ -310,7 +346,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount, provide } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, provide, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
@@ -400,41 +436,146 @@ const courseTabRouteNames = {
   enrollments: 'cms-course-enrollments',
   staff: 'cms-course-staff',
 };
+const courseTabIcons = {
+  summary: 'pi pi-th-large',
+  build: 'pi pi-cog',
+  groups: 'pi pi-users',
+  announcements: 'pi pi-megaphone',
+  posts: 'pi pi-file-edit',
+  live: 'pi pi-video',
+  attendance: 'pi pi-check-square',
+  instructors: 'pi pi-user',
+  enrollments: 'pi pi-id-card',
+  staff: 'pi pi-briefcase',
+};
 const tabs = computed(() => {
   const list = [];
   if (canManageEnrollments.value) {
-    list.push({ key: 'summary', label: 'Resumen', routeName: courseTabRouteNames.summary });
+    list.push({
+      key: 'summary',
+      label: 'Resumen',
+      routeName: courseTabRouteNames.summary,
+      icon: courseTabIcons.summary,
+    });
   }
   if (hasContentAccess.value) {
-    list.push({ key: 'build', label: 'Build', routeName: courseTabRouteNames.build });
+    list.push({
+      key: 'build',
+      label: 'Build',
+      routeName: courseTabRouteNames.build,
+      icon: courseTabIcons.build,
+    });
   }
   if (canManageEnrollments.value) {
-    list.push({ key: 'groups', label: 'Groups', routeName: courseTabRouteNames.groups });
+    list.push({
+      key: 'groups',
+      label: 'Groups',
+      routeName: courseTabRouteNames.groups,
+      icon: courseTabIcons.groups,
+    });
   }
   if (hasContentAccess.value) {
-    list.push({ key: 'announcements', label: 'Announcements', routeName: courseTabRouteNames.announcements });
+    list.push({
+      key: 'announcements',
+      label: 'Announcements',
+      routeName: courseTabRouteNames.announcements,
+      icon: courseTabIcons.announcements,
+    });
   }
   if (hasContentAccess.value) {
-    list.push({ key: 'posts', label: 'Posts', routeName: courseTabRouteNames.posts });
+    list.push({
+      key: 'posts',
+      label: 'Posts',
+      routeName: courseTabRouteNames.posts,
+      icon: courseTabIcons.posts,
+    });
   }
   if (isAdmin.value) {
-    list.push({ key: 'live', label: 'Live sessions', routeName: courseTabRouteNames.live });
+    list.push({
+      key: 'live',
+      label: 'Live sessions',
+      routeName: courseTabRouteNames.live,
+      icon: courseTabIcons.live,
+    });
   }
   if (canManageEnrollments.value) {
-    list.push({ key: 'attendance', label: 'Asistencia', routeName: courseTabRouteNames.attendance });
+    list.push({
+      key: 'attendance',
+      label: 'Asistencia',
+      routeName: courseTabRouteNames.attendance,
+      icon: courseTabIcons.attendance,
+    });
   }
   if (canManageEnrollments.value && hasContentAccess.value) {
-    list.push({ key: 'instructors', label: 'Instructors', routeName: courseTabRouteNames.instructors });
+    list.push({
+      key: 'instructors',
+      label: 'Instructors',
+      routeName: courseTabRouteNames.instructors,
+      icon: courseTabIcons.instructors,
+    });
   }
   if (canManageEnrollments.value) {
-    list.push({ key: 'enrollments', label: 'Enrollments', routeName: courseTabRouteNames.enrollments });
+    list.push({
+      key: 'enrollments',
+      label: 'Enrollments',
+      routeName: courseTabRouteNames.enrollments,
+      icon: courseTabIcons.enrollments,
+    });
   }
   if (isAdmin.value) {
-    list.push({ key: 'staff', label: 'Staff', routeName: courseTabRouteNames.staff });
+    list.push({
+      key: 'staff',
+      label: 'Staff',
+      routeName: courseTabRouteNames.staff,
+      icon: courseTabIcons.staff,
+    });
   }
   return list;
 });
 const currentTabKey = computed(() => String(route.meta?.cmsCourseTabKey || ''));
+const tabsScrollRef = ref(null);
+const hasTabsOverflow = ref(false);
+const canScrollTabsLeft = ref(false);
+const canScrollTabsRight = ref(false);
+
+const updateTabsOverflowState = () => {
+  const el = tabsScrollRef.value;
+  if (!el) {
+    hasTabsOverflow.value = false;
+    canScrollTabsLeft.value = false;
+    canScrollTabsRight.value = false;
+    return;
+  }
+  const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+  const hasOverflow = maxScrollLeft > 4;
+  hasTabsOverflow.value = hasOverflow;
+  canScrollTabsLeft.value = hasOverflow && el.scrollLeft > 4;
+  canScrollTabsRight.value = hasOverflow && el.scrollLeft < maxScrollLeft - 4;
+};
+
+const onTabsScroll = () => {
+  updateTabsOverflowState();
+};
+
+const scrollTabsBy = (direction) => {
+  const el = tabsScrollRef.value;
+  if (!el) return;
+  const delta = direction === 'right' ? 240 : -240;
+  el.scrollBy({ left: delta, behavior: 'smooth' });
+};
+
+const syncTabsOverflow = async () => {
+  await nextTick();
+  requestAnimationFrame(() => {
+    const activeTab = tabsScrollRef.value?.querySelector('.course-tab-link.is-active');
+    activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    updateTabsOverflowState();
+  });
+};
+
+const handleTabsResize = () => {
+  updateTabsOverflowState();
+};
 const tabDataReady = ref({
   summary: false,
   build: false,
@@ -2529,6 +2670,15 @@ watch(
   currentTabKey,
   () => {
     ensureDataForCurrentTab();
+    syncTabsOverflow();
+  },
+  { immediate: false },
+);
+
+watch(
+  tabs,
+  () => {
+    syncTabsOverflow();
   },
   { immediate: false },
 );
@@ -2633,6 +2783,9 @@ provide(cmsCourseBuilderContextKey, {
 });
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', handleTabsResize);
+  }
   if (staffFilterTimeout) {
     clearTimeout(staffFilterTimeout);
   }
@@ -2646,8 +2799,12 @@ const init = async () => {
   if (!auth.isAuthenticated || auth.isLoggingOut) {
     return;
   }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleTabsResize);
+  }
   await loadCourse();
   await ensureDataForCurrentTab();
+  await syncTabsOverflow();
 };
 
 const loadData = init;
@@ -2660,32 +2817,123 @@ init();
   margin-bottom: 1rem;
 }
 
+.course-tabs-shell {
+  position: relative;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e6e8ee;
+}
+
 .course-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: nowrap;
+  gap: 0.25rem 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.course-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .course-tab-link {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  padding: 0.85rem 1rem;
-  color: #475569;
-  font-weight: 700;
+  gap: 0.7rem;
+  padding: 0.95rem 1rem 1rem;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 1rem;
   text-decoration: none;
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  border-bottom: 3px solid transparent;
+  position: relative;
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+
+.course-tab-icon {
+  font-size: 1.1rem;
+  color: #9ca3af;
+  transition: color 0.18s ease;
+}
+
+.course-tab-label {
+  line-height: 1;
 }
 
 .course-tab-link:hover {
-  color: #0f172a;
+  color: #4b5563;
+}
+
+.course-tab-link:hover .course-tab-icon {
+  color: #6b7280;
 }
 
 .course-tab-link.is-active {
-  color: #0f172a;
-  border-bottom-color: #3b82f6;
+  color: #3f5fcf;
+  border-bottom-color: #4d6ee6;
+}
+
+.course-tab-link.is-active .course-tab-icon {
+  color: #4d6ee6;
+}
+
+.tabs-scroll-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #dbe2ef;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.tabs-scroll-btn.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tabs-scroll-btn-left {
+  left: 0.35rem;
+}
+
+.tabs-scroll-btn-right {
+  right: 0.35rem;
+}
+
+.tabs-edge-fade {
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  width: 3rem;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.tabs-edge-fade.is-visible {
+  opacity: 1;
+}
+
+.tabs-edge-fade-left {
+  left: 0;
+  background: linear-gradient(90deg, rgba(245, 247, 251, 0.95) 10%, rgba(245, 247, 251, 0));
+}
+
+.tabs-edge-fade-right {
+  right: 0;
+  background: linear-gradient(270deg, rgba(245, 247, 251, 0.95) 10%, rgba(245, 247, 251, 0));
 }
 
 .course-tab-panel {

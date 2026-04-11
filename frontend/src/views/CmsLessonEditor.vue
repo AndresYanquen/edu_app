@@ -832,6 +832,7 @@ const form = ref({
   videoUrl: '',
   estimatedMinutes: 0,
 });
+const initialLessonSnapshot = ref(null);
 
 const mediaLibraryVisible = ref(false);
 const assetsLoaded = ref(false);
@@ -1767,6 +1768,7 @@ const loadLesson = async () => {
       videoUrl: lesson.value.video_url || '',
       estimatedMinutes: lesson.value.estimated_minutes || 0,
     };
+    initialLessonSnapshot.value = normalizeLessonSnapshot(form.value);
 
     loading.value = false;
     updatePlainTextFromEditor();
@@ -1995,6 +1997,15 @@ const sanitizerConfig = {
   ],
 };
 
+const normalizeLessonSnapshot = (value) => ({
+  title: String(value?.title || '').trim(),
+  contentText: String(value?.contentMarkdown || ''),
+  contentMarkdown: String(value?.contentMarkdown || ''),
+  contentHtml: String(value?.contentHtml || ''),
+  estimatedMinutes: Number(value?.estimatedMinutes || 0),
+  videoUrl: value?.videoUrl == null ? '' : String(value.videoUrl).trim(),
+});
+
 const saveLesson = async () => {
   if (!form.value.title.trim()) {
     toast.add({ severity: 'warn', summary: 'Title required', detail: 'Lesson title is required', life: 2500 });
@@ -2010,18 +2021,54 @@ const saveLesson = async () => {
       title: form.value.title,
       contentText: form.value.contentMarkdown,
       contentMarkdown: form.value.contentMarkdown,
-      contentHtml: sanitizedHtml || null,
+      contentHtml: sanitizedHtml,
       estimatedMinutes: form.value.estimatedMinutes,
+      videoUrl: form.value.videoUrl,
     };
 
-    const trimmedVideoUrl = form.value.videoUrl?.trim();
-    if (trimmedVideoUrl) payload.videoUrl = trimmedVideoUrl;
+    const nextSnapshot = normalizeLessonSnapshot(payload);
+    const prevSnapshot = initialLessonSnapshot.value;
+    const hasChanges =
+      !prevSnapshot ||
+      nextSnapshot.title !== prevSnapshot.title ||
+      nextSnapshot.contentText !== prevSnapshot.contentText ||
+      nextSnapshot.contentMarkdown !== prevSnapshot.contentMarkdown ||
+      nextSnapshot.contentHtml !== prevSnapshot.contentHtml ||
+      nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes ||
+      nextSnapshot.videoUrl !== prevSnapshot.videoUrl;
 
-    await updateLesson(lessonId, payload);
+    if (!hasChanges) {
+      toast.add({
+        severity: 'info',
+        summary: 'No changes',
+        detail: 'No changes were made to save',
+        life: 2200,
+      });
+      setTimeout(() => {
+        goBackInHistoryOrCourse();
+      }, 100);
+      return;
+    }
+
+    const patchPayload = {};
+    if (!prevSnapshot || nextSnapshot.title !== prevSnapshot.title) patchPayload.title = nextSnapshot.title;
+    if (!prevSnapshot || nextSnapshot.contentText !== prevSnapshot.contentText)
+      patchPayload.contentText = nextSnapshot.contentText;
+    if (!prevSnapshot || nextSnapshot.contentMarkdown !== prevSnapshot.contentMarkdown)
+      patchPayload.contentMarkdown = nextSnapshot.contentMarkdown;
+    if (!prevSnapshot || nextSnapshot.contentHtml !== prevSnapshot.contentHtml)
+      patchPayload.contentHtml = nextSnapshot.contentHtml;
+    if (!prevSnapshot || nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes)
+      patchPayload.estimatedMinutes = nextSnapshot.estimatedMinutes;
+    if (!prevSnapshot || nextSnapshot.videoUrl !== prevSnapshot.videoUrl)
+      patchPayload.videoUrl = nextSnapshot.videoUrl;
+
+    await updateLesson(lessonId, patchPayload);
 
     toast.add({ severity: 'success', summary: 'Lesson saved', life: 2000 });
-
-    await loadLesson();
+    setTimeout(() => {
+      goBackInHistoryOrCourse();
+    }, 100);
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -2057,6 +2104,14 @@ const togglePublish = async () => {
 
 const goBack = () => {
   router.push(`/cms/courses/${courseId || ''}`);
+};
+
+const goBackInHistoryOrCourse = async () => {
+  if (window.history.length > 1) {
+    await router.back();
+    return;
+  }
+  await router.push(`/cms/courses/${courseId || ''}`);
 };
 
 const openVideo = () => {
