@@ -46,6 +46,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many authentication requests, try again later' },
 });
+const authRateLimitDisabled = process.env.NODE_ENV !== 'production';
 
 const adminBulkInviteLimiter = rateLimit({
   windowMs: Number(process.env.ADMIN_BULK_INVITE_RATE_LIMIT_WINDOW_MS || 60 * 1000),
@@ -66,7 +67,9 @@ app.get('/health', (req, res) => {
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-app.use('/auth', authLimiter);
+if (!authRateLimitDisabled) {
+  app.use('/auth', authLimiter);
+}
 app.use('/admin/users/bulk-invite', adminBulkInviteLimiter);
 app.use('/auth', authRoutes);
 app.use('/me', meRoutes);

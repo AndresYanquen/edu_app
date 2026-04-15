@@ -239,7 +239,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import Sidebar from 'primevue/sidebar';
@@ -387,6 +387,26 @@ const handleOpenNotificationsFromMobile = () => {
   openNotifications.value = true;
 };
 
+let notificationsRefreshTimer = null;
+
+const clearNotificationsRefreshTimer = () => {
+  if (notificationsRefreshTimer) {
+    clearInterval(notificationsRefreshTimer);
+    notificationsRefreshTimer = null;
+  }
+};
+
+const refreshUnreadIfStudent = async () => {
+  if (!canShowNotifications.value) return;
+  await notifications.refreshUnreadCount();
+};
+
+const handleVisibilityChange = async () => {
+  if (document.visibilityState === 'visible') {
+    await refreshUnreadIfStudent();
+  }
+};
+
 watch(openNotifications, (isOpen) => {
   if (isOpen) notificationsPanelKey.value += 1;
 });
@@ -397,6 +417,35 @@ watch(
     mobileSidebarOpen.value = false;
   }
 );
+
+watch(
+  canShowNotifications,
+  async (enabled) => {
+    clearNotificationsRefreshTimer();
+    if (!enabled) {
+      notifications.setUnreadCount(0);
+      return;
+    }
+    await refreshUnreadIfStudent();
+    notificationsRefreshTimer = setInterval(() => {
+      refreshUnreadIfStudent();
+    }, 45000);
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+});
+
+onBeforeUnmount(() => {
+  clearNotificationsRefreshTimer();
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }
+});
 
 </script>
 

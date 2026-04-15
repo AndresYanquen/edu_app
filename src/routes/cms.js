@@ -279,6 +279,7 @@ const hasPostsCmsAccess = (user) =>
 
 
 let quizQuestionsHasQuizIdColumn = null;
+let quizzesTableExists = null;
 
 const getQuizQuestionsHasQuizIdColumn = async () => {
   if (quizQuestionsHasQuizIdColumn !== null) return quizQuestionsHasQuizIdColumn;
@@ -295,6 +296,22 @@ const getQuizQuestionsHasQuizIdColumn = async () => {
   );
   quizQuestionsHasQuizIdColumn = Boolean(rows[0]?.exists);
   return quizQuestionsHasQuizIdColumn;
+};
+
+const getQuizzesTableExists = async () => {
+  if (quizzesTableExists !== null) return quizzesTableExists;
+  const { rows } = await pool.query(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'quizzes'
+      ) AS exists
+    `,
+  );
+  quizzesTableExists = Boolean(rows[0]?.exists);
+  return quizzesTableExists;
 };
 
 const getQuizWithOptionsSelect = async () => {
@@ -355,6 +372,10 @@ const mapQuizRowsToQuestions = (rows) => {
 };
 
 const getQuizIdByLesson = async (lessonId) => {
+  const hasQuizzesTable = await getQuizzesTableExists();
+  if (!hasQuizzesTable) {
+    return null;
+  }
   const { rows } = await pool.query(
     'SELECT id FROM quizzes WHERE lesson_id = $1 LIMIT 1',
     [lessonId],
