@@ -1173,6 +1173,82 @@ const escapeHtml = (value = '') =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+
+const buildEmbedSnippetFromUrl = (rawUrl) => {
+  const url = String(rawUrl || '').trim();
+  if (!url) return '';
+
+  const vimeoMatch = url.match(/(?:player\.)?vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (vimeoMatch) {
+    const id = vimeoMatch[1];
+    return `
+      <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
+        <iframe
+          src="https://player.vimeo.com/video/${id}"
+          allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
+          allowfullscreen
+          style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
+        </iframe>
+      </figure>
+    `;
+  }
+
+  const youtubeMatch = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/i,
+  );
+  if (youtubeMatch) {
+    const id = youtubeMatch[1];
+    return `
+      <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
+        <iframe
+          src="https://www.youtube.com/embed/${id}"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+          style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
+        </iframe>
+      </figure>
+    `;
+  }
+
+  const loomMatch = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/i);
+  if (loomMatch) {
+    const id = loomMatch[1];
+    return `
+      <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
+        <iframe
+          src="https://www.loom.com/embed/${id}"
+          allowfullscreen
+          style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
+        </iframe>
+      </figure>
+    `;
+  }
+
+  if (/soundcloud\.com|w\.soundcloud\.com/i.test(url)) {
+    const normalizedSrc = url
+      .replace(/&amp;/g, '&')
+      .replace(/visual=true/gi, 'visual=false')
+      .replace(/show_comments=true/gi, 'show_comments=false')
+      .replace(/show_user=true/gi, 'show_user=false')
+      .replace(/show_reposts=true/gi, 'show_reposts=false')
+      .replace(/show_teaser=true/gi, 'show_teaser=false');
+
+    return `
+      <figure class="lesson-media lesson-media-audio" style="width:100%;max-width:760px;margin:24px auto;">
+        <iframe
+          src="${normalizedSrc}"
+          allow="autoplay"
+          allowfullscreen
+          style="display:block;width:100%;max-width:100%;height:170px;border:0;border-radius:16px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.10);">
+        </iframe>
+      </figure>
+    `;
+  }
+
+  return '';
+};
+
+
 const buildAssetSnippet = (asset) => {
   const url = resolveAssetUrl(asset.url);
   const safeLabel = escapeHtml(asset.originalName || url);
@@ -1192,6 +1268,9 @@ const buildAssetSnippet = (asset) => {
       </figure>
     `;
   }
+
+  const embedSnippet = buildEmbedSnippetFromUrl(url);
+  if (embedSnippet) return embedSnippet;
 
   return `
     <p class="lesson-file-link">
@@ -1251,6 +1330,129 @@ const stripInlineQuizPreviewFromHtml = (html) => {
     marker.innerHTML = '';
   });
   return wrapper.innerHTML;
+};
+
+const normalizeLessonContentHtml = (html) => {
+  if (!html || typeof document === 'undefined') return html || '';
+
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+
+  wrapper.querySelectorAll('img, iframe, video').forEach((node) => {
+    node.removeAttribute('width');
+    node.removeAttribute('height');
+
+    if (node.style) {
+      node.style.width = '';
+      node.style.height = '';
+      node.style.maxWidth = '';
+      node.style.minWidth = '';
+      node.style.minHeight = '';
+    }
+  });
+
+wrapper.querySelectorAll('img').forEach((img) => {
+  img.style.width = '100%';
+  img.style.maxWidth = '760px';
+  img.style.height = 'auto';
+
+  let figure = img.closest('figure');
+
+  if (figure) {
+    figure.classList.remove('lesson-media-audio', 'lesson-media-video');
+    figure.classList.add('lesson-media', 'lesson-media-image');
+  } else {
+    figure = document.createElement('figure');
+    figure.className = 'lesson-media lesson-media-image';
+    img.parentNode?.insertBefore(figure, img);
+    figure.appendChild(img);
+  }
+});
+
+wrapper.querySelectorAll('iframe').forEach((iframe) => {
+  const originalSrc = String(iframe.getAttribute('src') || '').trim();
+  const lowerSrc = originalSrc.toLowerCase();
+
+  iframe.style.width = '100%';
+  iframe.style.maxWidth = '640px';
+  iframe.style.height = 'auto';
+  iframe.style.display = 'block';
+  iframe.style.margin = '20px auto';
+  iframe.style.border = '0';
+  iframe.style.borderRadius = '20px';
+
+  if (!iframe.style.aspectRatio) {
+    iframe.style.aspectRatio = '16 / 9';
+  }
+
+  let figure = iframe.closest('figure');
+
+  if (lowerSrc.includes('soundcloud.com')) {
+    const normalizedSrc = originalSrc
+      .replace(/&amp;/g, '&')
+      .replace(/visual=true/gi, 'visual=false')
+      .replace(/show_comments=true/gi, 'show_comments=false')
+      .replace(/show_user=true/gi, 'show_user=false')
+      .replace(/show_reposts=true/gi, 'show_reposts=false')
+      .replace(/show_teaser=true/gi, 'show_teaser=false');
+
+    iframe.setAttribute('src', normalizedSrc);
+    iframe.style.height = '170px';
+    iframe.style.aspectRatio = 'auto';
+
+    if (figure) {
+      figure.classList.remove('lesson-media-image', 'lesson-media-video');
+      figure.classList.add('lesson-media', 'lesson-media-audio');
+    } else {
+      figure = document.createElement('figure');
+      figure.className = 'lesson-media lesson-media-audio';
+      iframe.parentNode?.insertBefore(figure, iframe);
+      figure.appendChild(iframe);
+    }
+    return;
+  }
+
+  if (figure) {
+    figure.classList.remove('lesson-media-image', 'lesson-media-audio');
+    figure.classList.add('lesson-media', 'lesson-media-video');
+  } else {
+    figure = document.createElement('figure');
+    figure.className = 'lesson-media lesson-media-video';
+    iframe.parentNode?.insertBefore(figure, iframe);
+    figure.appendChild(iframe);
+  }
+});
+
+  wrapper.querySelectorAll('audio').forEach((audio) => {
+    let figure = audio.closest('figure');
+
+    if (figure) {
+      figure.classList.remove('lesson-media-image', 'lesson-media-video');
+      figure.classList.add('lesson-media', 'lesson-media-audio');
+    } else {
+      figure = document.createElement('figure');
+      figure.className = 'lesson-media lesson-media-audio';
+      audio.parentNode?.insertBefore(figure, audio);
+      figure.appendChild(audio);
+    }
+  });
+
+  wrapper.querySelectorAll('figure').forEach((figure) => {
+    const hasMedia = figure.querySelector('img, iframe, audio, video');
+    const text = figure.textContent?.trim();
+    if (!hasMedia && !text) {
+      figure.remove();
+    }
+  });
+
+  wrapper.querySelectorAll('p').forEach((p) => {
+    const clean = p.innerHTML.replace(/&nbsp;/g, '').trim();
+    if (!clean || clean === '<br>' || clean === '<br />') {
+      p.remove();
+    }
+  });
+
+  return wrapper.innerHTML.trim();
 };
 
 const insertQuizMarker = () => {
@@ -1452,16 +1654,20 @@ const tinymceInit = {
   base_url: '/tinymce',
   suffix: '.min',
   menubar: true,
-  height: 460,
-  plugins: 'link lists table code image media autoresize preview fullscreen noneditable',
+  height: 850,
+  min_height: 850,
+  plugins: 'link lists table code image media preview fullscreen noneditable paste',
   toolbar:
     'undo redo | insertQuiz | link image media | blocks | bold italic underline | bullist numlist | alignleft aligncenter alignright | table | code | removeformat',
   branding: false,
   convert_urls: false,
+  media_live_embeds: true,
+  media_alt_source: false,
+  media_poster: false,
   relative_urls: false,
 
   extended_valid_elements:
-    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox|class],script[src|async|defer],audio[controls|src|class],video[controls|src|width|height|poster|class],source[src|type],figure[class|style],figcaption[class|style],div[class|style|data-lesson-id|data-question-id|contenteditable],label[class|style],input[type|disabled|checked|class|style],p[class|style],span[class|style],small[class|style],a[href|target|rel|class],img[src|alt|width|height|class|style]',
+    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox|class|style],script[src|async|defer],audio[controls|src|class|style],video[controls|src|width|height|poster|class|style],source[src|type],figure[class|style],figcaption[class|style],div[class|style|data-lesson-id|data-question-id|contenteditable],label[class|style],input[type|disabled|checked|class|style],p[class|style],span[class|style],small[class|style],a[href|target|rel|class],img[src|alt|width|height|class|style]',
   valid_children: '+body[iframe|script|figure]',
   sandbox_iframes: false,
 
@@ -1472,27 +1678,63 @@ const tinymceInit = {
   object_resizing: false,
   image_dimensions: false,
   media_dimensions: false,
-  resize: false,
-  autoresize_bottom_margin: 24,
+  resize: true,
   forced_root_block: 'p',
+  paste_as_text: false,
+
+  paste_preprocess: (editor, args) => {
+    const raw = String(args.content || '').trim();
+    if (!raw) return;
+
+    const textOnly = raw.replace(/<[^>]*>/g, '').trim();
+    const embedHtml = buildEmbedSnippetFromUrl(textOnly);
+
+    if (embedHtml) {
+      args.content = embedHtml;
+      return;
+    }
+
+    const hrefMatch = raw.match(/href=["']([^"']+)["']/i);
+    if (hrefMatch?.[1]) {
+      const linkedEmbedHtml = buildEmbedSnippetFromUrl(hrefMatch[1]);
+      if (linkedEmbedHtml) {
+        args.content = linkedEmbedHtml;
+      }
+    }
+  },
+
+  media_url_resolver: (data, resolve) => {
+    const url = String(data.url || '').trim();
+    const embedHtml = buildEmbedSnippetFromUrl(url);
+
+    if (embedHtml) {
+      resolve({ html: embedHtml });
+      return;
+    }
+
+    resolve({ html: '' });
+  },
+
   content_style: `
     html, body {
       background: #f8fafc;
     }
 
     body {
-      font-family: Inter, Arial, sans-serif;
-      background: #ffffff;
-      color: #1e293b;
-      line-height: 1.8;
-      padding: 28px 32px;
-      max-width: 900px;
-      margin: 24px auto;
-      border-radius: 22px;
-      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
-      font-size: 15px;
-      word-wrap: break-word;
-    }
+    font-family: Inter, Arial, sans-serif;
+    background: #ffffff;
+    color: #1e293b;
+    line-height: 1.8;
+    padding: 28px 32px 48px;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    font-size: 15px;
+    word-wrap: break-word;
+    box-sizing: border-box;
+    min-height: 1500px;
+    overflow-y: auto;
+  }
 
     h1, h2, h3, h4 {
       color: #0f172a;
@@ -1502,83 +1744,79 @@ const tinymceInit = {
       line-height: 1.2;
     }
 
-    h1 { font-size: 2rem; }
-    h2 { font-size: 1.6rem; }
-    h3 { font-size: 1.28rem; }
-    h4 { font-size: 1.08rem; }
-
-    p {
-      margin: 0 0 1rem;
-    }
+    p { margin: 0 0 1rem; }
 
     ul, ol {
       margin: 0 0 1rem;
       padding-left: 1.4rem;
     }
 
-    li {
-      margin-bottom: 0.45rem;
-    }
-
-    a {
-      color: #4f46e5;
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    hr {
-      border: 0;
-      border-top: 1px solid #e2e8f0;
-      margin: 2rem 0;
-    }
-
-    blockquote {
-      margin: 1.3rem 0;
-      padding: 1rem 1.2rem;
-      border-left: 4px solid #6366f1;
-      background: #f8fafc;
-      color: #475569;
-      border-radius: 0 16px 16px 0;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1.5rem 0;
-      overflow: hidden;
-      border-radius: 14px;
-    }
-
-    table th,
-    table td {
-      border: 1px solid #e2e8f0;
-      padding: 0.8rem;
-      text-align: left;
-      vertical-align: top;
-    }
-
-    table th {
-      background: #f8fafc;
-      color: #334155;
-      font-weight: 700;
-    }
+    li { margin-bottom: 0.45rem; }
 
     .lesson-media,
     figure.lesson-media {
-      display: block;
-      width: 100%;
-      max-width: 760px;
-      margin: 1.6rem auto;
+      display: block !important;
+      width: 100% !important;
+      margin: 24px auto !important;
       text-align: center;
     }
 
-    .lesson-media-video {
+    .lesson-media-video,
+    figure.lesson-media-video {
+      display: block !important;
+      width: 100% !important;
+      max-width: 640px !important;
+      margin: 20px auto !important;
+      text-align: center;
+    }
+
+    .lesson-media-video iframe,
+    figure.lesson-media-video iframe,
+    iframe[src*="vimeo.com"],
+    iframe[src*="youtube.com"],
+    iframe[src*="youtu.be"],
+    iframe[src*="loom.com"] {
+      display: block !important;
+      width: min(100%, 640px) !important;
+      max-width: 640px !important;
+      min-width: 0 !important;
+      height: auto !important;
+      aspect-ratio: 16 / 9 !important;
+      margin: 0 auto !important;
+      border: 0 !important;
+      border-radius: 18px !important;
+      background: #000 !important;
+      box-shadow: 0 12px 28px rgba(15,23,42,.14) !important;
+      overflow: hidden !important;
+    }
+
+    .lesson-media-audio,
+    figure.lesson-media-audio {
+      display: block !important;
+      width: 100% !important;
+      max-width: 760px !important;
+      margin: 24px auto !important;
+      text-align: center;
+    }
+
+    .lesson-media-audio iframe {
+      display: block !important;
+      width: 100% !important;
+      max-width: 760px !important;
+      height: 170px !important;
+      margin: 0 auto !important;
+      border: 0 !important;
+      border-radius: 16px !important;
+      background: #fff !important;
+      box-shadow: 0 10px 24px rgba(15,23,42,.10) !important;
+    }
+
+    .lesson-media-image,
+    figure.lesson-media-image {
+      display: block;
       width: 100%;
       max-width: 760px;
+      margin: 24px auto;
     }
 
     .lesson-media img,
@@ -1590,32 +1828,8 @@ const tinymceInit = {
       height: auto;
       margin: 0 auto;
       border-radius: 18px;
-      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+      box-shadow: 0 12px 32px rgba(15,23,42,.12);
       object-fit: cover;
-    }
-
-    iframe,
-    video {
-      display: block;
-      width: 100% !important;
-      max-width: 760px !important;
-      min-width: 760px;
-      aspect-ratio: 16 / 9;
-      height: auto !important;
-      min-height: 427px;
-      margin: 1.6rem auto !important;
-      border: 0;
-      border-radius: 18px;
-      overflow: hidden;
-      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
-      background: #000;
-    }
-
-    audio {
-      display: block;
-      width: 100%;
-      max-width: 680px;
-      margin: 1.2rem auto;
     }
 
     .lesson-file-link {
@@ -1690,6 +1904,7 @@ const tinymceInit = {
       margin: 0;
     }
   `,
+
   setup: (editor) => {
     editor.on('init', () => {
       tinymceEditor.value = editor;
@@ -2008,13 +2223,19 @@ const normalizeLessonSnapshot = (value) => ({
 
 const saveLesson = async () => {
   if (!form.value.title.trim()) {
-    toast.add({ severity: 'warn', summary: 'Title required', detail: 'Lesson title is required', life: 2500 });
+    toast.add({
+      severity: 'warn',
+      summary: 'Title required',
+      detail: 'Lesson title is required',
+      life: 2500,
+    });
     return;
   }
 
   saving.value = true;
   try {
-    const normalizedHtml = stripInlineQuizPreviewFromHtml(form.value.contentHtml || '');
+    const strippedHtml = stripInlineQuizPreviewFromHtml(form.value.contentHtml || '');
+    const normalizedHtml = normalizeLessonContentHtml(strippedHtml || '');
     const sanitizedHtml = DOMPurify.sanitize(normalizedHtml || '', sanitizerConfig);
 
     const payload = {
@@ -2715,9 +2936,11 @@ onBeforeUnmount(() => {
 }
 
 .editor-wrapper :deep(.tox-tinymce) {
-  min-height: 300px;
+  height: 850px !important;
+  min-height: 850px !important;
   border-radius: 20px;
   border: 0 !important;
+  overflow: hidden;
 }
 
 .editor-wrapper :deep(.tox-editor-header) {
@@ -2735,6 +2958,66 @@ onBeforeUnmount(() => {
   background: #f8fafc;
 }
 
+.editor-wrapper :deep(.tox-edit-area) {
+  padding: 0 !important;
+}
+
+.editor-wrapper :deep(.lesson-media-video iframe) {
+  width: min(100%, 640px) !important;
+  max-width: 640px !important;
+  min-width: 0 !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9 !important;
+  margin: 0 auto !important;
+  border-radius: 18px !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14) !important;
+  display: block !important;
+}
+
+.editor-wrapper :deep(.lesson-media-video),
+.editor-wrapper :deep(figure.lesson-media-video) {
+  width: 100% !important;
+  max-width: 640px !important;
+  margin: 1rem auto 1.25rem !important;
+}
+
+.editor-wrapper :deep(.lesson-media-image img) {
+  width: min(100%, 860px) !important;
+  max-width: 860px !important;
+  margin: 0 auto !important;
+}
+
+.editor-wrapper :deep(.lesson-media-audio iframe) {
+  width: min(100%, 860px) !important;
+  max-width: 860px !important;
+  margin: 0 auto !important;
+}
+
+/* viewport del editor: grande pero con scroll */
+.editor-wrapper :deep(.tox-tinymce) {
+  height: 850px !important;
+  min-height: 850px !important;
+  border-radius: 20px;
+  border: 0 !important;
+  overflow: hidden;
+}
+
+.editor-wrapper :deep(.tox-editor-container) {
+  height: 100% !important;
+}
+
+.editor-wrapper :deep(.tox-edit-area) {
+  height: calc(100% - 82px) !important;
+  overflow: hidden !important;
+}
+
+.editor-wrapper :deep(.tox-edit-area__iframe) {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  background: #f8fafc;
+  display: block !important;
+}
 .form-actions {
   display: flex;
   justify-content: space-between;

@@ -1075,6 +1075,8 @@ const nextLessonText = computed(() =>
   gap: 1rem;
   width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
+  padding-inline: 0;
 }
 
 /* =========================
@@ -1097,6 +1099,7 @@ const nextLessonText = computed(() =>
 
 :deep(.p-card-content) {
   padding-top: 0;
+  min-width: 0;
 }
 
 :deep(.p-breadcrumb) {
@@ -1106,12 +1109,19 @@ const nextLessonText = computed(() =>
   background: #ffffff;
   border: 1px solid #e5e7eb;
   overflow-x: auto;
+  overflow-y: hidden;
   white-space: nowrap;
+  scrollbar-width: none;
+}
+
+:deep(.p-breadcrumb::-webkit-scrollbar) {
+  display: none;
 }
 
 :deep(.p-breadcrumb ul) {
   flex-wrap: nowrap;
   min-width: max-content;
+  gap: 0.15rem;
 }
 
 :deep(.p-tabview-nav) {
@@ -1152,15 +1162,22 @@ const nextLessonText = computed(() =>
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
   gap: 1.5rem;
   align-items: start;
+  min-width: 0;
+}
+
+.course-header > * {
+  min-width: 0;
 }
 
 .course-header h2 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(1.7rem, 3.4vw, 2.6rem);
   line-height: 1.08;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: #0f172a;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .description {
@@ -1169,6 +1186,7 @@ const nextLessonText = computed(() =>
   font-size: 1rem;
   line-height: 1.55;
   max-width: 720px;
+  overflow-wrap: anywhere;
 }
 
 .progress {
@@ -1192,6 +1210,7 @@ const nextLessonText = computed(() =>
 .progress small {
   color: #64748b;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 /* =========================
@@ -1202,6 +1221,7 @@ const nextLessonText = computed(() =>
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 1.25rem;
   margin-bottom: 1.6rem;
+  min-width: 0;
 }
 
 .continue-card,
@@ -1251,6 +1271,8 @@ const nextLessonText = computed(() =>
   margin: 0 0 0.85rem;
   color: #0f172a;
   font-weight: 800;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .continue-image,
@@ -1286,11 +1308,13 @@ const nextLessonText = computed(() =>
   margin: 0.55rem 0 0.2rem;
   color: #334155;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .progress-info small {
   color: #64748b;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 /* =========================
@@ -1301,6 +1325,7 @@ const nextLessonText = computed(() =>
   flex-direction: column;
   gap: 1rem;
   margin-top: 1rem;
+  min-width: 0;
 }
 
 .module-card {
@@ -1319,6 +1344,7 @@ const nextLessonText = computed(() =>
   gap: 1rem;
   cursor: pointer;
   background: #fcfdff;
+  min-width: 0;
 }
 
 .module-info {
@@ -1334,6 +1360,8 @@ const nextLessonText = computed(() =>
   line-height: 1.3;
   color: #0f172a;
   font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .module-icon {
@@ -1345,6 +1373,7 @@ const nextLessonText = computed(() =>
 .module-lessons {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .lesson-row {
@@ -1354,6 +1383,7 @@ const nextLessonText = computed(() =>
   gap: 1rem;
   padding: 0.9rem 1.1rem;
   border-top: 1px solid #e5e7eb;
+  min-width: 0;
 }
 
 .lesson-title-group {
@@ -1361,12 +1391,15 @@ const nextLessonText = computed(() =>
   flex-direction: column;
   gap: 0.18rem;
   min-width: 0;
+  flex: 1;
 }
 
 .lesson-title-group span {
   font-weight: 600;
   color: #0f172a;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .lesson-title-group small {
@@ -1379,6 +1412,7 @@ const nextLessonText = computed(() =>
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .btn-open {
@@ -1399,6 +1433,7 @@ const nextLessonText = computed(() =>
 
 .course-tabs {
   margin-top: 1rem;
+  min-width: 0;
 }
 
 /* =========================
