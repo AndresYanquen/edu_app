@@ -87,6 +87,7 @@
                 label="Unirme"
                 icon="pi pi-video"
                 class="p-button-sm"
+                :disabled="!isJoinEnabled(session)"
                 @click="joinSession(session.joinUrl)"
               />
               <Button
@@ -239,7 +240,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
@@ -253,6 +254,8 @@ const error = ref(false);
 const pendingSessions = ref([]);
 const loadingPendingSessions = ref(true);
 const pendingSessionsError = ref(false);
+const nowTick = ref(Date.now());
+let nowIntervalId = null;
 
 const router = useRouter();
 const toast = useToast();
@@ -371,6 +374,26 @@ const joinSession = (url) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
+const toSessionDate = (value) => {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+};
+
+const isJoinEnabled = (session) => {
+  if (!session?.joinUrl) return false;
+  const startsAt = toSessionDate(session.startsAt);
+  if (!startsAt) return false;
+
+  const startMs = startsAt.getTime();
+  const enableFromMs = startMs - 5 * 60 * 1000;
+  const nowMs = nowTick.value;
+  if (nowMs < enableFromMs) return false;
+
+  const endsAt = toSessionDate(session.endsAt);
+  if (!endsAt) return true;
+  return nowMs <= endsAt.getTime();
+};
+
 const loadPendingSessions = async () => {
   loadingPendingSessions.value = true;
   pendingSessionsError.value = false;
@@ -429,8 +452,15 @@ const loadCourses = async () => {
 };
 
 onMounted(() => {
+  nowIntervalId = setInterval(() => {
+    nowTick.value = Date.now();
+  }, 30 * 1000);
   loadCourses();
   loadPendingSessions();
+});
+
+onBeforeUnmount(() => {
+  if (nowIntervalId) clearInterval(nowIntervalId);
 });
 </script>
 
