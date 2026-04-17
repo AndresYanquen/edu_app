@@ -20,6 +20,7 @@ const liveSessionRoutes = require('./routes/liveSessions');
 const cmsRoutes = require('./routes/cms');
 const adminRoutes = require('./routes/admin');
 const notificationsRoutes = require('./routes/notifications');
+const presenceRoutes = require('./routes/presence');
 const swaggerDocument = require('./docs/openapi');
 
 const app = express();
@@ -77,6 +78,7 @@ app.use('/courses', coursesRoutes);
 app.use('/cms', cmsRoutes);
 app.use('/admin', adminRoutes);
 app.use(notificationsRoutes);
+app.use(presenceRoutes);
 app.use(progressRoutes);
 app.use(quizzesRoutes);
 app.use(instructorRoutes);

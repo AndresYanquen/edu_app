@@ -9,6 +9,7 @@ const {
 } = require('../middleware/roles');
 
 const router = express.Router();
+const PRESENCE_ONLINE_TTL_SECONDS = Number(process.env.PRESENCE_ONLINE_TTL_SECONDS || 120);
 
 const instructorScopedPaths = ['/instructor', '/groups'];
 router.use(instructorScopedPaths, auth, requireGlobalRoleAny(['instructor', 'admin']));
@@ -121,6 +122,62 @@ router.get(
     } catch (err) {
       console.error('Failed to load group teachers', err);
       return res.status(500).json({ error: 'Failed to load group teachers' });
+    }
+  },
+);
+
+router.get(
+  '/groups/:id/presence',
+  requireGroupTeacherOrAdmin((req) => req.params.id),
+  async (req, res) => {
+    const groupId = req.params.id;
+    const ttlSeconds = Number.isFinite(PRESENCE_ONLINE_TTL_SECONDS) && PRESENCE_ONLINE_TTL_SECONDS > 0
+      ? PRESENCE_ONLINE_TTL_SECONDS
+      : 120;
+
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT
+            u.id AS student_id,
+            u.full_name,
+            u.email,
+            u.last_seen_at,
+            (
+              u.last_seen_at IS NOT NULL
+              AND u.last_seen_at >= (now() - make_interval(secs => $2::int))
+            ) AS is_online
+          FROM group_students gs
+          JOIN users u ON u.id = gs.user_id
+          WHERE gs.group_id = $1
+            AND gs.status = 'active'
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
+          ORDER BY u.full_name ASC
+        `,
+        [groupId, ttlSeconds],
+      );
+
+      return res.json({
+        groupId,
+        ttlSeconds: ttlSeconds,
+        now: new Date().toISOString(),
+        students: rows.map((row) => ({
+          studentId: row.student_id,
+          fullName: row.full_name,
+          email: row.email,
+          lastSeenAt: row.last_seen_at,
+          isOnline: Boolean(row.is_online),
+        })),
+      });
+    } catch (err) {
+      console.error('Failed to load group presence', err);
+      return res.status(500).json({ error: 'Failed to load group presence' });
     }
   },
 );

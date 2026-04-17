@@ -60,6 +60,17 @@
                 >
                   <Column field="fullName" :header="t('instructorGroup.table.student')" />
                   <Column field="email" :header="t('instructorGroup.table.email')" />
+                  <Column :header="t('instructorGroup.table.connection')">
+                    <template #body="{ data }">
+                      <div class="activity-cell">
+                        <Tag
+                          :value="presenceLabel(data)"
+                          :severity="presenceSeverity(data)"
+                          :icon="getStudentPresence(data.id)?.isOnline ? 'pi pi-circle-fill' : undefined"
+                        />
+                      </div>
+                    </template>
+                  </Column>
                   <Column :header="t('instructorGroup.table.progress')">
                     <template #body="{ data }">
                       <div class="progress-cell">
@@ -226,7 +237,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
@@ -259,6 +270,8 @@ const { t } = useI18n();
 
 const group = ref(null);
 const students = ref([]);
+const presenceByStudentId = ref({});
+const presenceLoading = ref(false);
 const loading = ref(true);
 const error = ref(false);
 const permissionError = ref(false);
@@ -300,6 +313,8 @@ const defaultSessionRange = () => {
 };
 const sessionRange = ref(defaultSessionRange());
 const courseModules = computed(() => courseDetail.value?.modules || []);
+const PRESENCE_REFRESH_MS = 60000;
+let presenceRefreshTimer = null;
 
 const resetLiveTabState = () => {
   liveSeries.value = [];
@@ -357,6 +372,7 @@ const loadData = async () => {
       bestQuizScore: row.bestQuizScore,
       lastQuizScore: row.lastQuizScore,
     }));
+    await loadPresence();
 
     if (activeTab.value === 1) {
       await loadCourseContent(true);
@@ -379,6 +395,43 @@ const loadData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const loadPresence = async () => {
+  if (!group.value?.id) return;
+  presenceLoading.value = true;
+  try {
+    const { data } = await api.get(`/groups/${group.value.id}/presence`);
+    const rows = Array.isArray(data?.students) ? data.students : [];
+    const nextMap = {};
+    rows.forEach((row) => {
+      if (!row?.studentId) return;
+      nextMap[row.studentId] = {
+        isOnline: Boolean(row.isOnline),
+        lastSeenAt: row.lastSeenAt || null,
+      };
+    });
+    presenceByStudentId.value = nextMap;
+  } catch (err) {
+    console.error('Failed to load presence', err);
+  } finally {
+    presenceLoading.value = false;
+  }
+};
+
+const clearPresenceRefreshTimer = () => {
+  if (presenceRefreshTimer) {
+    clearInterval(presenceRefreshTimer);
+    presenceRefreshTimer = null;
+  }
+};
+
+const startPresenceRefreshTimer = () => {
+  clearPresenceRefreshTimer();
+  if (activeTab.value !== 0) return;
+  presenceRefreshTimer = setInterval(() => {
+    loadPresence();
+  }, PRESENCE_REFRESH_MS);
 };
 
 const goBack = () => {
@@ -425,6 +478,37 @@ const formatScore = (value) => {
     return '—';
   }
   return `${value}%`;
+};
+
+const getStudentPresence = (studentId) => presenceByStudentId.value?.[studentId] || null;
+
+const presenceLabel = (student) => {
+  const presence = getStudentPresence(student.id);
+  if (presence?.isOnline) return t('instructorGroup.onlineNow');
+  const lastSeenAt = presence?.lastSeenAt || student.lastSeenAt;
+  if (!lastSeenAt) return t('instructorGroup.neverAccessed');
+  return t('instructorGroup.lastSeenAgo', { value: formatRelativeTime(lastSeenAt) });
+};
+
+const presenceSeverity = (student) => {
+  const presence = getStudentPresence(student.id);
+  if (presence?.isOnline) return 'success';
+  const lastSeenAt = presence?.lastSeenAt || student.lastSeenAt;
+  if (!lastSeenAt) return 'warning';
+  return 'secondary';
+};
+
+const formatRelativeTime = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  if (Number.isNaN(diffMs)) return '—';
+  const minutes = Math.max(1, Math.floor(diffMs / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `${days} d`;
 };
 
 const loadCourseContent = async (force = false) => {
@@ -786,15 +870,19 @@ const handleSessionsRangeChange = (range) => {
 
 const onTabChange = (event) => {
   activeTab.value = event.index;
+  startPresenceRefreshTimer();
   if (event.index === 1) {
     loadCourseContent();
   } else if (event.index === 2) {
     ensureLiveTabData();
+  } else if (event.index === 0) {
+    loadPresence();
   }
 };
 
 onMounted(() => {
   loadData();
+  startPresenceRefreshTimer();
 });
 
 watch(
@@ -802,10 +890,16 @@ watch(
   (newId, oldId) => {
     if (newId && newId !== oldId) {
       resetLiveTabState();
+      presenceByStudentId.value = {};
       loadData();
+      startPresenceRefreshTimer();
     }
   },
 );
+
+onBeforeUnmount(() => {
+  clearPresenceRefreshTimer();
+});
 </script>
 
 <style scoped>

@@ -251,6 +251,7 @@ import Tag from 'primevue/tag';
 
 import { useAuthStore } from '../stores/auth';
 import { useNotificationsStore } from '../stores/notifications';
+import { pingPresence } from '../api/presence';
 import AppSidebar from './ui/AppSidebar.vue';
 import NotificationsPanel from './notifications/NotificationsPanel.vue';
 
@@ -387,12 +388,41 @@ const handleOpenNotificationsFromMobile = () => {
   openNotifications.value = true;
 };
 
+const PRESENCE_PING_INTERVAL_MS = Math.max(
+  30000,
+  Number(import.meta.env.VITE_PRESENCE_PING_INTERVAL_MS || 60000),
+);
+
 let notificationsRefreshTimer = null;
+let presenceRefreshTimer = null;
+let presencePingInFlight = false;
 
 const clearNotificationsRefreshTimer = () => {
   if (notificationsRefreshTimer) {
     clearInterval(notificationsRefreshTimer);
     notificationsRefreshTimer = null;
+  }
+};
+
+const clearPresenceRefreshTimer = () => {
+  if (presenceRefreshTimer) {
+    clearInterval(presenceRefreshTimer);
+    presenceRefreshTimer = null;
+  }
+};
+
+const sendPresencePing = async () => {
+  if (!canShowNotifications.value) return;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+  if (presencePingInFlight) return;
+
+  presencePingInFlight = true;
+  try {
+    await pingPresence('web');
+  } catch (err) {
+    // Silent on purpose: presence ping should never break UI.
+  } finally {
+    presencePingInFlight = false;
   }
 };
 
@@ -404,6 +434,7 @@ const refreshUnreadIfStudent = async () => {
 const handleVisibilityChange = async () => {
   if (document.visibilityState === 'visible') {
     await refreshUnreadIfStudent();
+    await sendPresencePing();
   }
 };
 
@@ -422,14 +453,19 @@ watch(
   canShowNotifications,
   async (enabled) => {
     clearNotificationsRefreshTimer();
+    clearPresenceRefreshTimer();
     if (!enabled) {
       notifications.setUnreadCount(0);
       return;
     }
     await refreshUnreadIfStudent();
+    await sendPresencePing();
     notificationsRefreshTimer = setInterval(() => {
       refreshUnreadIfStudent();
     }, 45000);
+    presenceRefreshTimer = setInterval(() => {
+      sendPresencePing();
+    }, PRESENCE_PING_INTERVAL_MS);
   },
   { immediate: true },
 );
@@ -442,6 +478,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearNotificationsRefreshTimer();
+  clearPresenceRefreshTimer();
   if (typeof document !== 'undefined') {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
   }
