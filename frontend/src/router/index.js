@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth';
 
 const Login = () => import('../views/Login.vue');
 const StudentDashboard = () => import('../views/StudentDashboard.vue');
+const CommunityForum = () => import('../views/CommunityForum.vue');
 const Course = () => import('../views/Course.vue');
 const InstructorDashboard = () => import('../views/InstructorDashboard.vue');
 const InstructorGroup = () => import('../views/InstructorGroup.vue');
@@ -26,6 +27,7 @@ const CmsCourseAttendanceRouteTab = () => import('../views/cms/courses/tabs/CmsC
 const CmsCourseInstructorsTab = () => import('../views/cms/courses/tabs/CmsCourseInstructorsTab.vue');
 const CmsCourseEnrollmentsTab = () => import('../views/cms/courses/tabs/CmsCourseEnrollmentsTab.vue');
 const CmsCourseStaffTab = () => import('../views/cms/courses/tabs/CmsCourseStaffTab.vue');
+const CmsCourseForumsTab = () => import('../views/cms/courses/tabs/CmsCourseForumsTab.vue');
 const CmsLessonEditor = () => import('../views/CmsLessonEditor.vue');
 const ActivateAccount = () => import('../views/ActivateAccount.vue');
 const LandingPage = () => import('../views/LandingPage.vue');
@@ -38,6 +40,12 @@ const routes = [
     path: '/student',
     name: 'student',
     component: StudentDashboard,
+    meta: { requiresAuth: true, roles: ['student'] },
+  },
+  {
+    path: '/student/community',
+    name: 'student-community',
+    component: CommunityForum,
     meta: { requiresAuth: true, roles: ['student'] },
   },
   {
@@ -143,6 +151,12 @@ const routes = [
         name: 'cms-course-posts',
         component: CmsCoursePostsRouteTab,
         meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'posts' },
+      },
+      {
+        path: 'forums',
+        name: 'cms-course-forums',
+        component: CmsCourseForumsTab,
+        meta: { requiresAuth: true, requiresStaff: true, cmsCourseTabKey: 'forums' },
       },
       {
         path: 'live-sessions',

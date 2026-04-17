@@ -269,6 +269,7 @@ const { t, locale } = useI18n();
 
 const studentLinks = computed(() => [
   { label: t('sidebar.studentDashboard'), name: 'student', icon: 'pi pi-home' },
+  { label: 'Comunidad', name: 'student-community', icon: 'pi pi-comments' },
 ]);
 
 const instructorLinks = computed(() => [

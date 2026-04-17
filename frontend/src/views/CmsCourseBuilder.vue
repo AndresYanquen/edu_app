@@ -430,6 +430,7 @@ const courseTabRouteNames = {
   groups: 'cms-course-groups',
   announcements: 'cms-course-announcements',
   posts: 'cms-course-posts',
+  forums: 'cms-course-forums',
   live: 'cms-course-live-sessions',
   attendance: 'cms-course-attendance',
   instructors: 'cms-course-instructors',
@@ -442,6 +443,7 @@ const courseTabIcons = {
   groups: 'pi pi-users',
   announcements: 'pi pi-megaphone',
   posts: 'pi pi-file-edit',
+  forums: 'pi pi-comments',
   live: 'pi pi-video',
   attendance: 'pi pi-check-square',
   instructors: 'pi pi-user',
@@ -488,6 +490,14 @@ const tabs = computed(() => {
       label: 'Posts',
       routeName: courseTabRouteNames.posts,
       icon: courseTabIcons.posts,
+    });
+  }
+  if (canManageEnrollments.value || hasContentAccess.value) {
+    list.push({
+      key: 'forums',
+      label: 'Forums',
+      routeName: courseTabRouteNames.forums,
+      icon: courseTabIcons.forums,
     });
   }
   if (isAdmin.value) {
@@ -582,6 +592,7 @@ const tabDataReady = ref({
   groups: false,
   announcements: false,
   posts: false,
+  forums: false,
   live: false,
   attendance: false,
   instructors: false,
@@ -641,6 +652,7 @@ const resetTabDataState = () => {
     groups: false,
     announcements: false,
     posts: false,
+    forums: false,
     live: false,
     attendance: false,
     instructors: false,
@@ -2447,6 +2459,7 @@ const ensureDataForCurrentTab = async () => {
     case 'groups':
     case 'announcements':
     case 'posts':
+    case 'forums':
     case 'attendance':
       await ensureGroupsReady(currentTabKey.value);
       return;
@@ -2587,6 +2600,7 @@ watch(
       tabDataReady.value = {
         ...tabDataReady.value,
         attendance: false,
+        forums: false,
         groups: false,
         announcements: false,
         posts: false,

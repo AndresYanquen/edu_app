@@ -458,6 +458,16 @@
               </div>
             </div>
           </TabPanel>
+
+          <TabPanel>
+            <template #header>
+              <span class="course-tab-title">
+                <i class="pi pi-comments" />
+                <span>Foro</span>
+              </span>
+            </template>
+            <ForumBoard scope="course" :course-id="route.params.id" />
+          </TabPanel>
         </TabView>
       </template>
     </Card>
@@ -476,6 +486,7 @@ import Accordion from 'primevue/accordion';
 import AccordionTab from 'primevue/accordiontab';
 import PreviewBanner from '../components/PreviewBanner.vue';
 import CoursePostsFeed from '../components/student/posts/CoursePostsFeed.vue';
+import ForumBoard from '../components/forums/ForumBoard.vue';
 import api from '../api/axios';
 import { mySessions } from '../api/liveSessions';
 
