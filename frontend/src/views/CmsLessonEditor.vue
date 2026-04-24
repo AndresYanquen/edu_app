@@ -4,10 +4,14 @@
       <template #title>
         <div class="lesson-topbar">
           <div class="lesson-topbar-left">
-            <Button icon="pi pi-arrow-left" class="p-button-text" @click="goBack" />
+            <Button
+              icon="pi pi-arrow-left"
+              class="p-button-text"
+              @click="goBack"
+            />
             <div class="lesson-topbar-copy">
               <p class="lesson-kicker">Lesson editor</p>
-              <h1>{{ form.title || 'Untitled lesson' }}</h1>
+              <h1>{{ form.title || "Untitled lesson" }}</h1>
               <div class="lesson-meta">
                 <span>{{ form.estimatedMinutes || 0 }} min</span>
                 <span v-if="courseId">Course active</span>
@@ -26,7 +30,11 @@
               class="p-button-text"
               @click="togglePublish"
             />
-            <Button label="Save changes" :loading="saving" @click="saveLesson" />
+            <Button
+              label="Save changes"
+              :loading="saving"
+              @click="saveLesson"
+            />
           </div>
         </div>
       </template>
@@ -47,10 +55,10 @@
             <section class="lesson-hero-card">
               <div class="lesson-hero-copy">
                 <p class="lesson-kicker">Now editing</p>
-                <h2>{{ form.title || 'Untitled lesson' }}</h2>
+                <h2>{{ form.title || "Untitled lesson" }}</h2>
                 <p class="lesson-hero-text">
-                  Organiza el video, el contenido, los recursos y la evaluación de esta lección
-                  en una experiencia más clara y agradable para el alumno.
+                  Organiza el contenido por páginas y bloques, mientras ves a la
+                  derecha cómo se va a mostrar realmente para el alumno.
                 </p>
 
                 <div class="lesson-hero-badges">
@@ -60,11 +68,11 @@
                   </span>
                   <span class="lesson-chip">
                     <i class="pi pi-file-edit"></i>
-                    Content + Quiz
+                    Block editor
                   </span>
                   <span class="lesson-chip">
-                    <i class="pi pi-images"></i>
-                    Media enabled
+                    <i class="pi pi-eye"></i>
+                    Live preview
                   </span>
                 </div>
               </div>
@@ -74,6 +82,37 @@
               <div class="section-head">
                 <div>
                   <h3>Basic information</h3>
+                  <div class="dialog-field">
+                    <label>Imagen de portada</label>
+
+                    <div class="block-asset-toolbar">
+                      <Button
+                        label="Subir imagen"
+                        icon="pi pi-upload"
+                        class="p-button-sm"
+                        @click="triggerCoverUpload"
+                      />
+
+                      <Button
+                        label="Elegir de Media Library"
+                        icon="pi pi-images"
+                        class="p-button-sm p-button-outlined"
+                        @click="openMediaLibraryForCover"
+                      />
+
+                      <Button
+                        label="Quitar"
+                        icon="pi pi-times"
+                        class="p-button-sm p-button-text p-button-danger"
+                        @click="form.coverImage = ''"
+                        :disabled="!form.coverImage"
+                      />
+                    </div>
+
+                    <div v-if="form.coverImage" class="block-file-preview">
+                      <img :src="form.coverImage" class="block-preview-image" />
+                    </div>
+                  </div>
                   <small>Define los datos principales de la lección</small>
                 </div>
               </div>
@@ -92,118 +131,403 @@
             </section>
 
             <section class="lesson-section-card">
-              <div class="section-head section-head-split">
+              <div class="section-head">
                 <div>
-                  <h3>Video</h3>
-                  <small>Agrega el enlace principal del video o clase</small>
-                </div>
-
-                <Button
-                  v-if="form.videoUrl"
-                  label="Open video"
-                  icon="pi pi-external-link"
-                  class="p-button-text"
-                  @click="openVideo"
-                />
-              </div>
-
-              <div class="dialog-field">
-                <label>Video URL</label>
-                <InputText v-model="form.videoUrl" placeholder="https://..." />
-              </div>
-
-              <div class="video-preview-card" :class="{ 'is-empty': !form.videoUrl }">
-                <template v-if="form.videoUrl">
-                  <div class="video-preview-icon">
-                    <i class="pi pi-play-circle"></i>
-                  </div>
-                  <div class="video-preview-copy">
-                    <strong>Video ready</strong>
-                    <p>
-                      El enlace ya está cargado. El alumno podrá identificar esta lección como
-                      contenido principal de estudio.
-                    </p>
-                  </div>
-                </template>
-
-                <template v-else>
-                  <div class="video-preview-icon">
-                    <i class="pi pi-video"></i>
-                  </div>
-                  <div class="video-preview-copy">
-                    <strong>No video linked yet</strong>
-                    <p>
-                      Agrega un enlace para que esta lección tenga un recurso principal más claro.
-                    </p>
-                  </div>
-                </template>
-              </div>
-            </section>
-
-            <section class="lesson-section-card">
-              <div class="section-head section-head-split">
-                <div>
-                  <h3>Lesson content</h3>
-                  <small>Texto, imágenes, audio, archivos y quizzes inline</small>
+                  <h3>Lesson pages</h3>
+                  <small>Crea la lección por páginas y bloques</small>
                 </div>
               </div>
 
-              <div class="assets-inline-hint">
-                <small>Assets are managed in Media Library.</small>
-                <Button
-                  icon="pi pi-images"
-                  label="Open Media Library"
-                  class="p-button-text"
-                  @click="openMediaLibrary"
-                  aria-label="Open Media Library"
-                />
+              <div class="pages-topbar">
+                <div class="pages-topbar-copy">
+                  <strong>Construye la lección por páginas</strong>
+                  <small class="muted">
+                    Texto, imagen, audio y video. La vista previa se actualiza
+                    mientras editas.
+                  </small>
+                </div>
+
+                <div class="pages-topbar-actions">
+                  <Button
+                    icon="pi pi-images"
+                    label="Media Library"
+                    class="p-button-outlined"
+                    @click="openMediaLibrary"
+                  />
+                  <Button label="Add page" icon="pi pi-plus" @click="addPage" />
+                </div>
               </div>
 
-              <div class="dialog-field">
-                <div class="content-header-row">
-                  <label>Content editor</label>
-                </div>
+              <div class="pages-builder">
+                <div
+                  v-for="(page, pageIndex) in form.contentJson.pages"
+                  :key="pageIndex"
+                  class="page-builder-card"
+                >
+                  <div class="page-builder-head">
+                    <div class="page-builder-head-fields">
+                      <div class="dialog-field">
+                        <label>Page title</label>
+                        <InputText
+                          v-model="page.title"
+                          placeholder="Page title"
+                        />
+                      </div>
 
-                <div class="editor-wrapper">
-                  <Editor
-                    v-model="form.contentHtml"
-                    ref="editorRef"
-                    id="<uid>"
-                    licenseKey="gpl"
-                    tinymce-script-src="/tinymce/tinymce.min.js"
-                    :init="tinymceInit"
-                  />
-                </div>
+                      <div class="dialog-field">
+                        <label>Layout</label>
+                        <Dropdown
+                          v-model="page.layout"
+                          :options="layoutOptions"
+                          optionLabel="label"
+                          optionValue="value"
+                        />
+                      </div>
+                    </div>
 
-                <small class="muted">
-                  Paste YouTube, Vimeo, Loom, or image URLs on their own lines to render rich embeds.
-                </small>
+                    <div class="page-actions">
+                      <Button
+                        icon="pi pi-arrow-up"
+                        class="p-button-text"
+                        @click="movePage(pageIndex, -1)"
+                        :disabled="pageIndex === 0"
+                      />
+                      <Button
+                        icon="pi pi-arrow-down"
+                        class="p-button-text"
+                        @click="movePage(pageIndex, 1)"
+                        :disabled="
+                          pageIndex === form.contentJson.pages.length - 1
+                        "
+                      />
+                      <Button
+                        icon="pi pi-trash"
+                        class="p-button-text p-button-danger"
+                        @click="removePage(pageIndex)"
+                        :disabled="form.contentJson.pages.length <= 1"
+                      />
+                    </div>
+                  </div>
 
-                <div class="asset-file-inputs">
-                  <input
-                    ref="imageInputRef"
-                    type="file"
-                    accept="image/*"
-                    class="asset-file-input"
-                    style="display: none"
-                    @change="handleAssetSelection('image', $event)"
-                  />
-                  <input
-                    ref="audioInputRef"
-                    type="file"
-                    accept="audio/*"
-                    class="asset-file-input"
-                    style="display: none"
-                    @change="handleAssetSelection('audio', $event)"
-                  />
-                  <input
-                    ref="fileInputRef"
-                    type="file"
-                    accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
-                    class="asset-file-input"
-                    style="display: none"
-                    @change="handleAssetSelection('file', $event)"
-                  />
+                  <div class="blocks-toolbar">
+                    <Button
+                      label="Texto"
+                      icon="pi pi-align-left"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'text')"
+                    />
+                    <Button
+                      label="Imagen"
+                      icon="pi pi-image"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'image')"
+                    />
+                    <Button
+                      label="Audio"
+                      icon="pi pi-volume-up"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'audio')"
+                    />
+                    <Button
+                      label="Video"
+                      icon="pi pi-video"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'video')"
+                    />
+                    <Button
+                      label="Quiz"
+                      icon="pi pi-question-circle"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'quiz')"
+                    />
+                  </div>
+
+                  <div v-if="!page.blocks.length" class="empty-state">
+                    Esta página aún no tiene bloques.
+                  </div>
+
+                  <div v-else class="blocks-list">
+                    <div
+                      v-for="(block, blockIndex) in page.blocks"
+                      :key="blockIndex"
+                      class="block-editor-card"
+                    >
+                      <div class="block-editor-head">
+                        <strong>{{ block.type }}</strong>
+
+                        <div class="question-actions">
+                          <Button
+                            icon="pi pi-arrow-up"
+                            class="p-button-text"
+                            @click="moveBlock(pageIndex, blockIndex, -1)"
+                            :disabled="blockIndex === 0"
+                          />
+                          <Button
+                            icon="pi pi-arrow-down"
+                            class="p-button-text"
+                            @click="moveBlock(pageIndex, blockIndex, 1)"
+                            :disabled="
+                              blockIndex ===
+                              form.contentJson.pages[pageIndex].blocks.length -
+                                1
+                            "
+                          />
+                          <Button
+                            icon="pi pi-trash"
+                            class="p-button-text p-button-danger"
+                            @click="removeBlock(pageIndex, blockIndex)"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="dialog-field">
+                        <label>Block title</label>
+                        <InputText
+                          v-model="block.title"
+                          placeholder="Optional title"
+                        />
+                      </div>
+
+                      <div v-if="block.type === 'text'" class="dialog-field">
+                        <label>Content</label>
+                        <Textarea v-model="block.content" autoResize rows="5" />
+                      </div>
+
+                      <template
+                        v-else-if="
+                          block.type === 'image' || block.type === 'audio'
+                        "
+                      >
+                        <div class="block-asset-toolbar">
+                          <Button
+                            :label="
+                              block.type === 'image'
+                                ? 'Subir imagen'
+                                : 'Subir audio'
+                            "
+                            :icon="
+                              block.type === 'image'
+                                ? 'pi pi-upload'
+                                : 'pi pi-volume-up'
+                            "
+                            class="p-button-sm"
+                            @click="
+                              triggerBlockUpload(
+                                pageIndex,
+                                blockIndex,
+                                block.type,
+                              )
+                            "
+                          />
+                          <Button
+                            label="Elegir de Media Library"
+                            icon="pi pi-images"
+                            class="p-button-sm p-button-outlined"
+                            @click="
+                              openMediaLibraryForBlock(
+                                pageIndex,
+                                blockIndex,
+                                block.type,
+                              )
+                            "
+                          />
+                          <Button
+                            label="Quitar"
+                            icon="pi pi-times"
+                            class="p-button-sm p-button-text p-button-danger"
+                            @click="clearBlockAsset(pageIndex, blockIndex)"
+                            :disabled="!block.src && !block.embedUrl"
+                          />
+                        </div>
+
+                        <div
+                          class="block-file-preview"
+                          :class="{ empty: !block.src && !block.embedUrl }"
+                        >
+                          <template v-if="block.src || block.embedUrl">
+                            <img
+                              v-if="block.type === 'image' && block.src"
+                              :src="block.src"
+                              alt=""
+                              class="block-preview-image"
+                            />
+
+                            <audio
+                              v-else-if="block.type === 'audio' && block.src"
+                              :src="block.src"
+                              controls
+                              class="block-preview-audio"
+                            ></audio>
+
+                            <div class="block-preview-meta">
+                              <strong>{{ getBlockPreviewLabel(block) }}</strong>
+                              <small class="muted block-url">
+                                {{ block.embedUrl || block.src }}
+                              </small>
+                            </div>
+                          </template>
+
+                          <template v-else>
+                            <div class="block-preview-meta">
+                              <strong>No file selected yet</strong>
+                              <small class="muted">
+                                Usa subir archivo o Media Library para asignar
+                                este bloque.
+                              </small>
+                            </div>
+                          </template>
+                        </div>
+
+                        <div v-if="block.type === 'audio'" class="dialog-field">
+                          <label>SoundCloud embed URL</label>
+                          <InputText
+                            v-model="block.embedUrl"
+                            placeholder="https://w.soundcloud.com/player/?url=..."
+                          />
+                        </div>
+
+                        <div class="dialog-field">
+                          <label>Caption</label>
+                          <InputText
+                            v-model="block.caption"
+                            placeholder="Optional caption"
+                          />
+                        </div>
+                      </template>
+
+                      <template v-else-if="block.type === 'video'">
+                        <div class="block-asset-toolbar">
+                          <Button
+                            label="Subir video"
+                            icon="pi pi-upload"
+                            class="p-button-sm"
+                            @click="
+                              triggerBlockUpload(pageIndex, blockIndex, 'video')
+                            "
+                          />
+                          <Button
+                            label="Quitar"
+                            icon="pi pi-times"
+                            class="p-button-sm p-button-text p-button-danger"
+                            @click="clearBlockAsset(pageIndex, blockIndex)"
+                            :disabled="!block.src"
+                          />
+                        </div>
+
+                        <div class="dialog-field">
+                          <label>Video URL (opcional)</label>
+                          <InputText
+                            v-model="block.src"
+                            placeholder="https://... o se llenará al subir video"
+                          />
+                        </div>
+
+                        <div
+                          class="block-file-preview"
+                          :class="{ empty: !block.src }"
+                        >
+                          <div class="block-preview-meta">
+                            <strong>{{ getBlockPreviewLabel(block) }}</strong>
+                            <small class="muted block-url">
+                              {{
+                                block.src || "Sube un video o pega un enlace."
+                              }}
+                            </small>
+                          </div>
+                        </div>
+
+                        <div class="dialog-field">
+                          <label>Caption</label>
+                          <InputText
+                            v-model="block.caption"
+                            placeholder="Optional caption"
+                          />
+                        </div>
+                      </template>
+
+                      <template v-else-if="block.type === 'quiz'">
+                        <div class="dialog-field">
+                          <label>Quiz block mode</label>
+                          <Dropdown
+                            v-model="block.quizMode"
+                            :options="[
+                              {
+                                label: 'Pregunta individual',
+                                value: 'single_question',
+                              },
+                              {
+                                label: 'Quiz completo de la lección',
+                                value: 'lesson_quiz',
+                              },
+                            ]"
+                            optionLabel="label"
+                            optionValue="value"
+                            class="w-full"
+                          />
+                        </div>
+
+                        <div
+                          v-if="block.quizMode === 'single_question'"
+                          class="dialog-field"
+                        >
+                          <label>Seleccionar pregunta</label>
+                          <Dropdown
+                            v-model="block.questionId"
+                            :options="quizQuestionSelectOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Selecciona una pregunta ya creada"
+                            class="w-full"
+                          />
+
+                          <small class="muted">
+                            Aquí eliges una pregunta del quiz que ya está creada
+                            abajo.
+                          </small>
+                        </div>
+
+                        <div class="dialog-field">
+                          <label>Mostrar feedback</label>
+                          <Dropdown
+                            v-model="block.showFeedback"
+                            :options="[
+                              { label: 'Sí', value: true },
+                              { label: 'No', value: false },
+                            ]"
+                            optionLabel="label"
+                            optionValue="value"
+                            class="w-full"
+                          />
+                        </div>
+
+                        <div class="block-file-preview">
+                          <div class="block-preview-meta">
+                            <strong>
+                              {{
+                                block.quizMode === "lesson_quiz"
+                                  ? "Quiz completo de la lección"
+                                  : "Pregunta individual"
+                              }}
+                            </strong>
+
+                            <small class="muted">
+                              {{
+                                block.quizMode === "lesson_quiz"
+                                  ? `${quizQuestions.length} preguntas disponibles`
+                                  : block.questionId
+                                    ? quizQuestions.find(
+                                        (q) =>
+                                          String(q.id) ===
+                                          String(block.questionId),
+                                      )?.questionText || "Pregunta seleccionada"
+                                    : "No has seleccionado una pregunta"
+                              }}
+                            </small>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -212,7 +536,10 @@
               <div class="section-head section-head-split quiz-head-pro">
                 <div>
                   <h3>Quiz</h3>
-                  <small>Configura las preguntas y mejora la experiencia de evaluación</small>
+                  <small>
+                    Configura las preguntas y mejora la experiencia de
+                    evaluación
+                  </small>
                 </div>
 
                 <div class="quiz-status-box">
@@ -230,12 +557,12 @@
                   <strong>{{ quizQuestions.length }}</strong>
                 </div>
                 <div class="quiz-stat-card">
-                  <span>Inline quizzes</span>
-                  <strong>{{ discoveredQuizIds.length }}</strong>
+                  <span>Quiz questions</span>
+                  <strong>{{ quizQuestions.length }}</strong>
                 </div>
                 <div class="quiz-stat-card">
                   <span>Readiness</span>
-                  <strong>{{ quizReady ? 'Complete' : 'Pending' }}</strong>
+                  <strong>{{ quizReady ? "Complete" : "Pending" }}</strong>
                 </div>
               </div>
 
@@ -247,7 +574,11 @@
                   @click="loadQuiz"
                   :disabled="quizLoading"
                 />
-                <Button label="Add question" icon="pi pi-plus" @click="openQuestionDialog()" />
+                <Button
+                  label="Add question"
+                  icon="pi pi-plus"
+                  @click="openQuestionDialog()"
+                />
               </div>
 
               <div v-if="quizLoading">
@@ -261,13 +592,18 @@
               </div>
 
               <div v-else>
-                <div v-if="!quizQuestions.length" class="empty-state quiz-empty-pro">
+                <div
+                  v-if="!quizQuestions.length"
+                  class="empty-state quiz-empty-pro"
+                >
                   <div class="empty-quiz-icon">
                     <i class="pi pi-question-circle"></i>
                   </div>
                   <div>
                     <strong>No questions yet</strong>
-                    <p>Click “Add question” to start building the lesson quiz.</p>
+                    <p>
+                      Click “Add question” to start building the lesson quiz.
+                    </p>
                   </div>
                 </div>
 
@@ -289,7 +625,10 @@
                     </Column>
                     <Column header="Type" style="width: 10rem">
                       <template #body="{ data }">
-                        <Tag :value="questionTypeLabel(data.questionType)" severity="info" />
+                        <Tag
+                          :value="questionTypeLabel(data.questionType)"
+                          severity="info"
+                        />
                       </template>
                     </Column>
                     <Column header="Options" style="width: 8rem">
@@ -312,7 +651,11 @@
                             @click.stop="moveQuestion(data, 1)"
                             :disabled="!canMoveQuestion(data, 1)"
                           />
-                          <Button icon="pi pi-pencil" class="p-button-text" @click.stop="openQuestionDialog(data)" />
+                          <Button
+                            icon="pi pi-pencil"
+                            class="p-button-text"
+                            @click.stop="openQuestionDialog(data)"
+                          />
                           <Button
                             icon="pi pi-trash"
                             class="p-button-text p-button-danger"
@@ -328,12 +671,377 @@
           </main>
 
           <aside class="lesson-sidebar">
+            <div class="sidebar-card preview-card">
+              <div class="preview-card-head">
+                <div>
+                  <h4>Live preview</h4>
+                  <p class="sidebar-save-text">
+                    Así va quedando la lección mientras editas.
+                  </p>
+                </div>
+              </div>
+
+              <div class="lesson-preview-shell">
+                <div class="lesson-preview-header">
+                  <h2>{{ form.title || "Untitled lesson" }}</h2>
+                  <span>{{ form.estimatedMinutes || 0 }} min</span>
+                </div>
+
+                <div v-if="!previewPages.length" class="preview-empty">
+                  No hay páginas todavía.
+                </div>
+
+                <div v-else class="lesson-preview-pages">
+                  <div class="preview-tabs">
+                    <button
+                      v-for="(page, pageIndex) in previewPages"
+                      :key="`preview-tab-${pageIndex}`"
+                      type="button"
+                      class="preview-tab"
+                      :class="{ active: activePreviewPage === pageIndex }"
+                      @click="activePreviewPage = pageIndex"
+                    >
+                      {{ getPageDisplayTitle(page, pageIndex) }}
+                    </button>
+                  </div>
+
+                  <section
+                    v-if="currentPreviewPage"
+                    class="lesson-preview-page"
+                  >
+                    <div class="lesson-preview-page-head">
+                      <small>Página {{ activePreviewPage + 1 }}</small>
+                      <h3>
+                        {{
+                          getPageDisplayTitle(
+                            currentPreviewPage,
+                            activePreviewPage,
+                          )
+                        }}
+                      </h3>
+                    </div>
+
+                    <div
+                      class="lesson-preview-blocks"
+                      :class="layoutClass(currentPreviewPage.layout)"
+                    >
+                      <div
+                        v-for="(block, blockIndex) in currentPreviewPage.blocks"
+                        :key="`preview-block-${activePreviewPage}-${blockIndex}`"
+                        class="lesson-preview-block"
+                      >
+                        <template v-if="block.type === 'text'">
+                          <h4 v-if="block.title">{{ block.title }}</h4>
+                          <p v-if="block.content" class="preview-text">
+                            {{ block.content }}
+                          </p>
+                          <div v-else class="preview-empty-inline">
+                            Bloque de texto vacío
+                          </div>
+                        </template>
+
+                        <template v-else-if="block.type === 'image'">
+                          <h4 v-if="block.title">{{ block.title }}</h4>
+                          <img
+                            v-if="block.src"
+                            :src="block.src"
+                            alt=""
+                            class="preview-image"
+                          />
+                          <div v-else class="preview-empty-inline">
+                            Imagen pendiente
+                          </div>
+                          <p v-if="block.caption" class="preview-caption">
+                            {{ block.caption }}
+                          </p>
+                        </template>
+
+                        <template v-else-if="block.type === 'audio'">
+                          <h4 v-if="block.title">{{ block.title }}</h4>
+
+                          <div
+                            v-if="isSoundCloudEmbed(block.embedUrl)"
+                            class="preview-audio-frame"
+                          >
+                            <iframe
+                              :src="normalizeSoundCloudEmbedUrl(block.embedUrl)"
+                              allow="autoplay"
+                              loading="lazy"
+                              frameborder="0"
+                            ></iframe>
+                          </div>
+
+                          <audio
+                            v-else-if="block.src"
+                            :src="block.src"
+                            controls
+                            class="preview-audio"
+                          ></audio>
+
+                          <div v-else class="preview-empty-inline">
+                            Audio pendiente
+                          </div>
+
+                          <p v-if="block.caption" class="preview-caption">
+                            {{ block.caption }}
+                          </p>
+                        </template>
+
+                        <template v-else-if="block.type === 'video'">
+                          <h4 v-if="block.title">{{ block.title }}</h4>
+
+                          <div
+                            v-if="getPreviewEmbedType(block.src) === 'youtube'"
+                            class="preview-video-frame"
+                          >
+                            <iframe
+                              :src="getYoutubeEmbedUrl(block.src)"
+                              allow="
+                                accelerometer;
+                                autoplay;
+                                clipboard-write;
+                                encrypted-media;
+                                gyroscope;
+                                picture-in-picture;
+                              "
+                              allowfullscreen
+                            ></iframe>
+                          </div>
+
+                          <div
+                            v-else-if="
+                              getPreviewEmbedType(block.src) === 'vimeo'
+                            "
+                            class="preview-video-frame"
+                          >
+                            <iframe
+                              :src="getVimeoEmbedUrl(block.src)"
+                              allow="autoplay; fullscreen; picture-in-picture"
+                              allowfullscreen
+                            ></iframe>
+                          </div>
+
+                          <div
+                            v-else-if="
+                              getPreviewEmbedType(block.src) === 'loom'
+                            "
+                            class="preview-video-frame"
+                          >
+                            <iframe
+                              :src="getLoomEmbedUrl(block.src)"
+                              allowfullscreen
+                            ></iframe>
+                          </div>
+
+                          <div v-else-if="block.src" class="preview-link-box">
+                            <a :href="block.src" target="_blank" rel="noopener">
+                              Abrir video
+                            </a>
+                          </div>
+
+                          <div v-else class="preview-empty-inline">
+                            Video pendiente
+                          </div>
+
+                          <p v-if="block.caption" class="preview-caption">
+                            {{ block.caption }}
+                          </p>
+                        </template>
+
+                        <template v-else-if="block.type === 'quiz'">
+                          <h4 v-if="block.title">{{ block.title }}</h4>
+
+                          <div class="preview-quiz-box">
+                            <template v-if="block.quizMode === 'lesson_quiz'">
+                              <div class="preview-quiz-head">
+                                <strong>Quiz de la lección</strong>
+                                <small
+                                  >{{
+                                    sortedQuestions.length
+                                  }}
+                                  pregunta(s)</small
+                                >
+                              </div>
+
+                              <div
+                                v-for="(question, qIndex) in sortedQuestions"
+                                :key="question.id || qIndex"
+                                class="preview-quiz-question"
+                              >
+                                <div class="preview-quiz-question-title">
+                                  {{ qIndex + 1 }}.
+                                  {{
+                                    question.questionText ||
+                                    "Pregunta sin texto"
+                                  }}
+                                </div>
+
+                                <div
+                                  v-if="questionUsesOptions(question)"
+                                  class="preview-quiz-options"
+                                >
+                                  <label
+                                    v-for="(
+                                      option, optIndex
+                                    ) in getQuestionOptions(question)"
+                                    :key="option.id || optIndex"
+                                    class="preview-quiz-option"
+                                  >
+                                    <input
+                                      :type="
+                                        question.questionType ===
+                                        'multiple_choice'
+                                          ? 'checkbox'
+                                          : 'radio'
+                                      "
+                                      :name="`preview-lesson-quiz-${question.id}`"
+                                      disabled
+                                    />
+                                    <span>{{ option.optionText }}</span>
+                                  </label>
+                                </div>
+
+                                <div v-else class="preview-quiz-answer-box">
+                                  <span
+                                    v-if="
+                                      question.questionType === 'short_text'
+                                    "
+                                    >Respuesta corta...</span
+                                  >
+                                  <span
+                                    v-else-if="
+                                      question.questionType === 'long_text'
+                                    "
+                                    >Respuesta larga...</span
+                                  >
+                                  <span
+                                    v-else-if="
+                                      question.questionType === 'numeric'
+                                    "
+                                    >Respuesta numérica...</span
+                                  >
+                                  <span v-else
+                                    >Tipo de pregunta no visualizable</span
+                                  >
+                                </div>
+                              </div>
+                            </template>
+
+                            <template v-else>
+                              <div v-if="getSelectedPreviewQuestion(block)">
+                                <div class="preview-quiz-head">
+                                  <strong>Pregunta individual</strong>
+                                  <small>
+                                    {{
+                                      questionTypeLabel(
+                                        getSelectedPreviewQuestion(block)
+                                          ?.questionType || "",
+                                      )
+                                    }}
+                                  </small>
+                                </div>
+
+                                <div class="preview-quiz-question">
+                                  <div class="preview-quiz-question-title">
+                                    {{
+                                      getSelectedPreviewQuestion(block)
+                                        ?.questionText
+                                    }}
+                                  </div>
+
+                                  <div
+                                    v-if="
+                                      questionUsesOptions(
+                                        getSelectedPreviewQuestion(block),
+                                      )
+                                    "
+                                    class="preview-quiz-options"
+                                  >
+                                    <label
+                                      v-for="(
+                                        option, optIndex
+                                      ) in getQuestionOptions(
+                                        getSelectedPreviewQuestion(block),
+                                      )"
+                                      :key="option.id || optIndex"
+                                      class="preview-quiz-option"
+                                    >
+                                      <input
+                                        :type="
+                                          getSelectedPreviewQuestion(block)
+                                            ?.questionType === 'multiple_choice'
+                                            ? 'checkbox'
+                                            : 'radio'
+                                        "
+                                        :name="`preview-single-quiz-${block.questionId}`"
+                                        disabled
+                                      />
+                                      <span>{{ option.optionText }}</span>
+                                    </label>
+                                  </div>
+
+                                  <div v-else class="preview-quiz-answer-box">
+                                    <span
+                                      v-if="
+                                        getSelectedPreviewQuestion(block)
+                                          ?.questionType === 'short_text'
+                                      "
+                                    >
+                                      Respuesta corta...
+                                    </span>
+                                    <span
+                                      v-else-if="
+                                        getSelectedPreviewQuestion(block)
+                                          ?.questionType === 'long_text'
+                                      "
+                                    >
+                                      Respuesta larga...
+                                    </span>
+                                    <span
+                                      v-else-if="
+                                        getSelectedPreviewQuestion(block)
+                                          ?.questionType === 'numeric'
+                                      "
+                                    >
+                                      Respuesta numérica...
+                                    </span>
+                                  </div>
+
+                                  <div
+                                    v-if="block.showFeedback"
+                                    class="preview-quiz-feedback-note"
+                                  >
+                                    Feedback activado
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div v-else class="preview-empty-inline">
+                                No has seleccionado una pregunta todavía.
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
+
+                      <div
+                        v-if="!currentPreviewPage.blocks.length"
+                        class="lesson-preview-block preview-empty-inline"
+                      >
+                        Sin bloques en esta página.
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+
             <div class="sidebar-card">
               <h4>Lesson details</h4>
 
               <div class="sidebar-stat">
                 <span>Title</span>
-                <strong>{{ form.title || 'Untitled' }}</strong>
+                <strong>{{ form.title || "Untitled" }}</strong>
               </div>
 
               <div class="sidebar-stat">
@@ -343,7 +1051,9 @@
 
               <div class="sidebar-stat">
                 <span>Status</span>
-                <strong>{{ lesson?.is_published ? 'Published' : 'Draft' }}</strong>
+                <strong>{{
+                  lesson?.is_published ? "Published" : "Draft"
+                }}</strong>
               </div>
 
               <div class="sidebar-stat">
@@ -361,32 +1071,21 @@
                   class="p-button-outlined w-full"
                   @click="openMediaLibrary"
                 />
-                <Button
-                  label="Open video"
-                  icon="pi pi-external-link"
-                  class="p-button-text w-full"
-                  @click="openVideo"
-                  :disabled="!form.videoUrl"
-                />
               </div>
-            </div>
-
-            <div class="sidebar-card">
-              <h4>Content guidance</h4>
-              <ul class="sidebar-list">
-                <li>Usa un título claro y directo</li>
-                <li>Agrega un video principal si aplica</li>
-                <li>Separa el contenido por bloques</li>
-                <li>Incluye quiz para reforzar aprendizaje</li>
-              </ul>
             </div>
 
             <div class="sidebar-card sidebar-save-card">
               <h4>Save</h4>
               <p class="sidebar-save-text">
-                Guarda los cambios cuando termines de organizar la lección.
+                Guarda cuando termines. Este editor ya trabaja sobre la
+                estructura nueva por bloques.
               </p>
-              <Button label="Save changes" :loading="saving" class="w-full" @click="saveLesson" />
+              <Button
+                label="Save changes"
+                :loading="saving"
+                class="w-full"
+                @click="saveLesson"
+              />
             </div>
           </aside>
         </div>
@@ -403,8 +1102,12 @@
     >
       <div class="dialog-field">
         <label>Question text</label>
-        <InputText v-model="questionForm.questionText" placeholder="What is...?" />
+        <InputText
+          v-model="questionForm.questionText"
+          placeholder="What is...?"
+        />
       </div>
+
       <div class="dialog-field">
         <label>Question type</label>
         <Dropdown
@@ -414,6 +1117,7 @@
           optionValue="value"
         />
       </div>
+
       <div v-if="questionDialogUsesOptions" class="dialog-field">
         <label>Options</label>
 
@@ -438,7 +1142,11 @@
               />
             </div>
 
-            <InputText v-model="opt.optionText" placeholder="Option text" class="option-input" />
+            <InputText
+              v-model="opt.optionText"
+              placeholder="Option text"
+              class="option-input"
+            />
 
             <div class="option-correct checkbox-row">
               <template v-if="questionForm.questionType === 'single_choice'">
@@ -453,7 +1161,11 @@
               </template>
 
               <template v-else>
-                <Checkbox :binary="true" v-model="opt.isCorrect" :inputId="`opt-cb-${idx}`" />
+                <Checkbox
+                  :binary="true"
+                  v-model="opt.isCorrect"
+                  :inputId="`opt-cb-${idx}`"
+                />
                 <label :for="`opt-cb-${idx}`" class="muted">Correct</label>
               </template>
             </div>
@@ -475,9 +1187,11 @@
         </div>
 
         <small class="muted">
-          Single choice: select exactly one correct option. Multiple choice: select one or more.
+          Single choice: select exactly one correct option. Multiple choice:
+          select one or more.
         </small>
       </div>
+
       <div v-if="questionDialogShowsTrueFalseSelector" class="dialog-field">
         <label>Correct answer</label>
         <Dropdown
@@ -488,23 +1202,33 @@
           placeholder="Select correct answer"
         />
         <small class="muted">
-          True/False options are generated automatically; choose the correct answer here.
+          True/False options are generated automatically; choose the correct
+          answer here.
         </small>
       </div>
+
       <div class="dialog-field">
         <label>Points</label>
-        <InputNumber v-model.number="questionForm.points" :min="0" step="0.5" showButtons />
+        <InputNumber
+          v-model.number="questionForm.points"
+          :min="0"
+          step="0.5"
+          showButtons
+        />
       </div>
+
       <div class="dialog-field">
         <label>Explanation</label>
         <Textarea v-model="questionForm.explanation" autoResize />
       </div>
+
       <Button
         class="p-button-text"
         icon="pi pi-chevron-down"
         label="Advanced"
         @click="questionAdvancedOpen = !questionAdvancedOpen"
       />
+
       <div v-if="questionAdvancedOpen" class="dialog-field">
         <label>Meta (JSON)</label>
         <Textarea
@@ -513,8 +1237,13 @@
           placeholder='{"hint":"Hint text","regex":"^\\d+$"}'
         />
       </div>
+
       <div class="dialog-actions">
-        <Button label="Cancel" class="p-button-text" @click="closeQuestionDialog" />
+        <Button
+          label="Cancel"
+          class="p-button-text"
+          @click="closeQuestionDialog"
+        />
         <Button label="Save" :loading="questionSaving" @click="saveQuestion" />
       </div>
     </Dialog>
@@ -545,23 +1274,34 @@
             placeholder="Search assets..."
             aria-label="Search assets"
           />
+
           <div class="media-library-tabs">
             <Button
               label="Imágenes"
-              :class="['p-button-sm', mediaLibraryTab === 'image' ? '' : 'p-button-outlined']"
+              :class="[
+                'p-button-sm',
+                mediaLibraryTab === 'image' ? '' : 'p-button-outlined',
+              ]"
               @click="mediaLibraryTab = 'image'"
             />
             <Button
               label="Audio"
-              :class="['p-button-sm', mediaLibraryTab === 'audio' ? '' : 'p-button-outlined']"
+              :class="[
+                'p-button-sm',
+                mediaLibraryTab === 'audio' ? '' : 'p-button-outlined',
+              ]"
               @click="mediaLibraryTab = 'audio'"
             />
             <Button
               label="Archivos"
-              :class="['p-button-sm', mediaLibraryTab === 'file' ? '' : 'p-button-outlined']"
+              :class="[
+                'p-button-sm',
+                mediaLibraryTab === 'file' ? '' : 'p-button-outlined',
+              ]"
               @click="mediaLibraryTab = 'file'"
             />
           </div>
+
           <div class="media-library-upload">
             <Button
               label="Upload Image"
@@ -614,19 +1354,33 @@
           </div>
 
           <div v-else-if="filteredAssets.length" class="assets-list">
-            <div v-for="asset in filteredAssets" :key="asset.assetId" class="asset-row">
+            <div
+              v-for="asset in filteredAssets"
+              :key="asset.assetId"
+              class="asset-row"
+            >
               <div class="asset-preview">
-                <img v-if="assetKindValue(asset) === 'image'" :src="resolveAssetUrl(asset.url)" alt="" />
-                <div v-else class="asset-icon">{{ asset.kind?.charAt(0)?.toUpperCase() || '?' }}</div>
+                <img
+                  v-if="assetKindValue(asset) === 'image'"
+                  :src="resolveAssetUrl(asset.url)"
+                  alt=""
+                />
+                <div v-else class="asset-icon">
+                  {{ asset.kind?.charAt(0)?.toUpperCase() || "?" }}
+                </div>
               </div>
+
               <div class="asset-info">
-                <div class="asset-title">{{ asset.originalName || asset.assetId }}</div>
+                <div class="asset-title">
+                  {{ asset.originalName || asset.assetId }}
+                </div>
                 <div class="asset-meta">
                   <Tag :value="asset.kind" severity="info" />
                   <small>{{ asset.mimeType }}</small>
                   <small>{{ formatTimestamp(asset.createdAt) }}</small>
                 </div>
               </div>
+
               <div class="asset-actions">
                 <Button
                   icon="pi pi-copy"
@@ -653,157 +1407,55 @@
       </div>
     </Dialog>
 
-    <Dialog
-      v-model:visible="insertQuizDialogVisible"
-      header="Insert quiz marker"
-      modal
-      :style="{ width: '34rem', maxWidth: '95vw' }"
-    >
-      <div class="dialog-field">
-        <label>Question</label>
-        <Dropdown
-          v-model="insertQuizQuestionId"
-          :options="insertQuizQuestionOptions"
-          optionLabel="label"
-          optionValue="value"
-          placeholder="Select a question"
-          filter
-        />
-        <small class="muted">
-          This inserts <code>data-lesson-id</code> and <code>data-question-id</code> marker HTML.
-        </small>
-      </div>
-      <div class="dialog-actions">
-        <Button label="Cancel" class="p-button-text" @click="insertQuizDialogVisible = false" />
-        <Button label="Insert" :disabled="!isEditorReady" @click="insertQuizMarker" />
-      </div>
-      <small v-if="!isEditorReady" class="muted">Loading editor…</small>
-    </Dialog>
+    <input
+      ref="imageInputRef"
+      type="file"
+      accept="image/*"
+      style="display: none"
+      @change="handleAssetSelection('image', $event)"
+    />
 
-    <Dialog
-      v-model:visible="inlineQuizDialogVisible"
-      modal
-      class="dialog"
-      :style="{ width: '80vw', maxWidth: '1100px' }"
-    >
-      <template #header>
-        <div class="inline-quiz-header">
-          <div>
-            <strong>Quiz (inline)</strong>
-            <small v-if="currentQuizId" class="muted">ID: {{ inlineQuizShortId }}</small>
-          </div>
-          <div class="question-actions">
-            <Button
-              label="Reload"
-              icon="pi pi-refresh"
-              class="p-button-text"
-              @click="loadInlineQuiz"
-              :disabled="inlineQuizLoading || !currentQuizId"
-            />
-            <Button
-              label="Add question"
-              icon="pi pi-plus"
-              @click="openInlineQuestionDialog()"
-              :disabled="!currentQuizId"
-            />
-          </div>
-        </div>
-      </template>
+    <input
+      ref="audioInputRef"
+      type="file"
+      accept="audio/*"
+      style="display: none"
+      @change="handleAssetSelection('audio', $event)"
+    />
 
-      <div class="dialog-field">
-        <label>Quizzes in lesson: {{ discoveredQuizIds.length }}</label>
-        <Dropdown
-          v-model="currentQuizId"
-          :options="discoveredQuizIds"
-          placeholder="Select a quiz id"
-          :disabled="!discoveredQuizIds.length"
-        />
-      </div>
+    <input
+      ref="videoInputRef"
+      type="file"
+      accept="video/*"
+      style="display: none"
+      @change="handleAssetSelection('video', $event)"
+    />
 
-      <div v-if="inlineQuizLoading">
-        <Skeleton height="3rem" class="mb-2" />
-        <Skeleton height="3rem" class="mb-2" />
-      </div>
-
-      <div v-else-if="inlineQuizError" class="empty-state">
-        Failed to load inline quiz.
-        <Button label="Retry" class="p-button-text" @click="loadInlineQuiz" />
-      </div>
-
-      <div v-else-if="!inlineQuizQuestions.length" class="empty-state">
-        No questions yet for this quiz.
-      </div>
-
-      <DataTable
-        v-else
-        :value="sortedInlineQuestions"
-        v-model:selection="inlineSelectedQuestion"
-        selectionMode="single"
-        dataKey="id"
-        responsiveLayout="scroll"
-      >
-        <Column field="orderIndex" header="#" style="width: 5rem" />
-        <Column field="questionText" header="Question" />
-        <Column header="Type" style="width: 10rem">
-          <template #body="{ data }">
-            <Tag :value="questionTypeLabel(data.questionType)" severity="info" />
-          </template>
-        </Column>
-        <Column header="Options" style="width: 8rem">
-          <template #body="{ data }">
-            {{ data.options?.length || 0 }}
-          </template>
-        </Column>
-        <Column header="Actions" style="width: 14rem">
-          <template #body="{ data }">
-            <div class="question-actions">
-              <Button
-                icon="pi pi-arrow-up"
-                class="p-button-text"
-                @click.stop="moveQuestion(data, -1)"
-                :disabled="!canMoveQuestion(data, -1)"
-              />
-              <Button
-                icon="pi pi-arrow-down"
-                class="p-button-text"
-                @click.stop="moveQuestion(data, 1)"
-                :disabled="!canMoveQuestion(data, 1)"
-              />
-              <Button icon="pi pi-pencil" class="p-button-text" @click.stop="openInlineQuestionDialog(data)" />
-              <Button
-                icon="pi pi-trash"
-                class="p-button-text p-button-danger"
-                @click.stop="removeQuestion(data)"
-              />
-            </div>
-          </template>
-        </Column>
-      </DataTable>
-      <small class="muted">Options are edited in the question dialog.</small>
-    </Dialog>
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
+      style="display: none"
+      @change="handleAssetSelection('file', $event)"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import RichContent from '../components/RichContent.vue';
-import ProgressSpinner from 'primevue/progressspinner';
-import { uploadLessonAsset } from '../lib/storageAssets';
-import DOMPurify from 'dompurify';
-import Editor from '@tinymce/tinymce-vue';
-import Textarea from 'primevue/textarea';
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import Textarea from "primevue/textarea";
+import DOMPurify from "dompurify";
+import { uploadLessonAsset } from "../lib/storageAssets";
 
 import {
-  getLessons,
+  getLesson,
   updateLesson,
   publishLesson,
   unpublishLesson,
   getLessonQuiz,
-  getQuizById,
   createQuizQuestion,
-  createQuizQuestionByQuiz,
   updateQuizQuestion,
   deleteQuizQuestion,
   createQuizOption,
@@ -811,7 +1463,7 @@ import {
   deleteQuizOption,
   listAssets,
   registerAsset,
-} from '../api/cms';
+} from "../api/cms";
 
 const route = useRoute();
 const router = useRouter();
@@ -824,14 +1476,25 @@ const courseId = route.query.courseId;
 const lesson = ref(null);
 const loading = ref(true);
 const saving = ref(false);
+const activePreviewPage = ref(0);
 
 const form = ref({
-  title: '',
-  contentHtml: '',
-  contentMarkdown: '',
-  videoUrl: '',
+  coverImage: "",
+  title: "",
+  contentHtml: "",
+  contentMarkdown: "",
   estimatedMinutes: 0,
+  contentJson: {
+    pages: [
+      {
+        title: "Page 1",
+        layout: "single-column",
+        blocks: [],
+      },
+    ],
+  },
 });
+
 const initialLessonSnapshot = ref(null);
 
 const mediaLibraryVisible = ref(false);
@@ -839,115 +1502,178 @@ const assetsLoaded = ref(false);
 const assetsLoading = ref(false);
 const assetsError = ref(false);
 const recentAssets = ref([]);
-const mediaLibraryTab = ref('image');
-const mediaLibrarySearch = ref('');
+const mediaLibraryTab = ref("image");
+const mediaLibrarySearch = ref("");
 const assetsUploadProcessing = ref(false);
 const MAX_ASSET_FILE_SIZE = 25 * 1024 * 1024;
 
 const imageInputRef = ref(null);
 const audioInputRef = ref(null);
+const videoInputRef = ref(null);
 const fileInputRef = ref(null);
-const editorRef = ref(null);
-const tinymceEditor = ref(null);
+const pendingBlockTarget = ref(null);
 
 const quizQuestions = ref([]);
 const quizLoading = ref(true);
 const quizError = ref(false);
 const selectedQuestion = ref(null);
-const inlineQuizDialogVisible = ref(false);
 const questionDialogVisible = ref(false);
-const questionForm = ref({
-  questionText: '',
-  questionType: 'single_choice',
-  points: 1,
-  explanation: '',
-  metaJson: '',
-  draftOptions: [
-    { optionText: '', isCorrect: true },
-    { optionText: '', isCorrect: false },
-  ],
-  trueFalseCorrect: '',
-});
 const questionSaving = ref(false);
 const editingQuestionId = ref(null);
-const insertQuizDialogVisible = ref(false);
-const insertQuizQuestionId = ref('');
-const currentQuizId = ref(null);
-const editingQuizId = ref(null);
-const insertingQuiz = ref(false);
-const inlineQuizQuestions = ref([]);
-const inlineQuizLoading = ref(false);
-const inlineQuizError = ref(false);
-const inlineSelectedQuestion = ref(null);
-const questionDialogContext = ref('lesson');
-const discoveredQuizIds = ref([]);
-let scanQuizDebounceTimer = null;
+const questionAdvancedOpen = ref(false);
+
+const questionForm = ref({
+  questionText: "",
+  questionType: "single_choice",
+  points: 1,
+  explanation: "",
+  metaJson: "",
+  draftOptions: [
+    { optionText: "", isCorrect: true },
+    { optionText: "", isCorrect: false },
+  ],
+  trueFalseCorrect: "",
+});
 
 const questionTypeOptions = [
-  { label: 'Single choice', value: 'single_choice' },
-  { label: 'Multiple choice', value: 'multiple_choice' },
-  { label: 'True/False', value: 'true_false' },
-  { label: 'Short text', value: 'short_text' },
-  { label: 'Long text', value: 'long_text' },
-  { label: 'Numeric', value: 'numeric' },
+  { label: "Single choice", value: "single_choice" },
+  { label: "Multiple choice", value: "multiple_choice" },
+  { label: "True/False", value: "true_false" },
+  { label: "Short text", value: "short_text" },
+  { label: "Long text", value: "long_text" },
+  { label: "Numeric", value: "numeric" },
+];
+
+const layoutOptions = [
+  { label: "1 columna", value: "single-column" },
+  { label: "2 columnas", value: "two-columns" },
+  { label: "Hero izquierda", value: "hero-left" },
+];
+
+const createQuestionOptionTypes = ["single_choice", "multiple_choice"];
+const syncQuestionOptionTypes = [
+  "single_choice",
+  "multiple_choice",
+  "true_false",
 ];
 
 const sortedQuestions = computed(() =>
-  [...quizQuestions.value].sort((a, b) => a.orderIndex - b.orderIndex),
+  [...quizQuestions.value].sort(
+    (a, b) => (a.orderIndex || 0) - (b.orderIndex || 0),
+  ),
 );
-const sortedInlineQuestions = computed(() =>
-  [...inlineQuizQuestions.value].sort((a, b) => a.orderIndex - b.orderIndex),
-);
-const inlineQuizShortId = computed(() =>
-  currentQuizId.value ? String(currentQuizId.value).slice(0, 8) : '',
-);
-const isEditorReady = computed(() => Boolean(tinymceEditor.value));
-const insertedInlineQuestionIds = computed(() => {
-  const ids = new Set();
-  const body = editorRef.value?.editor?.getBody?.();
 
-  if (body) {
-    const nodes = body.querySelectorAll('.cms-quiz[data-question-id]');
-    nodes.forEach((node) => {
-      const value = String(node.getAttribute('data-question-id') || '').trim();
-      if (value) ids.add(value);
-    });
-    return ids;
-  }
+const quizQuestionSelectOptions = computed(() =>
+  sortedQuestions.value.map((question, index) => ({
+    label: `${index + 1}. ${question.questionText || "Pregunta sin texto"}`,
+    value: question.id,
+  })),
+);
 
-  if (typeof document === 'undefined') return ids;
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = form.value.contentHtml || '';
-  const nodes = wrapper.querySelectorAll('.cms-quiz[data-question-id]');
-  nodes.forEach((node) => {
-    const value = String(node.getAttribute('data-question-id') || '').trim();
-    if (value) ids.add(value);
-  });
-  return ids;
+const questionDialogTitle = computed(() =>
+  editingQuestionId.value ? "Edit question" : "Add question",
+);
+
+const questionDialogUsesOptions = computed(() =>
+  createQuestionOptionTypes.includes(questionForm.value.questionType),
+);
+
+const questionDialogShowsTrueFalseSelector = computed(
+  () => questionForm.value.questionType === "true_false",
+);
+
+const trueFalseCorrectOptions = [
+  { label: "True", value: "true" },
+  { label: "False", value: "false" },
+];
+
+const normalizedMediaLibrarySearch = computed(() =>
+  String(mediaLibrarySearch.value || "")
+    .trim()
+    .toLowerCase(),
+);
+
+const filteredAssets = computed(() =>
+  recentAssets.value.filter((asset) => {
+    if ((mediaLibraryTab.value || "image") !== assetKindValue(asset))
+      return false;
+    if (!normalizedMediaLibrarySearch.value) return true;
+
+    const haystack = [
+      asset.originalName,
+      asset.assetId,
+      asset.mimeType,
+      resolveAssetUrl(asset.url),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(normalizedMediaLibrarySearch.value);
+  }),
+);
+
+const previewPages = computed(() => {
+  return [...(form.value.contentJson?.pages || [])];
 });
-const insertQuizQuestionOptions = computed(() =>
-  sortedQuestions.value
-    .filter((question) => !insertedInlineQuestionIds.value.has(String(question.id)))
-    .map((question) => ({
-      label: `${question.orderIndex}. ${question.questionText}`,
-      value: question.id,
-    })),
+
+const currentPreviewPage = computed(() => {
+  return previewPages.value[activePreviewPage.value] || null;
+});
+
+const isSoundCloudEmbed = (value) => {
+  const url = String(value || "").trim();
+  return /w\.soundcloud\.com\/player/i.test(url);
+};
+
+const normalizeSoundCloudEmbedUrl = (value) => {
+  return String(value || "")
+    .trim()
+    .replace(/&amp;/g, "&")
+    .replace(/visual=true/gi, "visual=false")
+    .replace(/show_comments=true/gi, "show_comments=false")
+    .replace(/show_user=true/gi, "show_user=false")
+    .replace(/show_reposts=true/gi, "show_reposts=false")
+    .replace(/show_teaser=true/gi, "show_teaser=false");
+};
+
+watch(
+  () => form.value.contentJson.pages.length,
+  (length) => {
+    if (activePreviewPage.value >= length) {
+      activePreviewPage.value = Math.max(0, length - 1);
+    }
+  },
+);
+
+watch(
+  () => form.value.contentJson.pages,
+  () => {
+    // fuerza refresco del preview
+    activePreviewPage.value = Math.min(
+      activePreviewPage.value,
+      form.value.contentJson.pages.length - 1,
+    );
+  },
+  { deep: true },
 );
 
 const questionReady = (question) => {
   if (!question.questionText?.trim()) return false;
+
   const options = question.options || [];
   const correctCount = options.filter((opt) => opt.isCorrect).length;
+
   switch (question.questionType) {
-    case 'single_choice':
+    case "single_choice":
       return options.length >= 2 && correctCount === 1;
-    case 'multiple_choice':
+    case "multiple_choice":
       return options.length >= 2 && correctCount >= 1;
-    case 'true_false':
+    case "true_false":
       return options.length === 2 && correctCount === 1;
-    case 'short_text':
-    case 'long_text':
-    case 'numeric':
+    case "short_text":
+    case "long_text":
+    case "numeric":
       return true;
     default:
       return false;
@@ -959,60 +1685,520 @@ const quizReady = computed(() => {
   return quizQuestions.value.every((question) => questionReady(question));
 });
 
-const questionDialogTitle = computed(() =>
-  editingQuestionId.value ? 'Edit question' : 'Add question',
-);
-const createQuestionOptionTypes = ['single_choice', 'multiple_choice'];
-const syncQuestionOptionTypes = ['single_choice', 'multiple_choice', 'true_false'];
-const questionTypeUsesOptions = (type) => syncQuestionOptionTypes.includes(type);
-const questionDialogUsesOptions = computed(() =>
-  createQuestionOptionTypes.includes(questionForm.value.questionType),
-);
-const questionDialogShowsTrueFalseSelector = computed(
-  () => questionForm.value.questionType === 'true_false',
-);
-const trueFalseCorrectOptions = [
-  { label: 'True', value: 'true' },
-  { label: 'False', value: 'false' },
-];
-const normalizedMediaLibrarySearch = computed(() =>
-  String(mediaLibrarySearch.value || '').trim().toLowerCase(),
-);
 const resolveAssetUrl = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (/^https?:\/\//i.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
-  const base = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (
+    /^https?:\/\//i.test(raw) ||
+    raw.startsWith("data:") ||
+    raw.startsWith("blob:")
+  ) {
+    return raw;
+  }
+
+  const base = String(import.meta.env.VITE_API_BASE_URL || "").trim();
   if (!base) return raw;
+
   try {
     return new URL(raw, base).toString();
-  } catch (_) {
+  } catch {
     return raw;
   }
 };
-const assetKindValue = (asset) => {
-  const raw = String(asset?.kind || '').toLowerCase();
-  if (raw === 'images') return 'image';
-  return raw || 'file';
-};
-const filteredAssets = computed(() =>
-  recentAssets.value.filter((asset) => {
-    if ((mediaLibraryTab.value || 'image') !== assetKindValue(asset)) return false;
-    if (!normalizedMediaLibrarySearch.value) return true;
-    const haystack = [
-      asset.originalName,
-      asset.assetId,
-      asset.mimeType,
-      resolveAssetUrl(asset.url),
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    return haystack.includes(normalizedMediaLibrarySearch.value);
-  }),
-);
 
-const buildEmptyQuestionOption = () => ({ optionText: '', isCorrect: false });
+const assetKindValue = (asset) => {
+  const raw = String(asset?.kind || "").toLowerCase();
+  if (raw === "images") return "image";
+  return raw || "file";
+};
+
+const blockTypeLabel = (type) => {
+  switch (type) {
+    case "image":
+      return "Imagen";
+    case "audio":
+      return "Audio";
+    case "video":
+      return "Video";
+    default:
+      return "Texto";
+  }
+};
+
+const layoutClass = (layout) => {
+  if (layout === "two-columns") return "is-two-columns";
+  if (layout === "hero-left") return "is-hero-left";
+  return "is-single-column";
+};
+
+const getPageDisplayTitle = (page, pageIndex) => {
+  const title = String(page?.title || "").trim();
+  return title || `Página ${pageIndex + 1}`;
+};
+
+const createDefaultContentJson = () => ({
+  pages: [
+    {
+      title: "Page 1",
+      layout: "single-column",
+      blocks: [],
+    },
+  ],
+});
+
+const stripHtml = (value = "") => {
+  if (typeof document === "undefined") {
+    return String(value || "")
+      .replace(/<[^>]*>/g, " ")
+      .trim();
+  }
+
+  const div = document.createElement("div");
+  div.innerHTML = value;
+  return (div.textContent || div.innerText || "").trim();
+};
+
+const looksLikeHtml = (value = "") =>
+  /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+
+const createTextBlock = (title = "", content = "") => ({
+  type: "text",
+  title: String(title || "").trim(),
+  content: String(content || "").trim(),
+});
+
+const createImageBlock = (title = "", src = "", caption = "") => ({
+  type: "image",
+  title: String(title || "").trim(),
+  src: String(src || "").trim(),
+  caption: String(caption || "").trim(),
+});
+
+const createAudioBlock = (
+  title = "",
+  src = "",
+  caption = "",
+  embedUrl = "",
+) => ({
+  type: "audio",
+  title: String(title || "").trim(),
+  src: String(src || "").trim(),
+  caption: String(caption || "").trim(),
+  embedUrl: String(embedUrl || "").trim(),
+});
+
+const createVideoBlock = (
+  title = "",
+  src = "",
+  caption = "",
+  embedUrl = "",
+) => ({
+  type: "video",
+  title: String(title || "").trim(),
+  src: String(src || "").trim(),
+  caption: String(caption || "").trim(),
+  embedUrl: String(embedUrl || "").trim(),
+});
+
+const parseLegacyHtmlToBlocks = (html, fallbackTitle = "") => {
+  const raw = String(html || "").trim();
+  if (!raw) return [];
+
+  if (typeof document === "undefined") {
+    return [createTextBlock(fallbackTitle, stripHtml(raw))];
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = raw;
+
+  const blocks = [];
+  let pendingTitle = String(fallbackTitle || "").trim();
+
+  const pushTextIfAny = (text) => {
+    const clean = String(text || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!clean) return;
+    blocks.push(createTextBlock(pendingTitle, clean));
+    pendingTitle = "";
+  };
+
+  const children = Array.from(wrapper.childNodes);
+
+  children.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushTextIfAny(node.textContent || "");
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tag = node.tagName.toLowerCase();
+
+    if (tag === "section") {
+      const sectionBlocks = parseLegacyHtmlToBlocks(
+        node.innerHTML,
+        pendingTitle,
+      );
+      blocks.push(...sectionBlocks);
+      pendingTitle = "";
+      return;
+    }
+
+    if (tag === "h1" || tag === "h2" || tag === "h3" || tag === "h4") {
+      const headingText = stripHtml(node.innerHTML);
+      if (headingText) {
+        pendingTitle = headingText;
+      }
+      return;
+    }
+
+    if (tag === "figure") {
+      const img = node.querySelector("img");
+      const audio = node.querySelector("audio");
+      const iframe = node.querySelector("iframe");
+      const video = node.querySelector("video");
+      const figcaption = stripHtml(
+        node.querySelector("figcaption")?.innerHTML || "",
+      );
+
+      if (img?.getAttribute("src")) {
+        blocks.push(
+          createImageBlock(
+            pendingTitle,
+            img.getAttribute("src"),
+            figcaption || img.getAttribute("alt") || "",
+          ),
+        );
+        pendingTitle = "";
+        return;
+      }
+
+      if (audio?.getAttribute("src")) {
+        blocks.push(
+          createAudioBlock(pendingTitle, audio.getAttribute("src"), figcaption),
+        );
+        pendingTitle = "";
+        return;
+      }
+
+      if (video?.getAttribute("src")) {
+        blocks.push(
+          createVideoBlock(pendingTitle, video.getAttribute("src"), figcaption),
+        );
+        pendingTitle = "";
+        return;
+      }
+
+      if (iframe?.getAttribute("src")) {
+        blocks.push(
+          createVideoBlock(
+            pendingTitle,
+            iframe.getAttribute("src"),
+            figcaption,
+          ),
+        );
+        pendingTitle = "";
+        return;
+      }
+    }
+
+    if (tag === "img") {
+      const src = node.getAttribute("src") || "";
+      if (src) {
+        blocks.push(
+          createImageBlock(pendingTitle, src, node.getAttribute("alt") || ""),
+        );
+        pendingTitle = "";
+      }
+      return;
+    }
+
+    if (tag === "audio") {
+      const src = node.getAttribute("src") || "";
+      if (src) {
+        blocks.push(createAudioBlock(pendingTitle, src, ""));
+        pendingTitle = "";
+      }
+      return;
+    }
+
+    if (tag === "video" || tag === "iframe") {
+      const src = node.getAttribute("src") || "";
+      if (src) {
+        blocks.push(createVideoBlock(pendingTitle, src, ""));
+        pendingTitle = "";
+      }
+      return;
+    }
+
+    if (tag === "p" || tag === "div") {
+      const text = stripHtml(node.innerHTML);
+      pushTextIfAny(text);
+      return;
+    }
+
+    const fallbackText = stripHtml(node.innerHTML);
+    pushTextIfAny(fallbackText);
+  });
+
+  return blocks.filter((block) => {
+    if (block.type === "text") return block.title || block.content;
+    return block.src;
+  });
+};
+
+const normalizeEditorContentJson = (rawContentJson) => {
+  const fallback = createDefaultContentJson();
+
+  if (
+    !rawContentJson ||
+    !Array.isArray(rawContentJson.pages) ||
+    !rawContentJson.pages.length
+  ) {
+    return fallback;
+  }
+
+  return {
+    pages: rawContentJson.pages.map((page, pageIndex) => {
+      const normalizedBlocks = Array.isArray(page?.blocks)
+        ? page.blocks.flatMap((block) => {
+            if (!block || typeof block !== "object") {
+              return [createTextBlock("", "")];
+            }
+
+            const blockTitle = block.title || "";
+
+            if (block.type === "html") {
+              return parseLegacyHtmlToBlocks(block.content || "", blockTitle);
+            }
+
+            if (block.type === "text") {
+              const rawContent = block.content || "";
+
+              if (looksLikeHtml(rawContent)) {
+                return parseLegacyHtmlToBlocks(rawContent, blockTitle);
+              }
+
+              return [createTextBlock(blockTitle, rawContent)];
+            }
+
+            if (block.type === "image") {
+              return [
+                createImageBlock(
+                  blockTitle,
+                  block.src || "",
+                  block.caption || "",
+                ),
+              ];
+            }
+
+            if (block.type === "audio") {
+              return [
+                createAudioBlock(
+                  blockTitle,
+                  block.src || "",
+                  block.caption || "",
+                  block.embedUrl || "",
+                ),
+              ];
+            }
+
+            if (block.type === "video") {
+              return [
+                createVideoBlock(
+                  blockTitle,
+                  block.src || "",
+                  block.caption || "",
+                  block.embedUrl || "",
+                ),
+              ];
+            }
+
+            if (block.type === "quiz") {
+              return [
+                {
+                  type: "quiz",
+                  title: blockTitle,
+                  quizMode: block.quizMode || "single_question",
+                  questionId: block.questionId || "",
+                  showFeedback: block.showFeedback ?? true,
+                },
+              ];
+            }
+
+            if (block.content && looksLikeHtml(block.content)) {
+              return parseLegacyHtmlToBlocks(block.content, blockTitle);
+            }
+
+            return [createTextBlock(blockTitle, block.content || "")];
+          })
+        : [];
+
+      return {
+        title: page?.title || `Page ${pageIndex + 1}`,
+        layout: page?.layout || "single-column",
+        blocks: normalizedBlocks,
+      };
+    }),
+  };
+};
+
+const addPage = () => {
+  form.value.contentJson.pages.push({
+    title: `Page ${form.value.contentJson.pages.length + 1}`,
+    layout: "single-column",
+    blocks: [],
+  });
+
+  activePreviewPage.value = form.value.contentJson.pages.length - 1;
+};
+
+const removePage = (pageIndex) => {
+  if (form.value.contentJson.pages.length <= 1) return;
+
+  form.value.contentJson.pages.splice(pageIndex, 1);
+
+  if (activePreviewPage.value >= form.value.contentJson.pages.length) {
+    activePreviewPage.value = form.value.contentJson.pages.length - 1;
+  }
+};
+
+const movePage = (pageIndex, direction) => {
+  const pages = form.value.contentJson.pages;
+  if (!pages) return;
+
+  const targetIndex = pageIndex + direction;
+
+  if (targetIndex < 0 || targetIndex >= pages.length) return;
+
+  const copy = [...pages];
+  const [moved] = copy.splice(pageIndex, 1);
+  copy.splice(targetIndex, 0, moved);
+
+  form.value.contentJson.pages = copy;
+
+  if (activePreviewPage.value === pageIndex) {
+    activePreviewPage.value = targetIndex;
+  } else if (activePreviewPage.value === targetIndex) {
+    activePreviewPage.value = pageIndex;
+  }
+};
+
+const addBlock = (pageIndex, type = "text") => {
+  const page = form.value.contentJson.pages[pageIndex];
+  if (!page) return;
+
+  const baseBlock = {
+    type,
+    title: "",
+  };
+
+  if (type === "text") {
+    baseBlock.content = "";
+  } else if (type === "quiz") {
+    baseBlock.quizMode = "single_question";
+    baseBlock.questionId = "";
+    baseBlock.showFeedback = true;
+  } else {
+    baseBlock.src = "";
+    baseBlock.caption = "";
+    baseBlock.embedUrl = "";
+  }
+
+  page.blocks.push(baseBlock);
+};
+
+const removeBlock = (pageIndex, blockIndex) => {
+  const page = form.value.contentJson.pages[pageIndex];
+  if (!page) return;
+  page.blocks.splice(blockIndex, 1);
+};
+
+const moveBlock = (pageIndex, blockIndex, direction) => {
+  const page = form.value.contentJson.pages[pageIndex];
+  if (!page) return;
+
+  const newIndex = blockIndex + direction;
+
+  if (newIndex < 0 || newIndex >= page.blocks.length) return;
+
+  const blocks = [...page.blocks];
+  const [moved] = blocks.splice(blockIndex, 1);
+  blocks.splice(newIndex, 0, moved);
+
+  page.blocks = blocks;
+};
+
+const getBlockByIndex = (pageIndex, blockIndex) => {
+  const page = form.value.contentJson.pages?.[pageIndex];
+  if (!page) return null;
+  return page.blocks?.[blockIndex] || null;
+};
+
+const setBlockAsset = (pageIndex, blockIndex, asset) => {
+  const block = getBlockByIndex(pageIndex, blockIndex);
+  if (!block || !asset) return;
+
+  block.src = resolveAssetUrl(asset.url);
+  if (!block.caption) {
+    block.caption = asset.originalName || "";
+  }
+};
+
+const clearBlockAsset = (pageIndex, blockIndex) => {
+  const block = getBlockByIndex(pageIndex, blockIndex);
+  if (!block) return;
+
+  block.src = "";
+  block.embedUrl = "";
+  block.caption = "";
+};
+
+const openMediaLibraryForBlock = async (pageIndex, blockIndex, kind) => {
+  pendingBlockTarget.value = { pageIndex, blockIndex, kind };
+
+  if (kind === "image") mediaLibraryTab.value = "image";
+  else if (kind === "audio") mediaLibraryTab.value = "audio";
+  else mediaLibraryTab.value = "file";
+
+  mediaLibraryVisible.value = true;
+  await loadAssetsList();
+};
+
+const triggerBlockUpload = (pageIndex, blockIndex, kind) => {
+  pendingBlockTarget.value = { pageIndex, blockIndex, kind };
+  triggerAssetInput(kind);
+};
+
+const triggerCoverUpload = () => {
+  pendingBlockTarget.value = "cover";
+  triggerAssetInput("image");
+};
+
+const openMediaLibraryForCover = async () => {
+  pendingBlockTarget.value = "cover";
+  mediaLibraryTab.value = "image";
+  mediaLibraryVisible.value = true;
+  await loadAssetsList();
+};
+
+const getBlockPreviewLabel = (block) => {
+  if (!block?.src && !block?.embedUrl) return "No file selected";
+  if (block.type === "image") return "Image selected";
+  if (block.type === "audio") {
+    return block.embedUrl ? "SoundCloud embed selected" : "Audio selected";
+  }
+  if (block.type === "video") {
+    return block.embedUrl ? "Video embed selected" : "Video selected";
+  }
+  if (block.type === "quiz") return "Quiz block";
+  return "Asset selected";
+};
+
+const buildEmptyQuestionOption = () => ({ optionText: "", isCorrect: false });
+
 const normalizeDraftOrder = (options = []) =>
   options.map((option, index) => ({
     ...option,
@@ -1021,8 +2207,8 @@ const normalizeDraftOrder = (options = []) =>
 
 const initializeQuestionFormOptionsByType = (type) => {
   questionForm.value.draftOptions = normalizeDraftOrder([
-    { optionText: '', isCorrect: type === 'single_choice' },
-    { optionText: '', isCorrect: false },
+    { optionText: "", isCorrect: type === "single_choice" },
+    { optionText: "", isCorrect: false },
   ]);
 };
 
@@ -1035,17 +2221,25 @@ const addQuestionFormOption = () => {
 
 const removeQuestionFormOption = (index) => {
   if (questionForm.value.draftOptions.length <= 2) return;
+
   const copy = [...questionForm.value.draftOptions];
   copy.splice(index, 1);
-  if (questionForm.value.questionType === 'single_choice' && !copy.some((option) => option.isCorrect)) {
+
+  if (
+    questionForm.value.questionType === "single_choice" &&
+    !copy.some((option) => option.isCorrect)
+  ) {
     copy[0].isCorrect = true;
   }
+
   questionForm.value.draftOptions = normalizeDraftOrder(copy);
 };
 
 const moveQuestionFormOption = (index, dir) => {
   const nextIndex = index + dir;
-  if (nextIndex < 0 || nextIndex >= questionForm.value.draftOptions.length) return;
+  if (nextIndex < 0 || nextIndex >= questionForm.value.draftOptions.length)
+    return;
+
   const copy = [...questionForm.value.draftOptions];
   const [item] = copy.splice(index, 1);
   copy.splice(nextIndex, 0, item);
@@ -1053,7 +2247,8 @@ const moveQuestionFormOption = (index, dir) => {
 };
 
 const setSingleCorrect = (index) => {
-  if (questionForm.value.questionType !== 'single_choice') return;
+  if (questionForm.value.questionType !== "single_choice") return;
+
   questionForm.value.draftOptions = normalizeDraftOrder(
     questionForm.value.draftOptions.map((option, optionIndex) => ({
       ...option,
@@ -1064,11 +2259,13 @@ const setSingleCorrect = (index) => {
 
 const singleChoiceCorrectIndex = computed({
   get() {
-    if (questionForm.value.questionType !== 'single_choice') return null;
-    return questionForm.value.draftOptions.findIndex((option) => option.isCorrect);
+    if (questionForm.value.questionType !== "single_choice") return null;
+    return questionForm.value.draftOptions.findIndex(
+      (option) => option.isCorrect,
+    );
   },
   set(nextIndex) {
-    if (typeof nextIndex !== 'number') return;
+    if (typeof nextIndex !== "number") return;
     setSingleCorrect(nextIndex);
   },
 });
@@ -1077,10 +2274,10 @@ const normalizeDraftOptions = (type, draftOptions) => {
   const normalizedOptions = (draftOptions || [])
     .map((option) => ({
       id: option.id || null,
-      optionText: (option.optionText || '').trim(),
+      optionText: (option.optionText || "").trim(),
       isCorrect: Boolean(option.isCorrect),
     }))
-    .filter((option) => option.optionText !== '');
+    .filter((option) => option.optionText !== "");
 
   if (!createQuestionOptionTypes.includes(type)) {
     return { normalizedOptions };
@@ -1089,12 +2286,14 @@ const normalizeDraftOptions = (type, draftOptions) => {
   if (normalizedOptions.length < 2) {
     return {
       normalizedOptions,
-      validationError: 'Add at least 2 options',
+      validationError: "Add at least 2 options",
     };
   }
 
-  if (type === 'single_choice') {
-    const firstCorrectIndex = normalizedOptions.findIndex((option) => option.isCorrect);
+  if (type === "single_choice") {
+    const firstCorrectIndex = normalizedOptions.findIndex(
+      (option) => option.isCorrect,
+    );
     if (firstCorrectIndex === -1) {
       normalizedOptions[0].isCorrect = true;
     } else {
@@ -1104,7 +2303,7 @@ const normalizeDraftOptions = (type, draftOptions) => {
     }
   }
 
-  if (type === 'multiple_choice') {
+  if (type === "multiple_choice") {
     const hasCorrect = normalizedOptions.some((option) => option.isCorrect);
     if (!hasCorrect) normalizedOptions[0].isCorrect = true;
   }
@@ -1119,89 +2318,113 @@ const normalizeDraftOptions = (type, draftOptions) => {
 
 const fetchQuestionFromServer = async (questionId) => {
   const data = await getLessonQuiz(lessonId);
-  return (data.questions || []).find((question) => question.id === questionId || String(question.id) === String(questionId));
+  return (data.questions || []).find(
+    (question) =>
+      question.id === questionId || String(question.id) === String(questionId),
+  );
 };
 
 const questionTypeLabel = (type) => {
   switch (type) {
-    case 'multiple_choice':
-      return 'Multiple choice';
-    case 'true_false':
-      return 'True/False';
-    case 'short_text':
-      return 'Short text';
-    case 'long_text':
-      return 'Long text';
-    case 'numeric':
-      return 'Numeric';
+    case "multiple_choice":
+      return "Multiple choice";
+    case "true_false":
+      return "True/False";
+    case "short_text":
+      return "Short text";
+    case "long_text":
+      return "Long text";
+    case "numeric":
+      return "Numeric";
     default:
-      return 'Single choice';
+      return "Single choice";
   }
+};
+
+const getSelectedPreviewQuestion = (block) => {
+  if (!block?.questionId) return null;
+  return (
+    quizQuestions.value.find(
+      (q) => String(q.id) === String(block.questionId),
+    ) || null
+  );
+};
+
+const getQuestionOptions = (question) => {
+  return [...(question?.options || [])].sort(
+    (a, b) => (a.orderIndex || 0) - (b.orderIndex || 0),
+  );
+};
+
+const questionUsesOptions = (question) => {
+  const type = question?.questionType || "";
+  return ["single_choice", "multiple_choice", "true_false"].includes(type);
 };
 
 const syncSelectedQuestion = () => {
   if (!selectedQuestion.value) return;
-  const next = quizQuestions.value.find((q) => q.id === selectedQuestion.value.id);
+  const next = quizQuestions.value.find(
+    (q) => q.id === selectedQuestion.value.id,
+  );
   selectedQuestion.value = next || null;
 };
 
-const toHtmlFallback = (value) => {
-  if (!value) return '';
-  return value
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => `<p>${line}</p>`)
-    .join('');
-};
+const getYoutubeEmbedUrl = (rawUrl) => {
+  const url = String(rawUrl || "").trim();
+  if (!url) return "";
 
-const updatePlainTextFromEditor = () => {
-  if (typeof document === 'undefined') {
-    form.value.contentMarkdown = '';
-    return;
-  }
-  const container = document.createElement('div');
-  container.innerHTML = form.value.contentHtml || '';
-  form.value.contentMarkdown = (container.textContent || '').trim();
-};
-
-const escapeHtml = (value = '') =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-
-
-const buildEmbedSnippetFromUrl = (rawUrl) => {
-  const url = String(rawUrl || '').trim();
-  if (!url) return '';
-
-  const vimeoMatch = url.match(/(?:player\.)?vimeo\.com\/(?:video\/)?(\d+)/i);
-  if (vimeoMatch) {
-    const id = vimeoMatch[1];
-    return `
-      <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
-        <iframe
-          src="https://player.vimeo.com/video/${id}"
-          allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
-          allowfullscreen
-          style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
-        </iframe>
-      </figure>
-    `;
-  }
-
-  const youtubeMatch = url.match(
+  const match = url.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/i,
   );
-  if (youtubeMatch) {
-    const id = youtubeMatch[1];
+
+  return match ? `https://www.youtube.com/embed/${match[1]}` : "";
+};
+
+const getVimeoEmbedUrl = (rawUrl) => {
+  const url = String(rawUrl || "").trim();
+  if (!url) return "";
+
+  if (/player\.vimeo\.com\/video\/\d+/i.test(url)) {
+    return url;
+  }
+
+  const match = url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  return match ? `https://player.vimeo.com/video/${match[1]}` : "";
+};
+
+const getLoomEmbedUrl = (rawUrl) => {
+  const url = String(rawUrl || "").trim();
+  if (!url) return "";
+
+  const match = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/i);
+  return match ? `https://www.loom.com/embed/${match[1]}` : "";
+};
+
+const getPreviewEmbedType = (rawUrl) => {
+  if (getYoutubeEmbedUrl(rawUrl)) return "youtube";
+  if (getVimeoEmbedUrl(rawUrl)) return "vimeo";
+  if (getLoomEmbedUrl(rawUrl)) return "loom";
+  return "";
+};
+
+const escapeHtmlText = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const buildEmbedSnippetFromUrl = (rawUrl) => {
+  const url = String(rawUrl || "").trim();
+  if (!url) return "";
+
+  const youtube = getYoutubeEmbedUrl(url);
+  if (youtube) {
     return `
       <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
         <iframe
-          src="https://www.youtube.com/embed/${id}"
+          src="${youtube}"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowfullscreen
           style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
@@ -1210,13 +2433,26 @@ const buildEmbedSnippetFromUrl = (rawUrl) => {
     `;
   }
 
-  const loomMatch = url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/i);
-  if (loomMatch) {
-    const id = loomMatch[1];
+  const vimeo = getVimeoEmbedUrl(url);
+  if (vimeo) {
     return `
       <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
         <iframe
-          src="https://www.loom.com/embed/${id}"
+          src="${vimeo}"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowfullscreen
+          style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
+        </iframe>
+      </figure>
+    `;
+  }
+
+  const loom = getLoomEmbedUrl(url);
+  if (loom) {
+    return `
+      <figure class="lesson-media lesson-media-video" style="width:100%;max-width:640px;margin:20px auto;">
+        <iframe
+          src="${loom}"
           allowfullscreen
           style="display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:20px;background:#000;box-shadow:0 12px 28px rgba(15,23,42,.14);">
         </iframe>
@@ -1226,12 +2462,12 @@ const buildEmbedSnippetFromUrl = (rawUrl) => {
 
   if (/soundcloud\.com|w\.soundcloud\.com/i.test(url)) {
     const normalizedSrc = url
-      .replace(/&amp;/g, '&')
-      .replace(/visual=true/gi, 'visual=false')
-      .replace(/show_comments=true/gi, 'show_comments=false')
-      .replace(/show_user=true/gi, 'show_user=false')
-      .replace(/show_reposts=true/gi, 'show_reposts=false')
-      .replace(/show_teaser=true/gi, 'show_teaser=false');
+      .replace(/&amp;/g, "&")
+      .replace(/visual=true/gi, "visual=false")
+      .replace(/show_comments=true/gi, "show_comments=false")
+      .replace(/show_user=true/gi, "show_user=false")
+      .replace(/show_reposts=true/gi, "show_reposts=false")
+      .replace(/show_teaser=true/gi, "show_teaser=false");
 
     return `
       <figure class="lesson-media lesson-media-audio" style="width:100%;max-width:760px;margin:24px auto;">
@@ -1245,309 +2481,204 @@ const buildEmbedSnippetFromUrl = (rawUrl) => {
     `;
   }
 
-  return '';
+  return "";
 };
 
+const buildHtmlFromContentJson = (contentJson) => {
+  const pages = Array.isArray(contentJson?.pages) ? contentJson.pages : [];
+  if (!pages.length) return "";
 
-const buildAssetSnippet = (asset) => {
-  const url = resolveAssetUrl(asset.url);
-  const safeLabel = escapeHtml(asset.originalName || url);
+  return pages
+    .map((page) => {
+      const blocks = Array.isArray(page.blocks) ? page.blocks : [];
 
-  if (asset.kind === 'image' || asset.kind === 'images') {
-    return `
-      <figure class="lesson-media lesson-media-image">
-        <img src="${url}" alt="${safeLabel}" />
-      </figure>
-    `;
-  }
+      const pageTitle = page?.title
+        ? `<h2>${escapeHtmlText(page.title)}</h2>`
+        : "";
 
-  if (asset.kind === 'audio') {
-    return `
+      const blocksHtml = blocks
+        .map((block) => {
+          if (!block) return "";
+
+          if (block.type === "text") {
+            const title = block.title
+              ? `<h3>${escapeHtmlText(block.title)}</h3>`
+              : "";
+            const content = block.content
+              ? `<p>${escapeHtmlText(block.content).replace(/\n/g, "<br>")}</p>`
+              : "";
+            return `${title}${content}`;
+          }
+
+          if (block.type === "image" && block.src) {
+            const title = block.title
+              ? `<h3>${escapeHtmlText(block.title)}</h3>`
+              : "";
+            const caption = block.caption
+              ? `<figcaption>${escapeHtmlText(block.caption)}</figcaption>`
+              : "";
+
+            return `
+              ${title}
+              <figure class="lesson-media lesson-media-image">
+                <img src="${block.src}" alt="${escapeHtmlText(block.caption || block.title || "image")}" />
+                ${caption}
+              </figure>
+            `;
+          }
+
+          if (block.type === "audio") {
+            const title = block.title
+              ? `<h3>${escapeHtmlText(block.title)}</h3>`
+              : "";
+            const caption = block.caption
+              ? `<p>${escapeHtmlText(block.caption)}</p>`
+              : "";
+
+            if (block.embedUrl && isSoundCloudEmbed(block.embedUrl)) {
+              const normalizedEmbed = normalizeSoundCloudEmbedUrl(
+                block.embedUrl,
+              );
+
+              return `
+      ${title}
       <figure class="lesson-media lesson-media-audio">
-        <audio controls src="${url}"></audio>
+        <iframe
+          src="${normalizedEmbed}"
+          allow="autoplay"
+          loading="lazy"
+          frameborder="0"
+          style="display:block;width:100%;max-width:100%;height:166px;border:0;border-radius:16px;">
+        </iframe>
       </figure>
+      ${caption}
     `;
-  }
+            }
 
-  const embedSnippet = buildEmbedSnippetFromUrl(url);
-  if (embedSnippet) return embedSnippet;
+            if (block.src) {
+              return `
+      ${title}
+      <figure class="lesson-media lesson-media-audio">
+        <audio controls src="${block.src}"></audio>
+      </figure>
+      ${caption}
+    `;
+            }
 
-  return `
-    <p class="lesson-file-link">
-      <a href="${url}" target="_blank" rel="noopener">${safeLabel}</a>
-    </p>
-  `;
-};
+            return "";
+          }
 
-const buildInlineQuizMarkerHtml = (targetLessonId, questionId) => {
-  const safeLessonId = escapeHtml(String(targetLessonId || ''));
-  const safeQuestionId = escapeHtml(String(questionId || ''));
-  return `<div class="cms-quiz mceNonEditable" contenteditable="false" data-lesson-id="${safeLessonId}" data-question-id="${safeQuestionId}"></div>`;
-};
+          if (block.type === "video" && block.src) {
+            const title = block.title
+              ? `<h3>${escapeHtmlText(block.title)}</h3>`
+              : "";
+            const caption = block.caption
+              ? `<p>${escapeHtmlText(block.caption)}</p>`
+              : "";
+            const embedHtml = buildEmbedSnippetFromUrl(block.src);
 
-const renderQuizPreviewHtml = (questionId) => {
-  const question = quizQuestions.value.find((item) => String(item?.id || '') === String(questionId || ''));
-  if (!question) {
-    return `<div class="cms-quiz-placeholder">🧩 Inline quiz (${String(questionId || '').slice(0, 8)})</div>`;
-  }
-  const questionText = escapeHtml(String(question.questionText || ''));
-  const options = Array.isArray(question.options) ? question.options : [];
-  const optionsHtml = options
-    .map((option) => {
-      const optionText = escapeHtml(String(option?.optionText || ''));
-      return `<label class="cms-quiz-option"><input type="radio" disabled /><span>${optionText}</span></label>`;
-    })
-    .join('');
+            if (embedHtml) {
+              return `${title}${embedHtml}${caption}`;
+            }
 
-  return `
-    <div class="cms-quiz-preview">
-      <p class="cms-quiz-question">${questionText}</p>
-      <div class="cms-quiz-options">${optionsHtml || '<small>No options</small>'}</div>
+            return `
+              ${title}
+              <p>
+                <a href="${block.src}" target="_blank" rel="noopener">
+                  ${escapeHtmlText(block.caption || "Open video")}
+                </a>
+              </p>
+            `;
+          }
+
+          if (block.type === "quiz") {
+            const title = block.title
+              ? `<h3>${escapeHtmlText(block.title)}</h3>`
+              : "";
+
+            if (block.quizMode === "lesson_quiz") {
+              return `
+      ${title}
+      <div
+        class="lesson-quiz-marker"
+        data-quiz-mode="lesson_quiz"
+        data-lesson-id="${escapeHtmlText(String(lessonId || ""))}"
+        data-show-feedback="${block.showFeedback ? "true" : "false"}"
+      >
+        Quiz completo de la lección
+      </div>
+    `;
+            }
+
+            if (block.questionId) {
+              return `
+      ${title}
+      <div
+        class="lesson-quiz-marker"
+        data-quiz-mode="single_question"
+        data-lesson-id="${escapeHtmlText(String(lessonId || ""))}"
+        data-question-id="${escapeHtmlText(String(block.questionId))}"
+        data-show-feedback="${block.showFeedback ? "true" : "false"}"
+      >
+        Pregunta individual del quiz
+      </div>
+    `;
+            }
+
+            return `
+    ${title}
+    <div class="lesson-quiz-marker">
+      Bloque quiz sin pregunta seleccionada
     </div>
   `;
-};
+          }
 
-const renderInlineQuizMarkersInEditor = (editor) => {
-  const body = editor?.getBody?.();
-  if (!body) return;
-  const markers = body.querySelectorAll('.cms-quiz[data-question-id]');
-  markers.forEach((marker) => {
-    const questionId = String(marker.getAttribute('data-question-id') || '').trim();
-    marker.classList.add('mceNonEditable');
-    marker.setAttribute('contenteditable', 'false');
-    marker.innerHTML = renderQuizPreviewHtml(questionId);
-  });
-};
+          return "";
+        })
+        .join("");
 
-const stripInlineQuizPreviewFromHtml = (html) => {
-  if (!html) return html;
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = html;
-  const markers = wrapper.querySelectorAll('.cms-quiz[data-lesson-id][data-question-id]');
-  markers.forEach((marker) => {
-    marker.classList.add('mceNonEditable');
-    marker.setAttribute('contenteditable', 'false');
-    marker.innerHTML = '';
-  });
-  return wrapper.innerHTML;
-};
-
-const normalizeLessonContentHtml = (html) => {
-  if (!html || typeof document === 'undefined') return html || '';
-
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = html;
-
-  wrapper.querySelectorAll('img, iframe, video').forEach((node) => {
-    node.removeAttribute('width');
-    node.removeAttribute('height');
-
-    if (node.style) {
-      node.style.width = '';
-      node.style.height = '';
-      node.style.maxWidth = '';
-      node.style.minWidth = '';
-      node.style.minHeight = '';
-    }
-  });
-
-wrapper.querySelectorAll('img').forEach((img) => {
-  img.style.width = '100%';
-  img.style.maxWidth = '760px';
-  img.style.height = 'auto';
-
-  let figure = img.closest('figure');
-
-  if (figure) {
-    figure.classList.remove('lesson-media-audio', 'lesson-media-video');
-    figure.classList.add('lesson-media', 'lesson-media-image');
-  } else {
-    figure = document.createElement('figure');
-    figure.className = 'lesson-media lesson-media-image';
-    img.parentNode?.insertBefore(figure, img);
-    figure.appendChild(img);
-  }
-});
-
-wrapper.querySelectorAll('iframe').forEach((iframe) => {
-  const originalSrc = String(iframe.getAttribute('src') || '').trim();
-  const lowerSrc = originalSrc.toLowerCase();
-
-  iframe.style.width = '100%';
-  iframe.style.maxWidth = '640px';
-  iframe.style.height = 'auto';
-  iframe.style.display = 'block';
-  iframe.style.margin = '20px auto';
-  iframe.style.border = '0';
-  iframe.style.borderRadius = '20px';
-
-  if (!iframe.style.aspectRatio) {
-    iframe.style.aspectRatio = '16 / 9';
-  }
-
-  let figure = iframe.closest('figure');
-
-  if (lowerSrc.includes('soundcloud.com')) {
-    const normalizedSrc = originalSrc
-      .replace(/&amp;/g, '&')
-      .replace(/visual=true/gi, 'visual=false')
-      .replace(/show_comments=true/gi, 'show_comments=false')
-      .replace(/show_user=true/gi, 'show_user=false')
-      .replace(/show_reposts=true/gi, 'show_reposts=false')
-      .replace(/show_teaser=true/gi, 'show_teaser=false');
-
-    iframe.setAttribute('src', normalizedSrc);
-    iframe.style.height = '170px';
-    iframe.style.aspectRatio = 'auto';
-
-    if (figure) {
-      figure.classList.remove('lesson-media-image', 'lesson-media-video');
-      figure.classList.add('lesson-media', 'lesson-media-audio');
-    } else {
-      figure = document.createElement('figure');
-      figure.className = 'lesson-media lesson-media-audio';
-      iframe.parentNode?.insertBefore(figure, iframe);
-      figure.appendChild(iframe);
-    }
-    return;
-  }
-
-  if (figure) {
-    figure.classList.remove('lesson-media-image', 'lesson-media-audio');
-    figure.classList.add('lesson-media', 'lesson-media-video');
-  } else {
-    figure = document.createElement('figure');
-    figure.className = 'lesson-media lesson-media-video';
-    iframe.parentNode?.insertBefore(figure, iframe);
-    figure.appendChild(iframe);
-  }
-});
-
-  wrapper.querySelectorAll('audio').forEach((audio) => {
-    let figure = audio.closest('figure');
-
-    if (figure) {
-      figure.classList.remove('lesson-media-image', 'lesson-media-video');
-      figure.classList.add('lesson-media', 'lesson-media-audio');
-    } else {
-      figure = document.createElement('figure');
-      figure.className = 'lesson-media lesson-media-audio';
-      audio.parentNode?.insertBefore(figure, audio);
-      figure.appendChild(audio);
-    }
-  });
-
-  wrapper.querySelectorAll('figure').forEach((figure) => {
-    const hasMedia = figure.querySelector('img, iframe, audio, video');
-    const text = figure.textContent?.trim();
-    if (!hasMedia && !text) {
-      figure.remove();
-    }
-  });
-
-  wrapper.querySelectorAll('p').forEach((p) => {
-    const clean = p.innerHTML.replace(/&nbsp;/g, '').trim();
-    if (!clean || clean === '<br>' || clean === '<br />') {
-      p.remove();
-    }
-  });
-
-  return wrapper.innerHTML.trim();
-};
-
-const insertQuizMarker = () => {
-  const editor = tinymceEditor.value;
-  const questionId = insertQuizQuestionId.value;
-  if (!editor) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Editor not ready',
-      detail: 'TinyMCE editor is not available yet',
-      life: 2500,
-    });
-    return;
-  }
-  if (!lessonId || !questionId) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Missing data',
-      detail: 'Lesson and question are required',
-      life: 2500,
-    });
-    return;
-  }
-
-  editor.focus();
-  editor.insertContent(buildInlineQuizMarkerHtml(lessonId, questionId));
-  renderInlineQuizMarkersInEditor(editor);
-  insertQuizDialogVisible.value = false;
-  toast.add({
-    severity: 'success',
-    summary: 'Quiz marker inserted',
-    life: 2000,
-  });
-};
-
-const openInsertQuizDialog = () => {
-  if (!lessonId) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Lesson id is required to insert a quiz marker',
-      life: 3000,
-    });
-    return;
-  }
-  if (!sortedQuestions.value.length) {
-    toast.add({
-      severity: 'warn',
-      summary: 'No questions yet',
-      detail: 'Create a quiz question first',
-      life: 3000,
-    });
-    return;
-  }
-  if (!insertQuizQuestionOptions.value.length) {
-    toast.add({
-      severity: 'info',
-      summary: 'No available questions',
-      detail: 'All questions are already inserted in the editor',
-      life: 3000,
-    });
-    return;
-  }
-  insertQuizQuestionId.value = insertQuizQuestionOptions.value[0]?.value || '';
-  insertQuizDialogVisible.value = true;
-};
-
-const openInlineQuizEditor = async (quizId) => {
-  currentQuizId.value = quizId;
-  if (quizId && !discoveredQuizIds.value.includes(quizId)) {
-    discoveredQuizIds.value = [...discoveredQuizIds.value, quizId];
-  }
-  editingQuizId.value = quizId;
-  inlineQuizDialogVisible.value = true;
-  await loadInlineQuiz();
-};
-
-const openInlineQuestionDialog = (question) => {
-  questionDialogContext.value = 'inline';
-  openQuestionDialog(question);
+      return `
+        <section class="lesson-page-block" data-layout="${escapeHtmlText(
+          page.layout || "single-column",
+        )}">
+          ${pageTitle}
+          ${blocksHtml}
+        </section>
+      `;
+    })
+    .join('<div class="page-break"></div>');
 };
 
 const recentAssetLimit = 50;
 
 const addRecentAsset = (entry) => {
-  recentAssets.value = [entry, ...recentAssets.value.filter((item) => item.assetId !== entry.assetId)];
-  if (recentAssets.value.length > recentAssetLimit) recentAssets.value.pop();
+  recentAssets.value = [
+    entry,
+    ...recentAssets.value.filter((item) => item.assetId !== entry.assetId),
+  ];
+
+  if (recentAssets.value.length > recentAssetLimit) {
+    recentAssets.value.pop();
+  }
+
   assetsLoaded.value = true;
 };
 
 const uploadAndRegisterAsset = async (kind, file) => {
-  if (file.size > MAX_ASSET_FILE_SIZE) throw new Error('File must be 25 MB or smaller');
-  if (!courseId) throw new Error('Course context is missing');
+  if (file.size > MAX_ASSET_FILE_SIZE) {
+    throw new Error("File must be 25 MB or smaller");
+  }
 
-  const uploadResult = await uploadLessonAsset({ courseId, lessonId, file, kind });
+  if (!courseId) {
+    throw new Error("Course context is missing");
+  }
+
+  const uploadResult = await uploadLessonAsset({
+    courseId,
+    lessonId,
+    file,
+    kind,
+  });
 
   const payload = {
     storagePath: uploadResult.path,
@@ -1556,7 +2687,7 @@ const uploadAndRegisterAsset = async (kind, file) => {
     mimeType: uploadResult.mimeType,
     originalName: uploadResult.originalName,
     sizeBytes: uploadResult.size,
-    storageProvider: 'supabase',
+    storageProvider: "supabase",
   };
 
   const registered = await registerAsset(payload);
@@ -1576,386 +2707,22 @@ const uploadAndRegisterAsset = async (kind, file) => {
   return entry;
 };
 
-const editorInsertContent = (asset) => {
-  const editor = editorRef.value?.editor;
-  const url = resolveAssetUrl(asset?.url);
-  if (!editor || !url) return;
-  const snippet = buildAssetSnippet({ ...asset, url });
-  editor.focus();
-  editor.insertContent(snippet);
-};
-
-const handleTinyMceImageUpload = async (blobInfo, success, failure) => {
-  const file = blobInfo.blob();
-  try {
-    const entry = await uploadAndRegisterAsset('image', file);
-    addRecentAsset(entry);
-    success(entry.url);
-  } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Image upload failed',
-      detail: err?.message || err?.response?.data?.error || 'Unable to upload image',
-      life: 3500,
-    });
-    if (failure) failure(err?.message || 'Unable to upload image');
-  }
-};
-
-const determineAssetKind = (file, meta) => {
-  if (meta?.filetype === 'image') return 'image';
-  if (meta?.filetype === 'media') {
-    if (file.type.startsWith('audio/')) return 'audio';
-    return 'file';
-  }
-  return 'file';
-};
-
-const handleTinyMceFilePicker = (cb, value, meta) => {
-  const input = document.createElement('input');
-  input.setAttribute('type', 'file');
-  input.accept = meta?.filetype === 'media'
-    ? 'audio/*,video/*'
-    : meta?.filetype === 'image'
-      ? 'image/*'
-      : '.pdf,.doc,.docx,.ppt,.pptx,.zip';
-
-  input.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    input.value = '';
-    if (!file) return;
-
-    try {
-      const kind = determineAssetKind(file, meta);
-      const entry = await uploadAndRegisterAsset(kind, file);
-
-      if (meta?.filetype === 'image') {
-        cb(entry.url, { alt: file.name });
-      } else if (meta?.filetype === 'media') {
-        cb(entry.url, { source2: entry.url });
-      } else {
-        cb(entry.url, { text: file.name });
-      }
-    } catch (err) {
-      toast.add({
-        severity: 'error',
-        summary: 'Upload failed',
-        detail: err?.message || err?.response?.data?.error || 'Unable to upload file',
-        life: 3500,
-      });
-    }
-  });
-
-  input.click();
-};
-
-const tinymceInit = {
-  license_key: 'gpl',
-  base_url: '/tinymce',
-  suffix: '.min',
-  menubar: true,
-  height: 850,
-  min_height: 850,
-  plugins: 'link lists table code image media preview fullscreen noneditable paste',
-  toolbar:
-    'undo redo | insertQuiz | link image media | blocks | bold italic underline | bullist numlist | alignleft aligncenter alignright | table | code | removeformat',
-  branding: false,
-  convert_urls: false,
-  media_live_embeds: true,
-  media_alt_source: false,
-  media_poster: false,
-  relative_urls: false,
-
-  extended_valid_elements:
-    'iframe[src|title|width|height|allowfullscreen|frameborder|allow|referrerpolicy|sandbox|class|style],script[src|async|defer],audio[controls|src|class|style],video[controls|src|width|height|poster|class|style],source[src|type],figure[class|style],figcaption[class|style],div[class|style|data-lesson-id|data-question-id|contenteditable],label[class|style],input[type|disabled|checked|class|style],p[class|style],span[class|style],small[class|style],a[href|target|rel|class],img[src|alt|width|height|class|style]',
-  valid_children: '+body[iframe|script|figure]',
-  sandbox_iframes: false,
-
-  automatic_uploads: true,
-  file_picker_types: 'image media file',
-  images_upload_handler: handleTinyMceImageUpload,
-  file_picker_callback: handleTinyMceFilePicker,
-  object_resizing: false,
-  image_dimensions: false,
-  media_dimensions: false,
-  resize: true,
-  forced_root_block: 'p',
-  paste_as_text: false,
-
-  paste_preprocess: (editor, args) => {
-    const raw = String(args.content || '').trim();
-    if (!raw) return;
-
-    const textOnly = raw.replace(/<[^>]*>/g, '').trim();
-    const embedHtml = buildEmbedSnippetFromUrl(textOnly);
-
-    if (embedHtml) {
-      args.content = embedHtml;
-      return;
-    }
-
-    const hrefMatch = raw.match(/href=["']([^"']+)["']/i);
-    if (hrefMatch?.[1]) {
-      const linkedEmbedHtml = buildEmbedSnippetFromUrl(hrefMatch[1]);
-      if (linkedEmbedHtml) {
-        args.content = linkedEmbedHtml;
-      }
-    }
-  },
-
-  media_url_resolver: (data, resolve) => {
-    const url = String(data.url || '').trim();
-    const embedHtml = buildEmbedSnippetFromUrl(url);
-
-    if (embedHtml) {
-      resolve({ html: embedHtml });
-      return;
-    }
-
-    resolve({ html: '' });
-  },
-
-  content_style: `
-    html, body {
-      background: #f8fafc;
-    }
-
-    body {
-    font-family: Inter, Arial, sans-serif;
-    background: #ffffff;
-    color: #1e293b;
-    line-height: 1.8;
-    padding: 28px 32px 48px;
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    font-size: 15px;
-    word-wrap: break-word;
-    box-sizing: border-box;
-    min-height: 1500px;
-    overflow-y: auto;
-  }
-
-    h1, h2, h3, h4 {
-      color: #0f172a;
-      margin-top: 1.4rem;
-      margin-bottom: 0.75rem;
-      font-weight: 700;
-      line-height: 1.2;
-    }
-
-    p { margin: 0 0 1rem; }
-
-    ul, ol {
-      margin: 0 0 1rem;
-      padding-left: 1.4rem;
-    }
-
-    li { margin-bottom: 0.45rem; }
-
-    .lesson-media,
-    figure.lesson-media {
-      display: block !important;
-      width: 100% !important;
-      margin: 24px auto !important;
-      text-align: center;
-    }
-
-    .lesson-media-video,
-    figure.lesson-media-video {
-      display: block !important;
-      width: 100% !important;
-      max-width: 640px !important;
-      margin: 20px auto !important;
-      text-align: center;
-    }
-
-    .lesson-media-video iframe,
-    figure.lesson-media-video iframe,
-    iframe[src*="vimeo.com"],
-    iframe[src*="youtube.com"],
-    iframe[src*="youtu.be"],
-    iframe[src*="loom.com"] {
-      display: block !important;
-      width: min(100%, 640px) !important;
-      max-width: 640px !important;
-      min-width: 0 !important;
-      height: auto !important;
-      aspect-ratio: 16 / 9 !important;
-      margin: 0 auto !important;
-      border: 0 !important;
-      border-radius: 18px !important;
-      background: #000 !important;
-      box-shadow: 0 12px 28px rgba(15,23,42,.14) !important;
-      overflow: hidden !important;
-    }
-
-    .lesson-media-audio,
-    figure.lesson-media-audio {
-      display: block !important;
-      width: 100% !important;
-      max-width: 760px !important;
-      margin: 24px auto !important;
-      text-align: center;
-    }
-
-    .lesson-media-audio iframe {
-      display: block !important;
-      width: 100% !important;
-      max-width: 760px !important;
-      height: 170px !important;
-      margin: 0 auto !important;
-      border: 0 !important;
-      border-radius: 16px !important;
-      background: #fff !important;
-      box-shadow: 0 10px 24px rgba(15,23,42,.10) !important;
-    }
-
-    .lesson-media-image,
-    figure.lesson-media-image {
-      display: block;
-      width: 100%;
-      max-width: 760px;
-      margin: 24px auto;
-    }
-
-    .lesson-media img,
-    figure.lesson-media img,
-    img {
-      display: block;
-      width: 100%;
-      max-width: 760px;
-      height: auto;
-      margin: 0 auto;
-      border-radius: 18px;
-      box-shadow: 0 12px 32px rgba(15,23,42,.12);
-      object-fit: cover;
-    }
-
-    .lesson-file-link {
-      text-align: center;
-      margin: 1.2rem 0;
-    }
-
-    .lesson-file-link a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0.8rem 1rem;
-      border-radius: 12px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      color: #1e293b;
-      text-decoration: none;
-    }
-
-    .cms-quiz {
-      border: 1px solid #e2e8f0;
-      border-radius: 18px;
-      background: #ffffff;
-      padding: 18px;
-      margin: 1.5rem 0;
-      min-height: 40px;
-      cursor: default;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-    }
-
-    .cms-quiz.mceNonEditable {
-      user-select: none;
-    }
-
-    .cms-quiz-placeholder {
-      font-weight: 700;
-      color: #0f172a;
-    }
-
-    .cms-quiz-preview {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      text-align: left;
-    }
-
-    .cms-quiz-question {
-      margin: 0;
-      color: #0f172a;
-      font-weight: 700;
-      line-height: 1.45;
-    }
-
-    .cms-quiz-options {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .cms-quiz-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #1e293b;
-      font-size: 14px;
-      background: #f8fafc;
-      padding: 10px 12px;
-      border-radius: 12px;
-    }
-
-    .cms-quiz-option input {
-      margin: 0;
-    }
-  `,
-
-  setup: (editor) => {
-    editor.on('init', () => {
-      tinymceEditor.value = editor;
-      renderInlineQuizMarkersInEditor(editor);
-    });
-
-    editor.on('remove', () => {
-      if (tinymceEditor.value === editor) {
-        tinymceEditor.value = null;
-      }
-    });
-
-    editor.ui.registry.addButton('insertQuiz', {
-      text: 'Quiz',
-      onAction: async () => {
-        if (insertingQuiz.value) return;
-        insertingQuiz.value = true;
-        try {
-          openInsertQuizDialog();
-        } catch (err) {
-          toast.add({
-            severity: 'error',
-            summary: 'Insert quiz failed',
-            detail: err?.response?.data?.error || err?.message || 'Failed to insert quiz',
-            life: 3500,
-          });
-        } finally {
-          insertingQuiz.value = false;
-        }
-      },
-      onSetup: (api) => {
-        const interval = window.setInterval(() => {
-          api.setEnabled(!insertingQuiz.value);
-        }, 150);
-        return () => window.clearInterval(interval);
-      },
-    });
-
-    editor.on('SetContent Change Undo Redo', () => {
-      renderInlineQuizMarkersInEditor(editor);
-      scheduleQuizEmbedScan();
-    });
-  },
-};
+const mapQuizQuestionRow = (question) => ({
+  ...question,
+  id: question.id || question.questionId || question.question_id || null,
+  points: question.points ?? 1,
+  explanation: question.explanation || "",
+  meta: question.meta ?? null,
+  quizId: question.quizId || question.quiz_id || null,
+  options: question.options || [],
+});
 
 const loadLesson = async () => {
   if (!moduleId) {
     toast.add({
-      severity: 'warn',
-      summary: 'Missing module',
-      detail: 'Open this lesson from the course builder',
+      severity: "warn",
+      summary: "Missing module",
+      detail: "Open this lesson from the course builder",
       life: 3000,
     });
     loading.value = false;
@@ -1965,40 +2732,90 @@ const loadLesson = async () => {
   loading.value = true;
 
   try {
-    const lessons = await getLessons(moduleId);
-    lesson.value = lessons.find((item) => item.id === lessonId) || null;
+    const lessonData = await getLesson(lessonId);
+    lesson.value = lessonData;
 
     if (!lesson.value) {
       loading.value = false;
       return;
     }
 
-    const fallbackText = lesson.value.content_markdown || lesson.value.content_text || '';
-    const htmlValue = lesson.value.content_html || toHtmlFallback(fallbackText);
+    let parsedContentJson = createDefaultContentJson();
+
+    try {
+      const rawJson =
+        lesson.value?.content_json ?? lesson.value?.contentJson ?? null;
+
+      if (rawJson && typeof rawJson === "object") {
+        parsedContentJson = rawJson;
+      } else if (typeof rawJson === "string" && rawJson.trim()) {
+        parsedContentJson = JSON.parse(rawJson);
+      }
+
+      parsedContentJson = normalizeEditorContentJson(parsedContentJson);
+    } catch {
+      parsedContentJson = createDefaultContentJson();
+    }
 
     form.value = {
-      title: lesson.value.title,
-      contentHtml: htmlValue,
-      contentMarkdown: lesson.value.content_markdown || lesson.value.content_text || '',
-      videoUrl: lesson.value.video_url || '',
+      coverImage:
+        lesson.value.cover_image_url ||
+        lesson.value.coverImage ||
+        lesson.value.image_url ||
+        "",
+      title: lesson.value.title || "",
+      contentHtml: "",
+      contentMarkdown: "",
       estimatedMinutes: lesson.value.estimated_minutes || 0,
+      contentJson: parsedContentJson,
     };
-    initialLessonSnapshot.value = normalizeLessonSnapshot(form.value);
 
+    initialLessonSnapshot.value = normalizeLessonSnapshot(form.value);
+  } catch {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: "Failed to load lesson",
+      life: 3000,
+    });
+  } finally {
     loading.value = false;
-    updatePlainTextFromEditor();
-    refreshDiscoveredQuizIds();
+  }
+};
+
+const loadQuiz = async () => {
+  quizLoading.value = true;
+  quizError.value = false;
+
+  try {
+    const data = await getLessonQuiz(lessonId);
+    quizQuestions.value = (data.questions || []).map(mapQuizQuestionRow);
+    syncSelectedQuestion();
   } catch (err) {
-    loading.value = false;
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load lesson' + err, life: 3000 });
+    quizQuestions.value = [];
+    quizError.value = true;
+    toast.add({
+      severity: "error",
+      summary: "Quiz error",
+      detail: err?.response?.data?.error || "Failed to load quiz",
+      life: 3000,
+    });
+  } finally {
+    quizLoading.value = false;
   }
 };
 
 const triggerAssetInput = (kind) => {
-  const map = { image: imageInputRef, audio: audioInputRef, file: fileInputRef };
+  const map = {
+    image: imageInputRef,
+    audio: audioInputRef,
+    video: videoInputRef,
+    file: fileInputRef,
+  };
+
   const target = map[kind];
   if (target?.value) {
-    target.value.value = '';
+    target.value.value = "";
     target.value.click();
   }
 };
@@ -2010,22 +2827,55 @@ const openMediaLibrary = async () => {
 
 const handleAssetSelection = async (kind, event) => {
   const file = event?.target?.files?.[0];
-  if (event?.target) event.target.value = '';
+  if (event?.target) event.target.value = "";
   if (!file) return;
-  await processAssetUpload(kind, file);
-};
 
-const processAssetUpload = async (kind, file) => {
   assetsUploadProcessing.value = true;
+
   try {
     const entry = await uploadAndRegisterAsset(kind, file);
-    editorInsertContent(entry);
-    toast.add({ severity: 'success', summary: 'Uploaded', detail: 'File uploaded and inserted', life: 2500 });
+
+    if (pendingBlockTarget.value === "cover") {
+      form.value.coverImage = resolveAssetUrl(entry.url);
+      pendingBlockTarget.value = null;
+
+      toast.add({
+        severity: "success",
+        summary: "Portada cargada",
+        detail: "La imagen de portada fue asignada",
+        life: 2500,
+      });
+
+      return;
+    }
+
+    if (pendingBlockTarget.value) {
+      const { pageIndex, blockIndex } = pendingBlockTarget.value;
+      setBlockAsset(pageIndex, blockIndex, entry);
+      pendingBlockTarget.value = null;
+
+      toast.add({
+        severity: "success",
+        summary: "Archivo cargado",
+        detail: "El archivo se asignó al bloque",
+        life: 2500,
+      });
+
+      return;
+    }
+
+    toast.add({
+      severity: "success",
+      summary: "Archivo cargado",
+      detail: "Disponible en Media Library",
+      life: 2500,
+    });
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Upload failed',
-      detail: err?.message || err?.response?.data?.error || 'Failed to upload asset',
+      severity: "error",
+      summary: "Upload failed",
+      detail:
+        err?.message || err?.response?.data?.error || "Failed to upload asset",
       life: 3500,
     });
   } finally {
@@ -2039,6 +2889,7 @@ const loadAssetsList = async (force = false) => {
 
   assetsLoading.value = true;
   assetsError.value = false;
+
   try {
     const rows = await listAssets();
     recentAssets.value = (rows || []).map((row) => ({
@@ -2049,9 +2900,9 @@ const loadAssetsList = async (force = false) => {
   } catch (err) {
     assetsError.value = true;
     toast.add({
-      severity: 'error',
-      summary: 'Assets error',
-      detail: err?.response?.data?.error || 'Failed to load assets',
+      severity: "error",
+      summary: "Assets error",
+      detail: err?.response?.data?.error || "Failed to load assets",
       life: 3000,
     });
   } finally {
@@ -2061,18 +2912,176 @@ const loadAssetsList = async (force = false) => {
 
 const refreshAssets = () => loadAssetsList(true);
 
+const saveLesson = async () => {
+  if (!form.value.title.trim()) {
+    toast.add({
+      severity: "warn",
+      summary: "Title required",
+      detail: "Lesson title is required",
+      life: 2500,
+    });
+    return;
+  }
+
+  saving.value = true;
+
+  try {
+    const generatedHtmlFromPages = buildHtmlFromContentJson(
+      form.value.contentJson,
+    );
+
+    const sanitizedHtml = DOMPurify.sanitize(
+      generatedHtmlFromPages || "",
+      sanitizerConfig,
+    );
+
+    const payload = {
+      title: form.value.title,
+      contentText: "",
+      contentMarkdown: "",
+      contentHtml: sanitizedHtml,
+      contentJson: form.value.contentJson,
+      estimatedMinutes: form.value.estimatedMinutes,
+      coverImage: form.value.coverImage,
+      cover_image_url: form.value.coverImage,
+      image_url: form.value.coverImage,
+    };
+
+    const nextSnapshot = normalizeLessonSnapshot(payload);
+    const prevSnapshot = initialLessonSnapshot.value;
+
+    const hasChanges =
+      !prevSnapshot ||
+      nextSnapshot.title !== prevSnapshot.title ||
+      nextSnapshot.contentHtml !== prevSnapshot.contentHtml ||
+      nextSnapshot.contentJson !== prevSnapshot.contentJson ||
+      nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes ||
+      form.value.coverImage !==
+        (lesson.value?.cover_image_url ||
+          lesson.value?.coverImage ||
+          lesson.value?.image_url ||
+          "");
+
+    if (!hasChanges) {
+      toast.add({
+        severity: "info",
+        summary: "No changes",
+        detail: "No changes were made to save",
+        life: 2200,
+      });
+      return;
+    }
+
+    const patchPayload = {
+      coverImage: form.value.coverImage,
+      cover_image_url: form.value.coverImage,
+      image_url: form.value.coverImage,
+    };
+
+    if (!prevSnapshot || nextSnapshot.title !== prevSnapshot.title) {
+      patchPayload.title = nextSnapshot.title;
+    }
+
+    if (
+      !prevSnapshot ||
+      nextSnapshot.contentHtml !== prevSnapshot.contentHtml
+    ) {
+      patchPayload.contentHtml = nextSnapshot.contentHtml;
+    }
+
+    if (
+      !prevSnapshot ||
+      nextSnapshot.contentJson !== prevSnapshot.contentJson
+    ) {
+      patchPayload.contentJson = form.value.contentJson;
+    }
+
+    if (
+      !prevSnapshot ||
+      nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes
+    ) {
+      patchPayload.estimatedMinutes = nextSnapshot.estimatedMinutes;
+    }
+
+    await updateLesson(lessonId, patchPayload);
+    await loadLesson();
+
+    toast.add({
+      severity: "success",
+      summary: "Lesson saved",
+      detail: "Se guardó correctamente la lección",
+      life: 2200,
+    });
+  } catch (err) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: err?.response?.data?.error || "Failed to save lesson",
+      life: 3500,
+    });
+  } finally {
+    saving.value = false;
+  }
+};
+
 const handleInsertAsset = (asset) => {
-  editorInsertContent(asset);
-  toast.add({ severity: 'success', summary: 'Inserted', detail: 'Asset inserted into editor', life: 2000 });
+  if (pendingBlockTarget.value === "cover") {
+    form.value.coverImage = resolveAssetUrl(asset.url);
+    pendingBlockTarget.value = null;
+    mediaLibraryVisible.value = false;
+
+    toast.add({
+      severity: "success",
+      summary: "Portada asignada",
+      detail: "La imagen de portada fue asignada",
+      life: 2000,
+    });
+
+    return;
+  }
+
+  if (pendingBlockTarget.value) {
+    const { pageIndex, blockIndex } = pendingBlockTarget.value;
+    setBlockAsset(pageIndex, blockIndex, asset);
+    pendingBlockTarget.value = null;
+    mediaLibraryVisible.value = false;
+
+    toast.add({
+      severity: "success",
+      summary: "Asignado",
+      detail: "El archivo se asignó al bloque",
+      life: 2000,
+    });
+
+    return;
+  }
+
+  toast.add({
+    severity: "info",
+    summary: "Selecciona un destino",
+    detail: "Primero elige si la imagen es portada o va dentro de un bloque.",
+    life: 2500,
+  });
 };
 
 const copyAssetUrl = async (url) => {
   if (!url) return;
+
   try {
     await navigator.clipboard.writeText(url);
-    toast.add({ severity: 'success', summary: 'Copied', detail: 'Asset URL copied to clipboard', life: 2000 });
-  } catch (err) {
-    toast.add({ severity: 'error', summary: 'Copy failed', detail: 'Unable to copy URL', life: 3000 });
+    toast.add({
+      severity: "success",
+      summary: "Copied",
+      detail: "Asset URL copied to clipboard",
+      life: 2000,
+    });
+  } catch {
+    toast.add({
+      severity: "error",
+      summary: "Copy failed",
+      detail: "Unable to copy URL",
+      life: 3000,
+    });
   }
 };
 
@@ -2083,319 +3092,150 @@ watch(
   },
 );
 
-watch(
-  () => form.value.contentHtml,
-  () => {
-    updatePlainTextFromEditor();
-  },
-  { immediate: true },
-);
-
-watch(
-  () => currentQuizId.value,
-  (quizId, prevQuizId) => {
-    if (!inlineQuizDialogVisible.value) return;
-    if (!quizId || quizId === prevQuizId) return;
-    loadInlineQuiz();
-  },
-);
-
-watch(
-  () => quizQuestions.value,
-  () => {
-    if (!tinymceEditor.value) return;
-    renderInlineQuizMarkersInEditor(tinymceEditor.value);
-  },
-  { deep: true },
-);
-
-const formatTimestamp = (value) => (value ? new Date(value).toLocaleString() : '');
-
-const mapQuizQuestionRow = (question) => ({
-  ...question,
-  id: question.id || question.questionId || question.question_id || null,
-  points: question.points ?? 1,
-  explanation: question.explanation || '',
-  meta: question.meta ?? null,
-  quizId: question.quizId || question.quiz_id || null,
-  options: question.options || [],
-});
-
-const scanQuizEmbedsFromEditor = () => {
-  const body = editorRef.value?.editor?.getBody?.();
-  if (!body) return [];
-  const nodes = body.querySelectorAll('.cms-quiz[data-question-id]');
-  const ids = Array.from(nodes)
-    .map((node) => node.getAttribute('data-question-id'))
-    .filter(Boolean);
-  return [...new Set(ids)];
-};
-
-const refreshDiscoveredQuizIds = () => {
-  discoveredQuizIds.value = scanQuizEmbedsFromEditor();
-  if (!currentQuizId.value && discoveredQuizIds.value.length) {
-    currentQuizId.value = discoveredQuizIds.value[0];
-  }
-};
-
-const scheduleQuizEmbedScan = () => {
-  if (scanQuizDebounceTimer) clearTimeout(scanQuizDebounceTimer);
-  scanQuizDebounceTimer = setTimeout(() => {
-    refreshDiscoveredQuizIds();
-  }, 250);
-};
-
-const loadQuiz = async () => {
-  quizLoading.value = true;
-  quizError.value = false;
-  try {
-    const data = await getLessonQuiz(lessonId);
-    quizQuestions.value = (data.questions || []).map(mapQuizQuestionRow);
-    syncSelectedQuestion();
-  } catch (err) {
-    quizQuestions.value = [];
-    quizError.value = true;
-    toast.add({
-      severity: 'error',
-      summary: 'Quiz error',
-      detail: err.response?.data?.error || 'Failed to load quiz',
-      life: 3000,
-    });
-  } finally {
-    quizLoading.value = false;
-  }
-};
-
-const loadInlineQuiz = async () => {
-  if (!currentQuizId.value) return;
-  inlineQuizLoading.value = true;
-  inlineQuizError.value = false;
-  inlineSelectedQuestion.value = null;
-  try {
-    const data = await getQuizById(currentQuizId.value);
-    inlineQuizQuestions.value = (data.questions || []).map(mapQuizQuestionRow);
-  } catch (err) {
-    inlineQuizQuestions.value = [];
-    inlineQuizError.value = true;
-    toast.add({
-      severity: 'error',
-      summary: 'Inline quiz error',
-      detail: err?.response?.data?.error || err?.message || 'Failed to load inline quiz',
-      life: 3500,
-    });
-  } finally {
-    inlineQuizLoading.value = false;
-  }
-};
+const formatTimestamp = (value) =>
+  value ? new Date(value).toLocaleString() : "";
 
 const sanitizerConfig = {
   USE_PROFILES: { html: true },
-  ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track', 'code', 'pre', 'figure', 'figcaption'],
+  ADD_TAGS: [
+    "iframe",
+    "video",
+    "audio",
+    "source",
+    "picture",
+    "track",
+    "code",
+    "pre",
+    "figure",
+    "figcaption",
+  ],
   ADD_ATTR: [
-    'allow',
-    'allowfullscreen',
-    'frameborder',
-    'referrerpolicy',
-    'controls',
-    'muted',
-    'playsinline',
-    'data-mce-*',
-    'data-lesson-id',
-    'data-question-id',
-    'contenteditable',
-    'class',
-    'style',
-    'width',
-    'height',
-    'target',
-    'rel',
+    "allow",
+    "allowfullscreen",
+    "frameborder",
+    "referrerpolicy",
+    "controls",
+    "muted",
+    "playsinline",
+    "data-mce-*",
+    "data-lesson-id",
+    "data-question-id",
+    "contenteditable",
+    "class",
+    "style",
+    "width",
+    "height",
+    "target",
+    "rel",
   ],
 };
 
 const normalizeLessonSnapshot = (value) => ({
-  title: String(value?.title || '').trim(),
-  contentText: String(value?.contentMarkdown || ''),
-  contentMarkdown: String(value?.contentMarkdown || ''),
-  contentHtml: String(value?.contentHtml || ''),
+  title: String(value?.title || "").trim(),
+  contentHtml: String(value?.contentHtml || ""),
+  contentJson: JSON.stringify(value?.contentJson || createDefaultContentJson()),
   estimatedMinutes: Number(value?.estimatedMinutes || 0),
-  videoUrl: value?.videoUrl == null ? '' : String(value.videoUrl).trim(),
 });
-
-const saveLesson = async () => {
-  if (!form.value.title.trim()) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Title required',
-      detail: 'Lesson title is required',
-      life: 2500,
-    });
-    return;
-  }
-
-  saving.value = true;
-  try {
-    const strippedHtml = stripInlineQuizPreviewFromHtml(form.value.contentHtml || '');
-    const normalizedHtml = normalizeLessonContentHtml(strippedHtml || '');
-    const sanitizedHtml = DOMPurify.sanitize(normalizedHtml || '', sanitizerConfig);
-
-    const payload = {
-      title: form.value.title,
-      contentText: form.value.contentMarkdown,
-      contentMarkdown: form.value.contentMarkdown,
-      contentHtml: sanitizedHtml,
-      estimatedMinutes: form.value.estimatedMinutes,
-      videoUrl: form.value.videoUrl,
-    };
-
-    const nextSnapshot = normalizeLessonSnapshot(payload);
-    const prevSnapshot = initialLessonSnapshot.value;
-    const hasChanges =
-      !prevSnapshot ||
-      nextSnapshot.title !== prevSnapshot.title ||
-      nextSnapshot.contentText !== prevSnapshot.contentText ||
-      nextSnapshot.contentMarkdown !== prevSnapshot.contentMarkdown ||
-      nextSnapshot.contentHtml !== prevSnapshot.contentHtml ||
-      nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes ||
-      nextSnapshot.videoUrl !== prevSnapshot.videoUrl;
-
-    if (!hasChanges) {
-      toast.add({
-        severity: 'info',
-        summary: 'No changes',
-        detail: 'No changes were made to save',
-        life: 2200,
-      });
-      setTimeout(() => {
-        goBackInHistoryOrCourse();
-      }, 100);
-      return;
-    }
-
-    const patchPayload = {};
-    if (!prevSnapshot || nextSnapshot.title !== prevSnapshot.title) patchPayload.title = nextSnapshot.title;
-    if (!prevSnapshot || nextSnapshot.contentText !== prevSnapshot.contentText)
-      patchPayload.contentText = nextSnapshot.contentText;
-    if (!prevSnapshot || nextSnapshot.contentMarkdown !== prevSnapshot.contentMarkdown)
-      patchPayload.contentMarkdown = nextSnapshot.contentMarkdown;
-    if (!prevSnapshot || nextSnapshot.contentHtml !== prevSnapshot.contentHtml)
-      patchPayload.contentHtml = nextSnapshot.contentHtml;
-    if (!prevSnapshot || nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes)
-      patchPayload.estimatedMinutes = nextSnapshot.estimatedMinutes;
-    if (!prevSnapshot || nextSnapshot.videoUrl !== prevSnapshot.videoUrl)
-      patchPayload.videoUrl = nextSnapshot.videoUrl;
-
-    await updateLesson(lessonId, patchPayload);
-
-    toast.add({ severity: 'success', summary: 'Lesson saved', life: 2000 });
-    setTimeout(() => {
-      goBackInHistoryOrCourse();
-    }, 100);
-  } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to save lesson',
-      life: 3500,
-    });
-  } finally {
-    saving.value = false;
-  }
-};
 
 const togglePublish = async () => {
   if (!lesson.value) return;
+
   try {
     if (lesson.value.is_published) {
       await unpublishLesson(lessonId);
-      toast.add({ severity: 'info', summary: 'Lesson unpublished', life: 2000 });
+      toast.add({
+        severity: "info",
+        summary: "Lesson unpublished",
+        life: 2000,
+      });
     } else {
       await publishLesson(lessonId);
-      toast.add({ severity: 'success', summary: 'Lesson published', life: 2000 });
+      toast.add({
+        severity: "success",
+        summary: "Lesson published",
+        life: 2000,
+      });
     }
+
     await loadLesson();
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to update lesson',
+      severity: "error",
+      summary: "Error",
+      detail: err?.response?.data?.error || "Failed to update lesson",
       life: 3500,
     });
   }
 };
 
 const goBack = () => {
-  router.push(`/cms/courses/${courseId || ''}`);
+  router.push(`/cms/courses/${courseId || ""}`);
 };
 
-const goBackInHistoryOrCourse = async () => {
-  if (window.history.length > 1) {
-    await router.back();
-    return;
-  }
-  await router.push(`/cms/courses/${courseId || ''}`);
-};
-
-const openVideo = () => {
-  if (form.value.videoUrl) {
-    window.open(form.value.videoUrl, '_blank', 'noopener');
-  }
-};
-
-const questionAdvancedOpen = ref(false);
-
-const openQuestionDialog = (question, context = 'lesson') => {
-  questionDialogContext.value = context;
-  editingQuizId.value = context === 'inline' ? currentQuizId.value : null;
+const openQuestionDialog = (question) => {
   editingQuestionId.value = question?.id || null;
+
   let draftOptions = [
-    { optionText: '', isCorrect: true },
-    { optionText: '', isCorrect: false },
+    { optionText: "", isCorrect: true },
+    { optionText: "", isCorrect: false },
   ];
-  let trueFalseCorrect = '';
-  const questionType = question?.questionType || 'single_choice';
+  let trueFalseCorrect = "";
+  const questionType = question?.questionType || "single_choice";
 
   if (question) {
     const sortedQuestionOptions = [...(question.options || [])].sort(
       (a, b) => (a.orderIndex || 0) - (b.orderIndex || 0),
     );
+
     draftOptions = sortedQuestionOptions.map((option) => ({
       id: option.id || null,
-      optionText: option.optionText || '',
+      optionText: option.optionText || "",
       isCorrect: Boolean(option.isCorrect),
       orderIndex: option.orderIndex || null,
     }));
 
-    if (!draftOptions.length && createQuestionOptionTypes.includes(questionType)) {
+    if (
+      !draftOptions.length &&
+      createQuestionOptionTypes.includes(questionType)
+    ) {
       draftOptions = [
-        { optionText: '', isCorrect: questionType === 'single_choice' },
-        { optionText: '', isCorrect: false },
+        { optionText: "", isCorrect: questionType === "single_choice" },
+        { optionText: "", isCorrect: false },
       ];
     }
 
     const options = question?.options || [];
     const trueOption = options.find(
-      (option) => String(option.optionText || '').trim().toLowerCase() === 'true',
+      (option) =>
+        String(option.optionText || "")
+          .trim()
+          .toLowerCase() === "true",
     );
     const falseOption = options.find(
-      (option) => String(option.optionText || '').trim().toLowerCase() === 'false',
+      (option) =>
+        String(option.optionText || "")
+          .trim()
+          .toLowerCase() === "false",
     );
-    if (trueOption?.isCorrect) trueFalseCorrect = 'true';
-    else if (falseOption?.isCorrect) trueFalseCorrect = 'false';
-  } else if (questionType === 'multiple_choice') {
+
+    if (trueOption?.isCorrect) trueFalseCorrect = "true";
+    else if (falseOption?.isCorrect) trueFalseCorrect = "false";
+  } else if (questionType === "multiple_choice") {
     draftOptions = [buildEmptyQuestionOption(), buildEmptyQuestionOption()];
   } else if (!createQuestionOptionTypes.includes(questionType)) {
     draftOptions = [];
   }
 
   questionForm.value = {
-    questionText: question?.questionText || '',
+    questionText: question?.questionText || "",
     questionType,
     points: question?.points ?? 1,
-    explanation: question?.explanation || '',
-    metaJson: question?.meta ? JSON.stringify(question.meta, null, 2) : '',
+    explanation: question?.explanation || "",
+    metaJson: question?.meta ? JSON.stringify(question.meta, null, 2) : "",
     draftOptions: normalizeDraftOrder(draftOptions),
     trueFalseCorrect,
   };
+
   questionAdvancedOpen.value = false;
   questionDialogVisible.value = true;
 };
@@ -2403,38 +3243,37 @@ const openQuestionDialog = (question, context = 'lesson') => {
 const closeQuestionDialog = () => {
   questionDialogVisible.value = false;
   questionForm.value = {
-    questionText: '',
-    questionType: 'single_choice',
+    questionText: "",
+    questionType: "single_choice",
     points: 1,
-    explanation: '',
-    metaJson: '',
+    explanation: "",
+    metaJson: "",
     draftOptions: [
-      { optionText: '', isCorrect: true },
-      { optionText: '', isCorrect: false },
+      { optionText: "", isCorrect: true },
+      { optionText: "", isCorrect: false },
     ],
-    trueFalseCorrect: '',
+    trueFalseCorrect: "",
   };
   editingQuestionId.value = null;
-  editingQuizId.value = null;
-  questionDialogContext.value = 'lesson';
   questionAdvancedOpen.value = false;
 };
 
 const saveQuestion = async () => {
   if (!questionForm.value.questionText.trim()) {
-    toast.add({ severity: 'warn', summary: 'Text required', detail: 'Question text is required', life: 2500 });
+    toast.add({
+      severity: "warn",
+      summary: "Text required",
+      detail: "Question text is required",
+      life: 2500,
+    });
     return;
   }
 
   if (questionForm.value.points < 0) {
-    toast.add({ severity: 'warn', summary: 'Points invalid', detail: 'Points must be 0 or greater', life: 2500 });
-    return;
-  }
-  if (questionDialogContext.value === 'inline' && !currentQuizId.value) {
     toast.add({
-      severity: 'warn',
-      summary: 'Quiz required',
-      detail: 'Select an inline quiz before saving questions',
+      severity: "warn",
+      summary: "Points invalid",
+      detail: "Points must be 0 or greater",
       life: 2500,
     });
     return;
@@ -2445,26 +3284,33 @@ const saveQuestion = async () => {
     questionType,
     questionForm.value.draftOptions,
   );
+
   if (createQuestionOptionTypes.includes(questionType)) {
     if (validationError) {
       toast.add({
-        severity: 'warn',
-        summary: 'Options required',
+        severity: "warn",
+        summary: "Options required",
         detail: validationError,
         life: 2500,
       });
       return;
     }
-    questionForm.value.draftOptions = normalizedOptions.map(({ id, optionText, isCorrect }) => ({
-      id: id || null,
-      optionText,
-      isCorrect,
-    }));
-  } else if (questionType === 'true_false' && !questionForm.value.trueFalseCorrect) {
+
+    questionForm.value.draftOptions = normalizedOptions.map(
+      ({ id, optionText, isCorrect }) => ({
+        id: id || null,
+        optionText,
+        isCorrect,
+      }),
+    );
+  } else if (
+    questionType === "true_false" &&
+    !questionForm.value.trueFalseCorrect
+  ) {
     toast.add({
-      severity: 'warn',
-      summary: 'Pending setup',
-      detail: 'No correct True/False answer selected yet',
+      severity: "warn",
+      summary: "Pending setup",
+      detail: "No correct True/False answer selected yet",
       life: 2500,
     });
   } else {
@@ -2473,6 +3319,7 @@ const saveQuestion = async () => {
 
   questionSaving.value = true;
   let savedQuestionId = null;
+
   try {
     const payload = {
       questionText: questionForm.value.questionText,
@@ -2480,14 +3327,15 @@ const saveQuestion = async () => {
       points: questionForm.value.points,
       explanation: questionForm.value.explanation,
     };
+
     if (questionForm.value.metaJson.trim()) {
       try {
         payload.meta = JSON.parse(questionForm.value.metaJson);
-      } catch (parseErr) {
+      } catch {
         toast.add({
-          severity: 'warn',
-          summary: 'Invalid JSON',
-          detail: 'Meta must be valid JSON',
+          severity: "warn",
+          summary: "Invalid JSON",
+          detail: "Meta must be valid JSON",
           life: 2500,
         });
         return;
@@ -2498,26 +3346,29 @@ const saveQuestion = async () => {
       await updateQuizQuestion(editingQuestionId.value, payload);
       savedQuestionId = editingQuestionId.value;
     } else {
-      const created =
-        questionDialogContext.value === 'inline'
-          ? await createQuizQuestionByQuiz(currentQuizId.value, payload)
-          : await createQuizQuestion(lessonId, payload);
+      const created = await createQuizQuestion(lessonId, payload);
       savedQuestionId = created?.id || created?.question?.id || null;
+
       if (!savedQuestionId) {
-        throw new Error('Failed to resolve created question id');
+        throw new Error("Failed to resolve created question id");
       }
     }
 
-    const sourceQuestions =
-      questionDialogContext.value === 'inline' ? inlineQuizQuestions.value : quizQuestions.value;
     const existingQuestion =
-      sourceQuestions.find((question) => String(question.id) === String(savedQuestionId)) || null;
+      quizQuestions.value.find(
+        (question) => String(question.id) === String(savedQuestionId),
+      ) || null;
+
     const existingOptions = existingQuestion?.options || [];
 
     if (createQuestionOptionTypes.includes(questionType)) {
       const next = normalizedOptions;
-      const originalById = new Map(existingOptions.map((option) => [option.id, option]));
-      const nextIds = new Set(next.filter((option) => option.id).map((option) => option.id));
+      const originalById = new Map(
+        existingOptions.map((option) => [option.id, option]),
+      );
+      const nextIds = new Set(
+        next.filter((option) => option.id).map((option) => option.id),
+      );
 
       for (const option of existingOptions) {
         if (option?.id && !nextIds.has(option.id)) {
@@ -2528,20 +3379,22 @@ const saveQuestion = async () => {
       for (let index = 0; index < next.length; index += 1) {
         const option = next[index];
         if (option.id) continue;
-        const optionPayload = {
+
+        await createQuizOption(savedQuestionId, {
           optionText: option.optionText,
           isCorrect: option.isCorrect,
           orderIndex: index + 1,
-        };
-        await createQuizOption(savedQuestionId, optionPayload);
+        });
       }
 
       for (let index = 0; index < next.length; index += 1) {
         const option = next[index];
         if (!option.id) continue;
+
         const original = originalById.get(option.id);
         if (!original) continue;
-        const trimmedOriginalText = (original.optionText || '').trim();
+
+        const trimmedOriginalText = (original.optionText || "").trim();
         const originalIsCorrect = Boolean(original.isCorrect);
         const originalOrderIndex = Number(original.orderIndex || index + 1);
         const nextOrderIndex = index + 1;
@@ -2558,34 +3411,46 @@ const saveQuestion = async () => {
           });
         }
       }
-    } else if (questionType === 'true_false') {
-      const draftCorrectFromOptions = (questionForm.value.draftOptions || []).find(
-        (option) => Boolean(option.isCorrect),
-      );
+    } else if (questionType === "true_false") {
+      const draftCorrectFromOptions = (
+        questionForm.value.draftOptions || []
+      ).find((option) => Boolean(option.isCorrect));
+
       const desiredCorrect =
         questionForm.value.trueFalseCorrect ||
         (draftCorrectFromOptions
-          ? String(draftCorrectFromOptions.optionText || '').trim().toLowerCase()
-          : '');
+          ? String(draftCorrectFromOptions.optionText || "")
+              .trim()
+              .toLowerCase()
+          : "");
 
       if (desiredCorrect) {
         let currentOptions = existingOptions;
+
         if (!currentOptions.length) {
           const freshQuestion = await fetchQuestionFromServer(savedQuestionId);
           currentOptions = freshQuestion?.options || [];
         }
 
         const trueOption = currentOptions.find(
-          (option) => String(option.optionText || '').trim().toLowerCase() === 'true',
+          (option) =>
+            String(option.optionText || "")
+              .trim()
+              .toLowerCase() === "true",
         );
+
         const falseOption = currentOptions.find(
-          (option) => String(option.optionText || '').trim().toLowerCase() === 'false',
+          (option) =>
+            String(option.optionText || "")
+              .trim()
+              .toLowerCase() === "false",
         );
+
         if (trueOption && falseOption) {
-          if (desiredCorrect === 'true') {
+          if (desiredCorrect === "true") {
             await updateQuizOption(trueOption.id, { isCorrect: true });
             await updateQuizOption(falseOption.id, { isCorrect: false });
-          } else if (desiredCorrect === 'false') {
+          } else if (desiredCorrect === "false") {
             await updateQuizOption(trueOption.id, { isCorrect: false });
             await updateQuizOption(falseOption.id, { isCorrect: true });
           }
@@ -2595,22 +3460,25 @@ const saveQuestion = async () => {
       questionForm.value.draftOptions = [];
     }
 
-    if (questionDialogContext.value === 'inline') {
-      await loadInlineQuiz();
-      inlineSelectedQuestion.value =
-        inlineQuizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
-    } else {
-      await loadQuiz();
-      selectedQuestion.value =
-        quizQuestions.value.find((question) => String(question.id) === String(savedQuestionId)) || null;
-    }
-    toast.add({ severity: 'success', summary: 'Question saved', life: 2000 });
+    await loadQuiz();
+
+    selectedQuestion.value =
+      quizQuestions.value.find(
+        (question) => String(question.id) === String(savedQuestionId),
+      ) || null;
+
+    toast.add({
+      severity: "success",
+      summary: "Question saved",
+      life: 2000,
+    });
+
     closeQuestionDialog();
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to save question',
+      severity: "error",
+      summary: "Error",
+      detail: err?.response?.data?.error || "Failed to save question",
       life: 3500,
     });
   } finally {
@@ -2622,87 +3490,98 @@ watch(
   () => questionForm.value.questionType,
   (nextType) => {
     if (!questionDialogVisible.value) return;
-    if (nextType === 'true_false') {
-      questionForm.value.trueFalseCorrect = '';
+
+    if (nextType === "true_false") {
+      questionForm.value.trueFalseCorrect = "";
       questionForm.value.draftOptions = [];
       return;
     }
 
-    if (questionTypeUsesOptions(nextType)) {
+    if (syncQuestionOptionTypes.includes(nextType)) {
       if (!questionForm.value.draftOptions.length) {
         initializeQuestionFormOptionsByType(nextType);
-      } else if (nextType === 'single_choice') {
-        const firstCorrectIndex = questionForm.value.draftOptions.findIndex((option) => option.isCorrect);
+      } else if (nextType === "single_choice") {
+        const firstCorrectIndex = questionForm.value.draftOptions.findIndex(
+          (option) => option.isCorrect,
+        );
+
         if (firstCorrectIndex === -1) {
-          questionForm.value.draftOptions = questionForm.value.draftOptions.map((option, index) => ({
-            ...option,
-            isCorrect: index === 0,
-          }));
+          questionForm.value.draftOptions = questionForm.value.draftOptions.map(
+            (option, index) => ({
+              ...option,
+              isCorrect: index === 0,
+            }),
+          );
         } else {
-          questionForm.value.draftOptions = questionForm.value.draftOptions.map((option, index) => ({
-            ...option,
-            isCorrect: index === firstCorrectIndex,
-          }));
+          questionForm.value.draftOptions = questionForm.value.draftOptions.map(
+            (option, index) => ({
+              ...option,
+              isCorrect: index === firstCorrectIndex,
+            }),
+          );
         }
       }
+
       return;
     }
 
     questionForm.value.draftOptions = [];
-    questionForm.value.trueFalseCorrect = '';
+    questionForm.value.trueFalseCorrect = "";
   },
 );
 
 const removeQuestion = async (question) => {
-  if (!window.confirm('Delete this question? This cannot be undone.')) return;
+  if (!window.confirm("Delete this question? This cannot be undone.")) return;
 
   try {
     await deleteQuizQuestion(question.id);
-    if (selectedQuestion.value?.id === question.id) selectedQuestion.value = null;
-    if (inlineSelectedQuestion.value?.id === question.id) inlineSelectedQuestion.value = null;
-    toast.add({ severity: 'info', summary: 'Question deleted', life: 2000 });
-    if (inlineQuizDialogVisible.value) {
-      await loadInlineQuiz();
-    } else {
-      await loadQuiz();
+
+    if (selectedQuestion.value?.id === question.id) {
+      selectedQuestion.value = null;
     }
+
+    toast.add({
+      severity: "info",
+      summary: "Question deleted",
+      life: 2000,
+    });
+
+    await loadQuiz();
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to delete question',
+      severity: "error",
+      summary: "Error",
+      detail: err?.response?.data?.error || "Failed to delete question",
       life: 3500,
     });
   }
 };
 
 const moveQuestion = async (question, direction) => {
-  const list = inlineQuizDialogVisible.value ? sortedInlineQuestions.value : sortedQuestions.value;
+  const list = sortedQuestions.value;
   const index = list.findIndex((item) => item.id === question.id);
   const targetIndex = index + direction;
+
   if (targetIndex < 0 || targetIndex >= list.length) return;
 
   const target = list[targetIndex];
+
   try {
     await updateQuizQuestion(question.id, { orderIndex: target.orderIndex });
     await updateQuizQuestion(target.id, { orderIndex: question.orderIndex });
-    if (inlineQuizDialogVisible.value) {
-      await loadInlineQuiz();
-    } else {
-      await loadQuiz();
-    }
+    await loadQuiz();
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: err.response?.data?.error || 'Failed to reorder question',
+      severity: "error",
+      summary: "Error",
+      detail: err?.response?.data?.error || "Failed to reorder question",
       life: 3500,
     });
   }
 };
 
 const canMoveQuestion = (question, direction) => {
-  const list = inlineQuizDialogVisible.value ? sortedInlineQuestions.value : sortedQuestions.value;
+  const list = sortedQuestions.value;
   const index = list.findIndex((item) => item.id === question.id);
   const targetIndex = index + direction;
   return targetIndex >= 0 && targetIndex < list.length;
@@ -2712,11 +3591,6 @@ onMounted(async () => {
   await loadLesson();
   await loadQuiz();
   loadAssetsList(true);
-  refreshDiscoveredQuizIds();
-});
-
-onBeforeUnmount(() => {
-  if (scanQuizDebounceTimer) clearTimeout(scanQuizDebounceTimer);
 });
 </script>
 
@@ -2791,7 +3665,7 @@ onBeforeUnmount(() => {
 
 .lesson-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
   gap: 1.5rem;
   align-items: start;
   margin-top: 1rem;
@@ -2885,162 +3759,25 @@ onBeforeUnmount(() => {
   gap: 1rem;
 }
 
-.video-preview-card {
-  display: flex;
-  align-items: center;
-  gap: 0.95rem;
-  margin-top: 1rem;
-  padding: 1rem;
-  border-radius: 16px;
-  border: 1px solid #dbeafe;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
-}
-
-.video-preview-card.is-empty {
-  border-color: #e5e7eb;
-  background: #f8fafc;
-}
-
-.video-preview-icon {
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  color: #4f46e5;
-  font-size: 1.35rem;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
-}
-
-.video-preview-copy strong {
-  display: block;
-  color: #0f172a;
-  margin-bottom: 0.2rem;
-}
-
-.video-preview-copy p {
-  margin: 0;
-  color: #64748b;
-  line-height: 1.55;
-}
-
-.editor-wrapper {
-  border: 1px solid #e2e8f0;
-  border-radius: 20px;
-  overflow: hidden;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-}
-
-.editor-wrapper :deep(.tox-tinymce) {
-  height: 850px !important;
-  min-height: 850px !important;
-  border-radius: 20px;
-  border: 0 !important;
-  overflow: hidden;
-}
-
-.editor-wrapper :deep(.tox-editor-header) {
-  border-bottom: 1px solid #e2e8f0 !important;
-  background: #f8fafc;
-}
-
-.editor-wrapper :deep(.tox-toolbar),
-.editor-wrapper :deep(.tox-toolbar__primary),
-.editor-wrapper :deep(.tox-menubar) {
-  background: #f8fafc !important;
-}
-
-.editor-wrapper :deep(.tox-edit-area__iframe) {
-  background: #f8fafc;
-}
-
-.editor-wrapper :deep(.tox-edit-area) {
-  padding: 0 !important;
-}
-
-.editor-wrapper :deep(.lesson-media-video iframe) {
-  width: min(100%, 640px) !important;
-  max-width: 640px !important;
-  min-width: 0 !important;
-  height: auto !important;
-  aspect-ratio: 16 / 9 !important;
-  margin: 0 auto !important;
-  border-radius: 18px !important;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14) !important;
-  display: block !important;
-}
-
-.editor-wrapper :deep(.lesson-media-video),
-.editor-wrapper :deep(figure.lesson-media-video) {
-  width: 100% !important;
-  max-width: 640px !important;
-  margin: 1rem auto 1.25rem !important;
-}
-
-.editor-wrapper :deep(.lesson-media-image img) {
-  width: min(100%, 860px) !important;
-  max-width: 860px !important;
-  margin: 0 auto !important;
-}
-
-.editor-wrapper :deep(.lesson-media-audio iframe) {
-  width: min(100%, 860px) !important;
-  max-width: 860px !important;
-  margin: 0 auto !important;
-}
-
-/* viewport del editor: grande pero con scroll */
-.editor-wrapper :deep(.tox-tinymce) {
-  height: 850px !important;
-  min-height: 850px !important;
-  border-radius: 20px;
-  border: 0 !important;
-  overflow: hidden;
-}
-
-.editor-wrapper :deep(.tox-editor-container) {
-  height: 100% !important;
-}
-
-.editor-wrapper :deep(.tox-edit-area) {
-  height: calc(100% - 82px) !important;
-  overflow: hidden !important;
-}
-
-.editor-wrapper :deep(.tox-edit-area__iframe) {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  background: #f8fafc;
-  display: block !important;
-}
-.form-actions {
+.pages-topbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-}
-
-.content-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
-.assets-inline-hint {
-  margin-bottom: 1rem;
-  padding: 0.8rem 0.95rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  background: #f8fafc;
+.pages-topbar-copy {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pages-topbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .quiz-card {
@@ -3167,17 +3904,168 @@ onBeforeUnmount(() => {
   gap: 0.65rem;
 }
 
-.sidebar-list {
-  margin: 0;
-  padding-left: 1rem;
-  color: #475569;
-  line-height: 1.6;
-}
-
 .sidebar-save-text {
   margin: 0 0 1rem;
   color: #64748b;
   line-height: 1.55;
+}
+
+.preview-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.preview-card-head {
+  padding: 1rem 1rem 0.25rem;
+}
+
+.lesson-preview-shell {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border-top: 1px solid #eef2f7;
+  max-height: 78vh;
+  overflow: auto;
+}
+
+.lesson-preview-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem;
+}
+
+.lesson-preview-header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.2rem;
+  color: #0f172a;
+}
+
+.lesson-preview-header span {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.lesson-preview-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.lesson-preview-page {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.lesson-preview-page-head {
+  margin-bottom: 0.9rem;
+}
+
+.lesson-preview-page-head small {
+  display: block;
+  color: #64748b;
+  margin-bottom: 0.2rem;
+}
+
+.lesson-preview-page-head h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.02rem;
+}
+
+.lesson-preview-blocks {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.lesson-preview-blocks.is-single-column {
+  grid-template-columns: 1fr;
+}
+
+.lesson-preview-blocks.is-two-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lesson-preview-blocks.is-hero-left {
+  grid-template-columns: 1.25fr 0.75fr;
+}
+
+.lesson-preview-block {
+  border: 1px solid #edf2f7;
+  border-radius: 16px;
+  padding: 0.95rem;
+  background: #fff;
+}
+
+.lesson-preview-block h4 {
+  margin: 0 0 0.6rem;
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.preview-text {
+  margin: 0;
+  color: #334155;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.preview-image {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.preview-audio {
+  width: 100%;
+}
+
+.preview-caption {
+  margin: 0.65rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.preview-video-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.preview-video-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.preview-link-box {
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.preview-link-box a {
+  color: #4f46e5;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.preview-empty,
+.preview-empty-inline {
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 0.85rem;
 }
 
 .w-full {
@@ -3188,16 +4076,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-}
-
-.asset-input-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.asset-input-row input[type='file'] {
-  flex: 1;
 }
 
 .asset-row {
@@ -3376,14 +4254,6 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
 }
 
-:deep(.cms-quiz) {
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #ffffff;
-  padding: 16px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
-}
-
 :deep(.lesson-quiz-table .p-datatable-wrapper) {
   border-radius: 16px;
   overflow: auto;
@@ -3406,14 +4276,6 @@ onBeforeUnmount(() => {
 
 .mb-2 {
   margin-bottom: 0.75rem;
-}
-
-.inline-quiz-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
 }
 
 .question-actions {
@@ -3441,13 +4303,250 @@ onBeforeUnmount(() => {
   margin-top: 1.5rem;
 }
 
-@media (max-width: 1200px) {
-  .lesson-layout {
-    grid-template-columns: 1fr 290px;
-  }
+.pages-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-@media (max-width: 1024px) {
+.page-builder-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 1rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.page-builder-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.page-builder-head-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 1rem;
+  flex: 1;
+}
+
+.blocks-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.blocks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.block-editor-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 0.9rem;
+  background: #fff;
+}
+
+.block-editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.block-asset-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.block-file-preview {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #f8fafc;
+  margin-bottom: 0.9rem;
+}
+
+.block-file-preview.empty {
+  border-style: dashed;
+}
+
+.block-preview-image {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  border-radius: 12px;
+  margin-bottom: 0.75rem;
+}
+
+.block-preview-audio {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.block-preview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.block-url {
+  word-break: break-all;
+}
+
+.preview-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0 1rem 1rem;
+  scrollbar-width: thin;
+}
+
+.preview-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  min-width: max-content;
+  border: 1px solid #2563eb;
+  background: #ffffff;
+  color: #2563eb;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preview-tab:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.preview-tab.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.preview-audio-frame {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+
+.preview-audio-frame iframe {
+  display: block;
+  width: 100%;
+  height: 166px;
+  border: 0;
+}
+
+.preview-quiz-box {
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 14px;
+  padding: 1rem;
+}
+
+.preview-quiz-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.preview-quiz-head strong {
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.preview-quiz-head small {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.preview-quiz-question {
+  border: 1px solid #dbeafe;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.preview-quiz-question:first-child {
+  margin-top: 0;
+}
+
+.preview-quiz-question-title {
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.45;
+  margin-bottom: 0.75rem;
+}
+
+.preview-quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.preview-quiz-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.preview-quiz-option input {
+  margin-top: 0.2rem;
+}
+
+.preview-quiz-answer-box {
+  padding: 0.85rem 0.9rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.preview-quiz-feedback-note {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #0f766e;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+@media (max-width: 1280px) {
   .lesson-layout {
     grid-template-columns: 1fr;
   }
@@ -3455,47 +4554,9 @@ onBeforeUnmount(() => {
   .lesson-sidebar {
     position: static;
   }
-}
 
-@media (max-width: 900px) {
-  .lesson-topbar {
-    flex-direction: column;
-  }
-
-  .lesson-topbar-actions {
-    width: 100%;
-  }
-
-  .lesson-info-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .quiz-overview {
-    grid-template-columns: 1fr;
-  }
-
-  .quiz-head-pro {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .quiz-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .option-row {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .asset-row {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .asset-actions {
-    width: 100%;
+  .lesson-preview-shell {
+    max-height: none;
   }
 }
 
@@ -3515,21 +4576,8 @@ onBeforeUnmount(() => {
     border-radius: 18px;
   }
 
-  .assets-inline-hint {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .video-preview-card {
-    align-items: flex-start;
-  }
-
   .question-actions {
     gap: 0.15rem;
   }
-
-  .editor-wrapper :deep(.tox-tinymce) {
-    min-height: 240px;
-  }
 }
-</style>  
+</style>

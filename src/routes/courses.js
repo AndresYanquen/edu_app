@@ -1,19 +1,28 @@
-const express = require('express');
-const pool = require('../db');
-const auth = require('../middleware/auth');
-const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
-const { uuidSchema, formatZodError } = require('../utils/validators');
-const { canEditCourse } = require('../utils/cmsPermissions');
+const express = require("express");
+const pool = require("../db");
+const auth = require("../middleware/auth");
+const { requireGlobalRoleAny, hasGlobalRole } = require("../middleware/roles");
+const { uuidSchema, formatZodError } = require("../utils/validators");
+const { canEditCourse } = require("../utils/cmsPermissions");
 const {
   ensureCourseExists,
   hasCourseRole: hasScopedCourseRole,
   isGroupTeacher,
-} = require('../utils/roleService');
+} = require("../utils/roleService");
 
-const FALLBACK_LEVEL_CODE = 'A1';
-const COURSE_LEVEL_JOIN = 'LEFT JOIN course_levels cl ON cl.id = c.level_id';
-const WEEK_ATTENDANCE_ALLOWED_STATUS = new Set(['present', 'absent', 'late', 'excused']);
-const WEEK_ATTENDANCE_EXCEPTION_STATUSES = new Set(['absent', 'late', 'excused']);
+const FALLBACK_LEVEL_CODE = "A1";
+const COURSE_LEVEL_JOIN = "LEFT JOIN course_levels cl ON cl.id = c.level_id";
+const WEEK_ATTENDANCE_ALLOWED_STATUS = new Set([
+  "present",
+  "absent",
+  "late",
+  "excused",
+]);
+const WEEK_ATTENDANCE_EXCEPTION_STATUSES = new Set([
+  "absent",
+  "late",
+  "excused",
+]);
 
 const router = express.Router();
 
@@ -31,11 +40,11 @@ const mapCoursePostRow = (row) => ({
 });
 
 const isValidWeekStartString = (value) =>
-  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 const toUtcIsoDate = (value) => {
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 10);
 };
 
@@ -67,7 +76,7 @@ const resolveAttendanceGroupForCourse = async (courseId, groupIdRaw) => {
   if (groupIdRaw) {
     const parsedGroupId = uuidSchema.safeParse(groupIdRaw);
     if (!parsedGroupId.success) {
-      return { error: 'groupId must be a valid UUID', status: 400 };
+      return { error: "groupId must be a valid UUID", status: 400 };
     }
     const groupRes = await pool.query(
       `
@@ -80,7 +89,7 @@ const resolveAttendanceGroupForCourse = async (courseId, groupIdRaw) => {
     );
     const group = groupRes.rows[0];
     if (!group || group.course_id !== courseId) {
-      return { error: 'Group not found for this course', status: 404 };
+      return { error: "Group not found for this course", status: 404 };
     }
     return { group };
   }
@@ -99,19 +108,19 @@ const resolveAttendanceGroupForCourse = async (courseId, groupIdRaw) => {
     return { group: null };
   }
   if (groupsRes.rows.length > 1) {
-    return { error: 'groupId requerido', status: 400 };
+    return { error: "groupId requerido", status: 400 };
   }
   return { group: groupsRes.rows[0] };
 };
 
 const ensureCourseAttendanceAccess = async (req, courseId, groupId = null) => {
-  if (hasGlobalRole(req.user, 'admin')) {
+  if (hasGlobalRole(req.user, "admin")) {
     return { allowed: true };
   }
 
   const course = await ensureCourseExists(courseId);
   if (!course) {
-    return { allowed: false, status: 404, error: 'Course not found' };
+    return { allowed: false, status: 404, error: "Course not found" };
   }
 
   if (course.owner_user_id === req.user.id) {
@@ -119,8 +128,10 @@ const ensureCourseAttendanceAccess = async (req, courseId, groupId = null) => {
   }
 
   const hasCourseRole =
-    (await hasScopedCourseRole(req.user.id, courseId, ['instructor', 'enrollment_manager'])) ||
-    false;
+    (await hasScopedCourseRole(req.user.id, courseId, [
+      "instructor",
+      "enrollment_manager",
+    ])) || false;
   if (hasCourseRole) {
     return { allowed: true, course };
   }
@@ -132,7 +143,11 @@ const ensureCourseAttendanceAccess = async (req, courseId, groupId = null) => {
     }
   }
 
-  return { allowed: false, status: 403, error: 'You are not allowed to view course attendance' };
+  return {
+    allowed: false,
+    status: 403,
+    error: "You are not allowed to view course attendance",
+  };
 };
 
 const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
@@ -144,7 +159,9 @@ const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
   const placeholders = [];
   sessionIds.forEach((sessionId, index) => {
     const base = index * 2;
-    placeholders.push(`($${base + 1}, 'finalized', $${base + 2}, now(), now(), now())`);
+    placeholders.push(
+      `($${base + 1}, 'finalized', $${base + 2}, now(), now(), now())`,
+    );
     values.push(sessionId, userId);
   });
 
@@ -158,7 +175,7 @@ const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
         created_at,
         updated_at
       )
-      VALUES ${placeholders.join(', ')}
+      VALUES ${placeholders.join(", ")}
       ON CONFLICT (live_session_id)
       DO UPDATE SET
         status = 'finalized',
@@ -170,20 +187,26 @@ const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
   );
 };
 
-router.get('/:courseId/attendance', async (req, res) => {
+router.get("/:courseId/attendance", async (req, res) => {
   const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
   if (!parsedCourseId.success) {
-    return res.status(400).json({ error: formatZodError(parsedCourseId.error) });
+    return res
+      .status(400)
+      .json({ error: formatZodError(parsedCourseId.error) });
   }
 
   const courseId = parsedCourseId.data;
-  const weekStartRaw = String(req.query.weekStart || '').trim();
+  const weekStartRaw = String(req.query.weekStart || "").trim();
   const weekStartDate = parseWeekStart(weekStartRaw);
   if (!weekStartDate) {
-    return res.status(400).json({ error: 'weekStart is required and must be YYYY-MM-DD' });
+    return res
+      .status(400)
+      .json({ error: "weekStart is required and must be YYYY-MM-DD" });
   }
   if (!isUtcMonday(weekStartDate)) {
-    return res.status(400).json({ error: 'weekStart must be a Monday (YYYY-MM-DD)' });
+    return res
+      .status(400)
+      .json({ error: "weekStart must be a Monday (YYYY-MM-DD)" });
   }
   const weekStart = toUtcIsoDate(weekStartDate);
 
@@ -193,13 +216,21 @@ router.get('/:courseId/attendance', async (req, res) => {
       req.query.groupId ? String(req.query.groupId) : null,
     );
     if (groupResolution.error) {
-      return res.status(groupResolution.status || 400).json({ error: groupResolution.error });
+      return res
+        .status(groupResolution.status || 400)
+        .json({ error: groupResolution.error });
     }
     const group = groupResolution.group;
 
-    const access = await ensureCourseAttendanceAccess(req, courseId, group?.id || null);
+    const access = await ensureCourseAttendanceAccess(
+      req,
+      courseId,
+      group?.id || null,
+    );
     if (!access.allowed) {
-      return res.status(access.status || 403).json({ error: access.error || 'Forbidden' });
+      return res
+        .status(access.status || 403)
+        .json({ error: access.error || "Forbidden" });
     }
 
     const days = buildAttendanceDays(weekStartDate);
@@ -282,7 +313,7 @@ router.get('/:courseId/attendance', async (req, res) => {
       attendanceRunRows.map((row) => [
         row.live_session_id,
         {
-          isTaken: row.status === 'finalized',
+          isTaken: row.status === "finalized",
           takenAt: row.taken_at ? row.taken_at.toISOString() : null,
           takenBy: row.taken_by || null,
         },
@@ -323,7 +354,9 @@ router.get('/:courseId/attendance', async (req, res) => {
     let atRiskCount = 0;
     const students = rosterRes.rows.map((row) => {
       const bySession = attendanceByUser.get(row.user_id) || {};
-      const absences = Object.values(bySession).filter((cell) => cell?.status === 'absent').length;
+      const absences = Object.values(bySession).filter(
+        (cell) => cell?.status === "absent",
+      ).length;
       if (absences >= 2) {
         atRiskCount += 1;
       }
@@ -345,14 +378,15 @@ router.get('/:courseId/attendance', async (req, res) => {
       students.forEach((student) => {
         takenSessionIds.forEach((sessionId) => {
           const cell = student.bySession[sessionId];
-          if (!cell || cell.status === 'present') {
+          if (!cell || cell.status === "present") {
             presentCount += 1;
           }
         });
       });
     }
     const denominator = totalStudents * takenSessionIds.length;
-    const presentPct = denominator > 0 ? (presentCount / denominator) * 100 : null;
+    const presentPct =
+      denominator > 0 ? (presentCount / denominator) * 100 : null;
 
     return res.json({
       courseId,
@@ -370,49 +404,66 @@ router.get('/:courseId/attendance', async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Failed to load course attendance week', err);
-    return res.status(500).json({ error: 'Failed to load course attendance' });
+    console.error("Failed to load course attendance week", err);
+    return res.status(500).json({ error: "Failed to load course attendance" });
   }
 });
 
-router.put('/:courseId/attendance/week', async (req, res) => {
+router.put("/:courseId/attendance/week", async (req, res) => {
   const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
   if (!parsedCourseId.success) {
-    return res.status(400).json({ error: formatZodError(parsedCourseId.error) });
+    return res
+      .status(400)
+      .json({ error: formatZodError(parsedCourseId.error) });
   }
 
   const courseId = parsedCourseId.data;
   const body = req.body || {};
-  const weekStartDate = parseWeekStart(String(body.weekStart || '').trim());
+  const weekStartDate = parseWeekStart(String(body.weekStart || "").trim());
   if (!weekStartDate) {
-    return res.status(400).json({ error: 'weekStart is required and must be YYYY-MM-DD' });
+    return res
+      .status(400)
+      .json({ error: "weekStart is required and must be YYYY-MM-DD" });
   }
   if (!isUtcMonday(weekStartDate)) {
-    return res.status(400).json({ error: 'weekStart must be a Monday (YYYY-MM-DD)' });
+    return res
+      .status(400)
+      .json({ error: "weekStart must be a Monday (YYYY-MM-DD)" });
   }
   const weekStart = toUtcIsoDate(weekStartDate);
 
   const updates = Array.isArray(body.updates) ? body.updates : null;
   if (!updates) {
-    return res.status(400).json({ error: 'updates must be an array' });
+    return res.status(400).json({ error: "updates must be an array" });
   }
   if (!updates.length) {
     return res.json({ updated: 0 });
   }
 
   try {
-    const groupResolution = await resolveAttendanceGroupForCourse(courseId, body.groupId || null);
+    const groupResolution = await resolveAttendanceGroupForCourse(
+      courseId,
+      body.groupId || null,
+    );
     if (groupResolution.error) {
-      return res.status(groupResolution.status || 400).json({ error: groupResolution.error });
+      return res
+        .status(groupResolution.status || 400)
+        .json({ error: groupResolution.error });
     }
     const group = groupResolution.group;
     if (!group?.id) {
-      return res.status(400).json({ error: 'groupId is required when no default group can be resolved' });
+      return res
+        .status(400)
+        .json({
+          error: "groupId is required when no default group can be resolved",
+        });
     }
 
     const access = await ensureCourseAttendanceAccess(req, courseId, group.id);
     if (!access.allowed) {
-      return res.status(access.status || 403).json({ error: access.error || 'Forbidden' });
+      return res
+        .status(access.status || 403)
+        .json({ error: access.error || "Forbidden" });
     }
 
     const normalized = [];
@@ -421,11 +472,19 @@ router.put('/:courseId/attendance/week', async (req, res) => {
       const parsedSessionId = uuidSchema.safeParse(item?.sessionId);
       const parsedUserId = uuidSchema.safeParse(item?.userId);
       if (!parsedSessionId.success || !parsedUserId.success) {
-        return res.status(400).json({ error: 'Each update must include valid sessionId and userId' });
+        return res
+          .status(400)
+          .json({
+            error: "Each update must include valid sessionId and userId",
+          });
       }
-      const status = String(item?.status || '').trim().toLowerCase();
+      const status = String(item?.status || "")
+        .trim()
+        .toLowerCase();
       if (!WEEK_ATTENDANCE_ALLOWED_STATUS.has(status)) {
-        return res.status(400).json({ error: `Invalid attendance status: ${status}` });
+        return res
+          .status(400)
+          .json({ error: `Invalid attendance status: ${status}` });
       }
       const dedupeKey = `${parsedSessionId.data}:${parsedUserId.data}`;
       if (uniqueKey.has(dedupeKey)) {
@@ -459,7 +518,11 @@ router.put('/:courseId/attendance/week', async (req, res) => {
     );
     const validSessionIds = new Set(validSessionsRes.rows.map((row) => row.id));
     if (validSessionIds.size !== sessionIds.length) {
-      return res.status(400).json({ error: 'One or more sessions are invalid for this course/group/week' });
+      return res
+        .status(400)
+        .json({
+          error: "One or more sessions are invalid for this course/group/week",
+        });
     }
 
     const rosterRes = await pool.query(
@@ -472,20 +535,28 @@ router.put('/:courseId/attendance/week', async (req, res) => {
       [group.id],
     );
     const rosterUserIds = new Set(rosterRes.rows.map((row) => row.user_id));
-    const invalidUpdateUser = normalized.find((item) => !rosterUserIds.has(item.userId));
+    const invalidUpdateUser = normalized.find(
+      (item) => !rosterUserIds.has(item.userId),
+    );
     if (invalidUpdateUser) {
-      return res.status(400).json({ error: 'One or more users are not active in the selected group' });
+      return res
+        .status(400)
+        .json({
+          error: "One or more users are not active in the selected group",
+        });
     }
 
-    const touchedSessionIds = [...new Set(normalized.map((item) => item.sessionId))];
-    const presentItems = normalized.filter((item) => item.status === 'present');
+    const touchedSessionIds = [
+      ...new Set(normalized.map((item) => item.sessionId)),
+    ];
+    const presentItems = normalized.filter((item) => item.status === "present");
     const exceptionItems = normalized.filter((item) =>
       WEEK_ATTENDANCE_EXCEPTION_STATUSES.has(item.status),
     );
 
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query("BEGIN");
       await markAttendanceRunsFinalized(client, touchedSessionIds, req.user.id);
 
       let updatedCount = 0;
@@ -514,7 +585,13 @@ router.put('/:courseId/attendance/week', async (req, res) => {
           placeholders.push(
             `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, now(), now(), now())`,
           );
-          values.push(item.sessionId, item.userId, item.status, item.note, req.user.id);
+          values.push(
+            item.sessionId,
+            item.userId,
+            item.status,
+            item.note,
+            req.user.id,
+          );
         });
 
         const upsertRes = await client.query(
@@ -529,7 +606,7 @@ router.put('/:courseId/attendance/week', async (req, res) => {
               created_at,
               updated_at
             )
-            VALUES ${placeholders.join(', ')}
+            VALUES ${placeholders.join(", ")}
             ON CONFLICT (live_session_id, user_id)
             DO UPDATE SET
               status = EXCLUDED.status,
@@ -543,36 +620,43 @@ router.put('/:courseId/attendance/week', async (req, res) => {
         updatedCount += upsertRes.rowCount || exceptionItems.length;
       }
 
-      await client.query('COMMIT');
+      await client.query("COMMIT");
       return res.json({ updated: updatedCount || normalized.length });
     } catch (err) {
-      await client.query('ROLLBACK');
+      await client.query("ROLLBACK");
       throw err;
     } finally {
       client.release();
     }
   } catch (err) {
-    console.error('Failed to save course attendance week', err);
-    return res.status(500).json({ error: 'Failed to save course attendance week' });
+    console.error("Failed to save course attendance week", err);
+    return res
+      .status(500)
+      .json({ error: "Failed to save course attendance week" });
   }
 });
 
-router.get('/:courseId/posts', async (req, res) => {
+router.get("/:courseId/posts", async (req, res) => {
   const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
   if (!parsedCourseId.success) {
-    return res.status(400).json({ error: formatZodError(parsedCourseId.error) });
+    return res
+      .status(400)
+      .json({ error: formatZodError(parsedCourseId.error) });
   }
 
   const courseId = parsedCourseId.data;
   const userId = req.user.id;
   const limitRaw = Number.parseInt(req.query.limit, 10);
   const offsetRaw = Number.parseInt(req.query.offset, 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 20;
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(Math.max(limitRaw, 1), 50)
+    : 20;
   const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
 
   try {
     const canPreviewAsStaff =
-      hasGlobalRole(req.user, 'admin') || (await canEditCourse(courseId, req.user));
+      hasGlobalRole(req.user, "admin") ||
+      (await canEditCourse(courseId, req.user));
 
     if (!canPreviewAsStaff) {
       const enrollment = await pool.query(
@@ -588,12 +672,14 @@ router.get('/:courseId/posts', async (req, res) => {
       );
 
       if (!enrollment.rows.length) {
-        return res.status(403).json({ error: 'You are not actively enrolled in this course' });
+        return res
+          .status(403)
+          .json({ error: "You are not actively enrolled in this course" });
       }
     }
 
     const visibilityClause = canPreviewAsStaff
-      ? 'TRUE'
+      ? "TRUE"
       : `
         (
           cp.group_id IS NULL
@@ -656,23 +742,25 @@ router.get('/:courseId/posts', async (req, res) => {
       total: Number(totalResult.rows[0]?.total || 0),
     });
   } catch (err) {
-    console.error('Failed to fetch course posts', err);
-    return res.status(500).json({ error: 'Failed to fetch course posts' });
+    console.error("Failed to fetch course posts", err);
+    return res.status(500).json({ error: "Failed to fetch course posts" });
   }
 });
 
-router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), async (req, res) => {
-  const courseId = req.params.id;
-  const { id: userId } = req.user;
-  const isAdmin = hasGlobalRole(req.user, 'admin');
-  const isInstructor = hasGlobalRole(req.user, 'instructor');
-  const isStudent = hasGlobalRole(req.user, 'student');
-  const isPreview =
-    req.query.preview === '1' || req.query.preview === 'true';
+router.get(
+  "/:id",
+  requireGlobalRoleAny(["admin", "instructor", "student"]),
+  async (req, res) => {
+    const courseId = req.params.id;
+    const { id: userId } = req.user;
+    const isAdmin = hasGlobalRole(req.user, "admin");
+    const isInstructor = hasGlobalRole(req.user, "instructor");
+    const isStudent = hasGlobalRole(req.user, "student");
+    const isPreview = req.query.preview === "1" || req.query.preview === "true";
 
-  try {
-    const courseRes = await pool.query(
-      `
+    try {
+      const courseRes = await pool.query(
+        `
         SELECT
           c.id,
           c.title,
@@ -689,80 +777,84 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
         WHERE c.id = $1
         LIMIT 1
       `,
-      [courseId],
-    );
+        [courseId],
+      );
 
-    const course = courseRes.rows[0];
-    if (!course) {
-      return res.status(404).json({ error: 'Course not found' });
-    }
+      const course = courseRes.rows[0];
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
 
-    if (isPreview) {
-      const allowed = isAdmin || (await canEditCourse(courseId, req.user));
-      if (!allowed) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-    } else if (isStudent && !isAdmin && !isInstructor) {
-      if (!course.is_published) {
-        return res.status(404).json({ error: 'Course not found' });
-      }
-      const enrollment = await pool.query(
-        `
+      if (isPreview) {
+        const allowed = isAdmin || (await canEditCourse(courseId, req.user));
+        if (!allowed) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      } else if (isStudent && !isAdmin && !isInstructor) {
+        if (!course.is_published) {
+          return res.status(404).json({ error: "Course not found" });
+        }
+        const enrollment = await pool.query(
+          `
           SELECT 1
           FROM enrollments
           WHERE course_id = $1 AND user_id = $2
           LIMIT 1
         `,
-        [courseId, userId],
-      );
-      if (!enrollment.rows.length) {
-        return res.status(403).json({ error: 'You are not enrolled in this course' });
-      }
-    } else if (!isAdmin) {
-      let allowed = course.owner_user_id === userId;
-      if (!allowed) {
-        const teaching = await pool.query(
-          `
+          [courseId, userId],
+        );
+        if (!enrollment.rows.length) {
+          return res
+            .status(403)
+            .json({ error: "You are not enrolled in this course" });
+        }
+      } else if (!isAdmin) {
+        let allowed = course.owner_user_id === userId;
+        if (!allowed) {
+          const teaching = await pool.query(
+            `
             SELECT 1
             FROM group_teachers gt
             JOIN groups g ON g.id = gt.group_id
             WHERE gt.user_id = $1 AND g.course_id = $2
             LIMIT 1
           `,
-          [userId, courseId],
-        );
-        allowed = teaching.rows.length > 0;
+            [userId, courseId],
+          );
+          allowed = teaching.rows.length > 0;
+        }
+
+        if (!allowed) {
+          return res
+            .status(403)
+            .json({ error: "You are not assigned to this course" });
+        }
       }
 
-      if (!allowed) {
-        return res.status(403).json({ error: 'You are not assigned to this course' });
-      }
-    }
-
-    const modulesRes = await pool.query(
-      `
+      const modulesRes = await pool.query(
+        `
         SELECT id, title, position, order_index, is_published
         FROM modules
         WHERE course_id = $1
         ORDER BY order_index ASC
       `,
-      [courseId],
-    );
+        [courseId],
+      );
 
-    let modules = modulesRes.rows.map((module) => ({
-      ...module,
-      lessons: [],
-    }));
+      let modules = modulesRes.rows.map((module) => ({
+        ...module,
+        lessons: [],
+      }));
 
-    if (!isPreview && isStudent && !isAdmin && !isInstructor) {
-      modules = modules.filter((module) => module.is_published);
-    }
+      if (!isPreview && isStudent && !isAdmin && !isInstructor) {
+        modules = modules.filter((module) => module.is_published);
+      }
 
-    const moduleIds = modules.map((m) => m.id);
-    let lessons = [];
-    if (moduleIds.length > 0) {
-      const lessonsRes = await pool.query(
-        `
+      const moduleIds = modules.map((m) => m.id);
+      let lessons = [];
+      if (moduleIds.length > 0) {
+        const lessonsRes = await pool.query(
+          `
           SELECT
             l.id,
             l.module_id,
@@ -773,6 +865,7 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
             l.content_markdown,
             l.content_html,
             l.video_url,
+            l.cover_image_url,
             l.content_url,
             l.embed_html,
             l.duration_seconds,
@@ -784,20 +877,20 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
           WHERE l.module_id = ANY($1::uuid[])
           ORDER BY l.order_index ASC
         `,
-        [moduleIds],
-      );
-      lessons = lessonsRes.rows;
+          [moduleIds],
+        );
+        lessons = lessonsRes.rows;
 
-      if (!isPreview && isStudent && !isAdmin && !isInstructor) {
-        lessons = lessons.filter((lesson) => lesson.is_published);
+        if (!isPreview && isStudent && !isAdmin && !isInstructor) {
+          lessons = lessons.filter((lesson) => lesson.is_published);
+        }
       }
-    }
 
-    const lessonIds = lessons.map((lesson) => lesson.id);
-    const assetsByLesson = {};
-    if (lessonIds.length > 0) {
-      const assetsRes = await pool.query(
-        `
+      const lessonIds = lessons.map((lesson) => lesson.id);
+      const assetsByLesson = {};
+      if (lessonIds.length > 0) {
+        const assetsRes = await pool.query(
+          `
           SELECT
             la.lesson_id,
             a.id,
@@ -813,67 +906,70 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
           WHERE la.lesson_id = ANY($1::uuid[])
           ORDER BY a.created_at ASC
         `,
-        [lessonIds],
-      );
+          [lessonIds],
+        );
 
-      for (const row of assetsRes.rows) {
-        if (!assetsByLesson[row.lesson_id]) {
-          assetsByLesson[row.lesson_id] = [];
+        for (const row of assetsRes.rows) {
+          if (!assetsByLesson[row.lesson_id]) {
+            assetsByLesson[row.lesson_id] = [];
+          }
+          assetsByLesson[row.lesson_id].push({
+            id: row.id,
+            kind: row.kind,
+            mimeType: row.mime_type,
+            originalName: row.original_name,
+            sizeBytes: row.size_bytes,
+            storagePath: row.storage_path,
+            url: row.public_url,
+            storageProvider: row.storage_provider,
+          });
         }
-        assetsByLesson[row.lesson_id].push({
-          id: row.id,
-          kind: row.kind,
-          mimeType: row.mime_type,
-          originalName: row.original_name,
-          sizeBytes: row.size_bytes,
-          storagePath: row.storage_path,
-          url: row.public_url,
-          storageProvider: row.storage_provider,
-        });
       }
-    }
 
-    const moduleMap = modules.reduce((acc, module) => {
-      acc[module.id] = module;
-      return acc;
-    }, {});
+      const moduleMap = modules.reduce((acc, module) => {
+        acc[module.id] = module;
+        return acc;
+      }, {});
 
-    for (const lesson of lessons) {
-      const module = moduleMap[lesson.module_id];
-      if (module) {
-        module.lessons.push({
-          id: lesson.id,
-          title: lesson.title,
-          position: lesson.position,
-          contentType: lesson.content_type,
-          contentText: lesson.content_text,
-          contentMarkdown: lesson.content_markdown,
-          contentHtml: lesson.content_html,
-          videoUrl: lesson.video_url,
-          contentUrl: lesson.content_url,
-          embedHtml: lesson.embed_html,
-          durationSeconds: lesson.duration_seconds,
-          estimatedMinutes: lesson.estimated_minutes,
-          isFreePreview: lesson.is_free_preview,
-          orderIndex: lesson.order_index,
-          isPublished: lesson.is_published,
-          assets: assetsByLesson[lesson.id] || [],
-        });
+      for (const lesson of lessons) {
+        const module = moduleMap[lesson.module_id];
+        if (module) {
+          module.lessons.push({
+            id: lesson.id,
+            title: lesson.title,
+            position: lesson.position,
+            contentType: lesson.content_type,
+            contentText: lesson.content_text,
+            contentMarkdown: lesson.content_markdown,
+            contentHtml: lesson.content_html,
+            videoUrl: lesson.video_url,
+            coverImage: lesson.cover_image_url,
+            cover_image_url: lesson.cover_image_url,
+            contentUrl: lesson.content_url,
+            embedHtml: lesson.embed_html,
+            durationSeconds: lesson.duration_seconds,
+            estimatedMinutes: lesson.estimated_minutes,
+            isFreePreview: lesson.is_free_preview,
+            orderIndex: lesson.order_index,
+            isPublished: lesson.is_published,
+            assets: assetsByLesson[lesson.id] || [],
+          });
+        }
       }
-    }
 
-    return res.json({
-      ...course,
-      modules: modules.map((module) => ({
-        ...module,
-        lessons: module.lessons,
-      })),
-    });
-  } catch (err) {
-    console.error('Failed to fetch course detail', err);
-    return res.status(500).json({ error: 'Failed to fetch course' });
-  }
-});
+      return res.json({
+        ...course,
+        modules: modules.map((module) => ({
+          ...module,
+          lessons: module.lessons,
+        })),
+      });
+    } catch (err) {
+      console.error("Failed to fetch course detail", err);
+      return res.status(500).json({ error: "Failed to fetch course" });
+    }
+  },
+);
 
 /**
  * Example:
@@ -881,72 +977,82 @@ router.get('/:id', requireGlobalRoleAny(['admin', 'instructor', 'student']), asy
  *   "http://localhost:3000/courses/<courseId>/progress?studentId=<studentId>"
  */
 router.get(
-  '/:id/progress',
-  requireGlobalRoleAny(['student', 'instructor', 'admin']),
+  "/:id/progress",
+  requireGlobalRoleAny(["student", "instructor", "admin"]),
   async (req, res) => {
-  const courseId = req.params.id;
-  const { id: userId } = req.user;
-  const isAdmin = hasGlobalRole(req.user, 'admin');
-  const isInstructor = hasGlobalRole(req.user, 'instructor');
-  const isStudent = hasGlobalRole(req.user, 'student');
-  let targetStudentId = req.query.studentId;
+    const courseId = req.params.id;
+    const { id: userId } = req.user;
+    const isAdmin = hasGlobalRole(req.user, "admin");
+    const isInstructor = hasGlobalRole(req.user, "instructor");
+    const isStudent = hasGlobalRole(req.user, "student");
+    let targetStudentId = req.query.studentId;
 
-  if (targetStudentId) {
-    const validation = uuidSchema.safeParse(targetStudentId);
-    if (!validation.success) {
-      return res.status(400).json({ error: formatZodError(validation.error) });
-    }
-    targetStudentId = validation.data;
-  }
-
-  try {
-    const courseRes = await pool.query(
-      'SELECT id, owner_user_id FROM courses WHERE id = $1 LIMIT 1',
-      [courseId],
-    );
-    const course = courseRes.rows[0];
-    if (!course) {
-      return res.status(404).json({ error: 'Course not found' });
-    }
-
-    if (isStudent && !isAdmin && !isInstructor) {
-      if (targetStudentId && targetStudentId !== userId) {
-        return res.status(403).json({ error: 'Students can only view their own progress' });
+    if (targetStudentId) {
+      const validation = uuidSchema.safeParse(targetStudentId);
+      if (!validation.success) {
+        return res
+          .status(400)
+          .json({ error: formatZodError(validation.error) });
       }
-      targetStudentId = userId;
+      targetStudentId = validation.data;
+    }
 
-      const enrollment = await pool.query(
-        'SELECT 1 FROM enrollments WHERE course_id = $1 AND user_id = $2 LIMIT 1',
-        [courseId, userId],
+    try {
+      const courseRes = await pool.query(
+        "SELECT id, owner_user_id FROM courses WHERE id = $1 LIMIT 1",
+        [courseId],
       );
-      if (!enrollment.rows.length) {
-        return res.status(403).json({ error: 'You are not enrolled in this course' });
-      }
-    } else if (isInstructor && !isAdmin) {
-      if (!targetStudentId) {
-        return res.status(400).json({ error: 'studentId query parameter is required' });
+      const course = courseRes.rows[0];
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
       }
 
-      let allowed = course.owner_user_id === userId;
-      if (!allowed) {
-        const assignment = await pool.query(
-          `
+      if (isStudent && !isAdmin && !isInstructor) {
+        if (targetStudentId && targetStudentId !== userId) {
+          return res
+            .status(403)
+            .json({ error: "Students can only view their own progress" });
+        }
+        targetStudentId = userId;
+
+        const enrollment = await pool.query(
+          "SELECT 1 FROM enrollments WHERE course_id = $1 AND user_id = $2 LIMIT 1",
+          [courseId, userId],
+        );
+        if (!enrollment.rows.length) {
+          return res
+            .status(403)
+            .json({ error: "You are not enrolled in this course" });
+        }
+      } else if (isInstructor && !isAdmin) {
+        if (!targetStudentId) {
+          return res
+            .status(400)
+            .json({ error: "studentId query parameter is required" });
+        }
+
+        let allowed = course.owner_user_id === userId;
+        if (!allowed) {
+          const assignment = await pool.query(
+            `
             SELECT 1
             FROM group_teachers gt
             JOIN groups g ON g.id = gt.group_id
             WHERE gt.user_id = $1 AND g.course_id = $2
             LIMIT 1
           `,
-          [userId, courseId],
-        );
-        allowed = assignment.rows.length > 0;
-      }
-      if (!allowed) {
-        return res.status(403).json({ error: 'You are not assigned to this course' });
-      }
+            [userId, courseId],
+          );
+          allowed = assignment.rows.length > 0;
+        }
+        if (!allowed) {
+          return res
+            .status(403)
+            .json({ error: "You are not assigned to this course" });
+        }
 
-      const teachesStudent = await pool.query(
-        `
+        const teachesStudent = await pool.query(
+          `
           SELECT 1
           FROM group_teachers gt
           JOIN groups g ON g.id = gt.group_id
@@ -956,28 +1062,34 @@ router.get(
             AND gs.user_id = $3
           LIMIT 1
         `,
-        [userId, courseId, targetStudentId],
+          [userId, courseId, targetStudentId],
+        );
+
+        if (!teachesStudent.rows.length) {
+          return res
+            .status(403)
+            .json({ error: "Student is not in your groups for this course" });
+        }
+      } else if (isAdmin) {
+        if (!targetStudentId) {
+          return res
+            .status(400)
+            .json({ error: "studentId query parameter is required" });
+        }
+      }
+
+      const studentEnrollment = await pool.query(
+        "SELECT 1 FROM enrollments WHERE course_id = $1 AND user_id = $2 LIMIT 1",
+        [courseId, targetStudentId],
       );
-
-      if (!teachesStudent.rows.length) {
-        return res.status(403).json({ error: 'Student is not in your groups for this course' });
+      if (!studentEnrollment.rows.length) {
+        return res
+          .status(404)
+          .json({ error: "Student is not enrolled in this course" });
       }
-    } else if (isAdmin) {
-      if (!targetStudentId) {
-        return res.status(400).json({ error: 'studentId query parameter is required' });
-      }
-    }
 
-    const studentEnrollment = await pool.query(
-      'SELECT 1 FROM enrollments WHERE course_id = $1 AND user_id = $2 LIMIT 1',
-      [courseId, targetStudentId],
-    );
-    if (!studentEnrollment.rows.length) {
-      return res.status(404).json({ error: 'Student is not enrolled in this course' });
-    }
-
-    const lessonsRes = await pool.query(
-      `
+      const lessonsRes = await pool.query(
+        `
         SELECT
           l.id,
           l.title
@@ -986,13 +1098,13 @@ router.get(
         WHERE m.course_id = $1
         ORDER BY m.position ASC, l.position ASC
       `,
-      [courseId],
-    );
-    const lessons = lessonsRes.rows;
-    const totalLessons = lessons.length;
+        [courseId],
+      );
+      const lessons = lessonsRes.rows;
+      const totalLessons = lessons.length;
 
-    const completionRes = await pool.query(
-      `
+      const completionRes = await pool.query(
+        `
         SELECT lp.lesson_id
         FROM lesson_progress lp
         JOIN lessons l ON l.id = lp.lesson_id
@@ -1001,33 +1113,38 @@ router.get(
           AND lp.status = 'done'
           AND m.course_id = $2
       `,
-      [targetStudentId, courseId],
-    );
+        [targetStudentId, courseId],
+      );
 
-    const doneLessonIds = new Set(completionRes.rows.map((row) => row.lesson_id));
-    const completedLessons = doneLessonIds.size;
+      const doneLessonIds = new Set(
+        completionRes.rows.map((row) => row.lesson_id),
+      );
+      const completedLessons = doneLessonIds.size;
 
-    const percent =
-      totalLessons === 0 ? 0 : Math.floor((completedLessons * 100) / totalLessons);
+      const percent =
+        totalLessons === 0
+          ? 0
+          : Math.floor((completedLessons * 100) / totalLessons);
 
-    const completedLessonDetails = lessons
-      .filter((lesson) => doneLessonIds.has(lesson.id))
-      .map(({ id, title }) => ({ id, title }));
-    const nextLesson = lessons.find((lesson) => !doneLessonIds.has(lesson.id)) || null;
+      const completedLessonDetails = lessons
+        .filter((lesson) => doneLessonIds.has(lesson.id))
+        .map(({ id, title }) => ({ id, title }));
+      const nextLesson =
+        lessons.find((lesson) => !doneLessonIds.has(lesson.id)) || null;
 
-    return res.json({
-      courseId,
-      totalLessons,
-      completedLessons,
-      percent,
-      nextLessonId: nextLesson ? nextLesson.id : null,
-      nextLessonTitle: nextLesson ? nextLesson.title : null,
-      completedLessonDetails,
-    });
-  } catch (err) {
-    console.error('Failed to load course progress', err);
-    return res.status(500).json({ error: 'Failed to load course progress' });
-  }
+      return res.json({
+        courseId,
+        totalLessons,
+        completedLessons,
+        percent,
+        nextLessonId: nextLesson ? nextLesson.id : null,
+        nextLessonTitle: nextLesson ? nextLesson.title : null,
+        completedLessonDetails,
+      });
+    } catch (err) {
+      console.error("Failed to load course progress", err);
+      return res.status(500).json({ error: "Failed to load course progress" });
+    }
   },
 );
 

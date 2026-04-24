@@ -1,21 +1,29 @@
 <template>
   <div
+    v-if="sanitizedContent"
     ref="rootRef"
     class="rich-content"
-    v-if="sanitizedContent"
     v-html="sanitizedContent"
   ></div>
 </template>
 
 <script setup>
-import { computed, createApp, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import DOMPurify from 'dompurify';
-import InlineQuiz from './InlineQuiz.vue';
+import {
+  computed,
+  createApp,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
+import DOMPurify from "dompurify";
+import InlineQuiz from "./InlineQuiz.vue";
 
 const props = defineProps({
   content: {
     type: String,
-    default: '',
+    default: "",
   },
   quizQuestions: {
     type: Array,
@@ -27,47 +35,58 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['inline-quiz-attempted']);
+const emit = defineEmits(["inline-quiz-attempted"]);
 
 const purifierConfig = {
   USE_PROFILES: { html: true },
   ADD_ATTR: [
-    'allow',
-    'allowfullscreen',
-    'referrerpolicy',
-    'controls',
-    'muted',
-    'playsinline',
-    'data-mce-*',
-    'data-lesson-id',
-    'data-question-id',
-    'class',
-    'style',
-    'width',
-    'height',
-    'target',
-    'rel',
-    'src',
-    'href',
-    'alt',
+    "allow",
+    "allowfullscreen",
+    "referrerpolicy",
+    "controls",
+    "muted",
+    "playsinline",
+    "data-mce-*",
+    "data-lesson-id",
+    "data-question-id",
+    "data-page-break",
+    "class",
+    "style",
+    "width",
+    "height",
+    "target",
+    "rel",
+    "src",
+    "href",
+    "alt",
   ],
-  ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'picture', 'track', 'figure', 'figcaption'],
+  ADD_TAGS: [
+    "iframe",
+    "video",
+    "audio",
+    "source",
+    "picture",
+    "track",
+    "figure",
+    "figcaption",
+  ],
 };
 
 const rootRef = ref(null);
 const mountedQuizApps = ref([]);
 
-const questionIdentifier = (item) => item?.id || item?.questionId || item?.question_id || null;
+const questionIdentifier = (item) =>
+  item?.id || item?.questionId || item?.question_id || null;
 
 const sanitizedContent = computed(() => {
-  if (!props.content) return '';
+  if (!props.content) return "";
   return DOMPurify.sanitize(props.content, purifierConfig);
 });
 
 const cleanupInlineQuizzes = () => {
   mountedQuizApps.value.forEach(({ app, marker }) => {
     app.unmount();
-    if (marker) marker.innerHTML = '';
+    if (marker && marker.isConnected) marker.innerHTML = "";
   });
   mountedQuizApps.value = [];
 };
@@ -75,7 +94,7 @@ const cleanupInlineQuizzes = () => {
 const unwrapSingleMediaParents = (root) => {
   if (!root) return;
 
-  const selectors = ['img', 'iframe', 'audio', 'video'];
+  const selectors = ["img", "iframe", "audio", "video"];
 
   selectors.forEach((selector) => {
     root.querySelectorAll(selector).forEach((node) => {
@@ -83,9 +102,9 @@ const unwrapSingleMediaParents = (root) => {
       if (!parent) return;
 
       const isPlainParagraph =
-        parent.tagName === 'P' &&
+        parent.tagName === "P" &&
         parent.attributes.length <= 1 &&
-        parent.textContent?.trim() === '';
+        parent.textContent?.trim() === "";
 
       if (isPlainParagraph) {
         parent.parentNode?.insertBefore(node, parent);
@@ -97,8 +116,18 @@ const unwrapSingleMediaParents = (root) => {
 
 const normalizeWrapperClasses = (figure, classes = []) => {
   if (!figure) return;
-  figure.classList.add('lesson-media');
+  figure.classList.add("lesson-media");
   classes.forEach((className) => figure.classList.add(className));
+};
+
+const normalizePageBreaks = (root) => {
+  if (!root) return;
+
+  root
+    .querySelectorAll('.page-break, [data-page-break="true"]')
+    .forEach((node) => {
+      node.classList.add("page-break");
+    });
 };
 
 const enhanceMediaLayout = () => {
@@ -106,97 +135,98 @@ const enhanceMediaLayout = () => {
   if (!root) return;
 
   unwrapSingleMediaParents(root);
+  normalizePageBreaks(root);
 
-  const iframes = root.querySelectorAll('iframe');
+  const iframes = root.querySelectorAll("iframe");
   iframes.forEach((iframe) => {
-    const src = String(iframe.getAttribute('src') || '').toLowerCase();
+    const src = String(iframe.getAttribute("src") || "").toLowerCase();
     const parent = iframe.parentElement;
-    const figure = iframe.closest('figure');
+    const figure = iframe.closest("figure");
 
-    if (src.includes('soundcloud.com')) {
-      normalizeWrapperClasses(figure, ['lesson-media-audio']);
+    if (src.includes("soundcloud.com")) {
+      normalizeWrapperClasses(figure, ["lesson-media-audio"]);
 
       if (
-        parent?.classList.contains('audio-embed-wrapper') ||
-        parent?.classList.contains('lesson-media-audio-inner')
+        parent?.classList.contains("audio-embed-wrapper") ||
+        parent?.classList.contains("lesson-media-audio-inner")
       ) {
         return;
       }
 
-      const wrapper = document.createElement('div');
-      wrapper.className = 'audio-embed-wrapper lesson-media-audio-inner';
+      const wrapper = document.createElement("div");
+      wrapper.className = "audio-embed-wrapper lesson-media-audio-inner";
       iframe.parentNode?.insertBefore(wrapper, iframe);
       wrapper.appendChild(iframe);
       return;
     }
 
-    normalizeWrapperClasses(figure, ['lesson-media-video']);
+    normalizeWrapperClasses(figure, ["lesson-media-video"]);
 
     if (
-      parent?.classList.contains('embed-wrapper') ||
-      parent?.classList.contains('lesson-media-video-inner')
+      parent?.classList.contains("embed-wrapper") ||
+      parent?.classList.contains("lesson-media-video-inner")
     ) {
       return;
     }
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'embed-wrapper lesson-media-video-inner';
+    const wrapper = document.createElement("div");
+    wrapper.className = "embed-wrapper lesson-media-video-inner";
     iframe.parentNode?.insertBefore(wrapper, iframe);
     wrapper.appendChild(iframe);
   });
 
-  const images = root.querySelectorAll('img');
+  const images = root.querySelectorAll("img");
   images.forEach((img) => {
     const parent = img.parentElement;
-    const figure = img.closest('figure');
+    const figure = img.closest("figure");
 
     if (figure) {
-      normalizeWrapperClasses(figure, ['lesson-media-image']);
+      normalizeWrapperClasses(figure, ["lesson-media-image"]);
       return;
     }
 
-    if (parent?.classList.contains('image-wrapper')) return;
+    if (parent?.classList.contains("image-wrapper")) return;
 
-    const wrapper = document.createElement('figure');
-    wrapper.className = 'image-wrapper lesson-media lesson-media-image';
+    const wrapper = document.createElement("figure");
+    wrapper.className = "image-wrapper lesson-media lesson-media-image";
     img.parentNode?.insertBefore(wrapper, img);
     wrapper.appendChild(img);
   });
 
-  const audios = root.querySelectorAll('audio');
+  const audios = root.querySelectorAll("audio");
   audios.forEach((audio) => {
     const parent = audio.parentElement;
-    const figure = audio.closest('figure');
+    const figure = audio.closest("figure");
 
-    normalizeWrapperClasses(figure, ['lesson-media-audio']);
+    normalizeWrapperClasses(figure, ["lesson-media-audio"]);
 
-    if (parent?.classList.contains('audio-wrapper')) return;
+    if (parent?.classList.contains("audio-wrapper")) return;
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'audio-wrapper';
+    const wrapper = document.createElement("div");
+    wrapper.className = "audio-wrapper";
     audio.parentNode?.insertBefore(wrapper, audio);
     wrapper.appendChild(audio);
   });
 
-  const fileLinks = root.querySelectorAll('a[href]');
+  const fileLinks = root.querySelectorAll("a[href]");
   fileLinks.forEach((link) => {
-    const href = String(link.getAttribute('href') || '').toLowerCase();
+    const href = String(link.getAttribute("href") || "").toLowerCase();
     const alreadyWrapped =
-      link.parentElement?.classList.contains('rich-file') ||
-      link.parentElement?.classList.contains('rich-link');
+      link.parentElement?.classList.contains("rich-file") ||
+      link.parentElement?.classList.contains("rich-link");
 
     if (alreadyWrapped) return;
 
     const isFile =
-      href.endsWith('.pdf') ||
-      href.endsWith('.doc') ||
-      href.endsWith('.docx') ||
-      href.endsWith('.ppt') ||
-      href.endsWith('.pptx') ||
-      href.endsWith('.zip');
+      href.endsWith(".pdf") ||
+      href.endsWith(".doc") ||
+      href.endsWith(".docx") ||
+      href.endsWith(".ppt") ||
+      href.endsWith(".pptx") ||
+      href.endsWith(".zip");
 
-    const wrapper = document.createElement('p');
-    wrapper.className = isFile ? 'rich-file' : 'rich-link';
+    const wrapper = document.createElement("p");
+    wrapper.className = isFile ? "rich-file" : "rich-link";
     link.parentNode?.insertBefore(wrapper, link);
     wrapper.appendChild(link);
   });
@@ -211,27 +241,35 @@ const mountInlineQuizzes = async () => {
 
   enhanceMediaLayout();
 
-  const markers = root.querySelectorAll('.cms-quiz[data-lesson-id][data-question-id]');
+  const markers = root.querySelectorAll(
+    ".cms-quiz[data-lesson-id], .lesson-quiz-marker[data-lesson-id]",
+  );
   markers.forEach((marker) => {
-    const lessonId = marker.getAttribute('data-lesson-id');
-    const questionId = marker.getAttribute('data-question-id');
-    marker.innerHTML = '';
+    const lessonId = marker.getAttribute("data-lesson-id");
+    const questionId = marker.getAttribute("data-question-id");
+    marker.innerHTML = "";
 
-    if (!lessonId || !String(questionId || '').trim()) {
-      marker.innerHTML = '<small class="cms-quiz-warning">Missing questionId for inline quiz.</small>';
+    if (!lessonId) {
+      marker.innerHTML =
+        '<small class="cms-quiz-warning">Missing lessonId for inline quiz.</small>';
       return;
     }
 
-    const mountEl = document.createElement('div');
+    const mountEl = document.createElement("div");
     marker.appendChild(mountEl);
 
-    const question =
-      props.quizQuestions.find(
-        (item) => String(questionIdentifier(item) || '').trim() === String(questionId || '').trim(),
-      ) || null;
+    const normalizedQuestionId = String(questionId || "").trim();
 
-    const normalizedQuestionId = String(questionId || '').trim();
-    const initialAnswer = props.answersByQuestionId[normalizedQuestionId] || null;
+    const question = normalizedQuestionId
+      ? props.quizQuestions.find(
+          (item) =>
+            String(questionIdentifier(item) || "").trim() ===
+            normalizedQuestionId,
+        ) || null
+      : props.quizQuestions[0] || null;
+
+    const initialAnswer =
+      props.answersByQuestionId[normalizedQuestionId] || null;
 
     const app = createApp(InlineQuiz, {
       lessonId,
@@ -239,7 +277,7 @@ const mountInlineQuizzes = async () => {
       question,
       initialAnswer,
       onAttempted: (payload) => {
-        emit('inline-quiz-attempted', payload);
+        emit("inline-quiz-attempted", payload);
       },
     });
 
@@ -248,12 +286,25 @@ const mountInlineQuizzes = async () => {
   });
 };
 
+onMounted(async () => {
+  await nextTick();
+  await mountInlineQuizzes();
+});
+
 watch(
-  [() => sanitizedContent.value, () => props.quizQuestions, () => props.answersByQuestionId],
+  [
+    () => sanitizedContent.value,
+    () => props.quizQuestions.length,
+    () => JSON.stringify(props.answersByQuestionId),
+  ],
   async () => {
+    await nextTick();
     await mountInlineQuizzes();
   },
-  { immediate: true, deep: true },
+  {
+    immediate: true,
+    flush: "post",
+  },
 );
 
 onBeforeUnmount(() => {
@@ -313,7 +364,8 @@ onBeforeUnmount(() => {
 .rich-content :deep(table),
 .rich-content :deep(.rich-link),
 .rich-content :deep(.rich-file),
-.rich-content :deep(.cms-quiz) {
+.rich-content :deep(.cms-quiz),
+.rich-content :deep(.lesson-quiz-marker) {
   width: min(100%, var(--content-width));
   max-width: var(--content-width);
   margin-left: auto;
@@ -385,6 +437,15 @@ onBeforeUnmount(() => {
   border: 0;
   border-top: 1px solid #e2e8f0;
   margin: 2rem auto;
+}
+
+.rich-content :deep(.page-break) {
+  width: 100%;
+  max-width: 100%;
+  height: 1px;
+  margin: 1.75rem 0;
+  border-top: 1px dashed #cbd5e1;
+  opacity: 0.8;
 }
 
 .rich-content :deep(figure) {
@@ -589,8 +650,8 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-.rich-content :deep(p[style*='text-align:center'] img),
-.rich-content :deep(p[style*='text-align: center'] img) {
+.rich-content :deep(p[style*="text-align:center"] img),
+.rich-content :deep(p[style*="text-align: center"] img) {
   display: inline-block;
 }
 

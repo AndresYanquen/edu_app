@@ -62,6 +62,8 @@ export const updateQuizOption = (optionId, payload) =>
   unwrap(api.patch(`/cms/quiz/options/${optionId}`, payload));
 export const deleteQuizOption = (optionId) =>
   unwrap(api.delete(`/cms/quiz/options/${optionId}`));
+export const getLesson = (lessonId) =>
+  unwrap(api.get(`/cms/lessons/${lessonId}`));
 
 // TODO: replace this client-side stub with backend endpoint wiring for quiz embeds.
 export const createQuizEmbed = async (lessonId) => {

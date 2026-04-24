@@ -1,28 +1,30 @@
-const { z } = require('zod');
+const { z } = require("zod");
 
 const loginSchema = z.object({
   email: z
-    .string({ required_error: 'Email is required' })
+    .string({ required_error: "Email is required" })
     .trim()
-    .min(1, 'Email is required')
-    .email('Email must be valid'),
+    .min(1, "Email is required")
+    .email("Email must be valid"),
   password: z
-    .string({ required_error: 'Password is required' })
-    .min(1, 'Password is required'),
+    .string({ required_error: "Password is required" })
+    .min(1, "Password is required"),
 });
 
 const lessonProgressSchema = z
   .object({
-    status: z.enum(['not_started', 'in_progress', 'done'], {
-      errorMap: () => ({ message: 'Invalid status value' }),
+    status: z.enum(["not_started", "in_progress", "done"], {
+      errorMap: () => ({ message: "Invalid status value" }),
     }),
-    progressPercent: z.union([z.number(), z.string(), z.null(), z.undefined()]).optional(),
+    progressPercent: z
+      .union([z.number(), z.string(), z.null(), z.undefined()])
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (
       data.progressPercent === undefined ||
       data.progressPercent === null ||
-      data.progressPercent === ''
+      data.progressPercent === ""
     ) {
       return;
     }
@@ -31,8 +33,8 @@ const lessonProgressSchema = z
     if (Number.isNaN(value)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['progressPercent'],
-        message: 'progressPercent must be a number',
+        path: ["progressPercent"],
+        message: "progressPercent must be a number",
       });
       return;
     }
@@ -40,8 +42,8 @@ const lessonProgressSchema = z
     if (value < 0 || value > 100) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['progressPercent'],
-        message: 'progressPercent must be between 0 and 100',
+        path: ["progressPercent"],
+        message: "progressPercent must be between 0 and 100",
       });
     }
   })
@@ -50,100 +52,117 @@ const lessonProgressSchema = z
     progressPercent:
       data.progressPercent === undefined ||
       data.progressPercent === null ||
-      data.progressPercent === ''
+      data.progressPercent === ""
         ? undefined
         : Number(data.progressPercent),
   }));
 
 const uuidSchema = z
-  .string({ required_error: 'studentId is required' })
+  .string({ required_error: "studentId is required" })
   .trim()
-  .uuid({ message: 'studentId must be a valid UUID' });
+  .uuid({ message: "studentId must be a valid UUID" });
 
 const quizAttemptAnswerSchema = z
   .object({
-    questionId: z.string().uuid({ message: 'questionId must be a valid UUID' }),
-    optionId: z.string().uuid({ message: 'optionId must be a valid UUID' }).optional(),
+    questionId: z.string().uuid({ message: "questionId must be a valid UUID" }),
+    optionId: z
+      .string()
+      .uuid({ message: "optionId must be a valid UUID" })
+      .optional(),
     optionIds: z
-      .array(z.string().uuid({ message: 'optionIds must contain valid UUIDs' }))
+      .array(z.string().uuid({ message: "optionIds must contain valid UUIDs" }))
       .optional(),
     textAnswer: z.string().trim().min(1).optional(),
     numericAnswer: z.number().optional(),
   })
-  .refine((value) => {
-    const provided = [
-      Boolean(value.optionId),
-      Boolean(value.optionIds && value.optionIds.length),
-      Boolean(value.textAnswer),
-      value.numericAnswer !== undefined && value.numericAnswer !== null,
-    ];
-    return provided.filter(Boolean).length === 1;
-  }, {
-    message: 'Provide exactly one answer type per question',
-  });
+  .refine(
+    (value) => {
+      const provided = [
+        Boolean(value.optionId),
+        Boolean(value.optionIds && value.optionIds.length),
+        Boolean(value.textAnswer),
+        value.numericAnswer !== undefined && value.numericAnswer !== null,
+      ];
+      return provided.filter(Boolean).length === 1;
+    },
+    {
+      message: "Provide exactly one answer type per question",
+    },
+  );
 
 const quizAttemptSchema = z.object({
   answers: z
     .array(quizAttemptAnswerSchema)
-    .min(1, 'At least one answer is required'),
+    .min(1, "At least one answer is required"),
 });
 
 const inlineQuizAttemptSchema = z
   .object({
-    optionId: z.string().uuid({ message: 'optionId must be a valid UUID' }).optional(),
+    optionId: z
+      .string()
+      .uuid({ message: "optionId must be a valid UUID" })
+      .optional(),
     optionIds: z
-      .array(z.string().uuid({ message: 'optionIds must contain valid UUIDs' }))
+      .array(z.string().uuid({ message: "optionIds must contain valid UUIDs" }))
       .optional(),
   })
-  .refine((value) => {
-    const hasSingle = Boolean(value.optionId);
-    const hasMultiple = Boolean(value.optionIds && value.optionIds.length);
-    return Number(hasSingle) + Number(hasMultiple) === 1;
-  }, {
-    message: 'Provide exactly one answer type',
-  });
+  .refine(
+    (value) => {
+      const hasSingle = Boolean(value.optionId);
+      const hasMultiple = Boolean(value.optionIds && value.optionIds.length);
+      return Number(hasSingle) + Number(hasMultiple) === 1;
+    },
+    {
+      message: "Provide exactly one answer type",
+    },
+  );
 
 const passwordSchema = z
-  .string({ required_error: 'password is required' })
-  .min(8, 'Password must be at least 8 characters')
-  .regex(/[a-z]/, 'Password must include a lowercase letter')
-  .regex(/[A-Z]/, 'Password must include an uppercase letter')
-  .regex(/[0-9]/, 'Password must include a digit');
+  .string({ required_error: "password is required" })
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[a-z]/, "Password must include a lowercase letter")
+  .regex(/[A-Z]/, "Password must include an uppercase letter")
+  .regex(/[0-9]/, "Password must include a digit");
 
 const userCreateSchema = z.object({
   fullName: z
-    .string({ required_error: 'fullName is required' })
+    .string({ required_error: "fullName is required" })
     .trim()
-    .min(1, 'fullName is required'),
+    .min(1, "fullName is required"),
   email: z
-    .string({ required_error: 'email is required' })
+    .string({ required_error: "email is required" })
     .trim()
-    .email('Email must be valid'),
-  role: z.enum(['student', 'instructor', 'content_editor', 'enrollment_manager'], {
-    errorMap: () => ({ message: 'Invalid role selection' }),
-  }),
+    .email("Email must be valid"),
+  role: z.enum(
+    ["student", "instructor", "content_editor", "enrollment_manager"],
+    {
+      errorMap: () => ({ message: "Invalid role selection" }),
+    },
+  ),
 });
 
 const activationSchema = z.object({
-  token: z.string({ required_error: 'token is required' }).min(1, 'token is required'),
+  token: z
+    .string({ required_error: "token is required" })
+    .min(1, "token is required"),
   password: passwordSchema,
 });
 
 const questionTypeEnum = z.enum([
-  'single_choice',
-  'multiple_choice',
-  'true_false',
-  'short_text',
-  'long_text',
-  'numeric',
+  "single_choice",
+  "multiple_choice",
+  "true_false",
+  "short_text",
+  "long_text",
+  "numeric",
 ]);
 
 const preprocessInt = (min = 1) =>
   z.preprocess((val) => {
-    if (val === undefined || val === null || val === '') {
+    if (val === undefined || val === null || val === "") {
       return undefined;
     }
-    if (typeof val === 'number') {
+    if (typeof val === "number") {
       return val;
     }
     const parsed = Number(val);
@@ -152,14 +171,17 @@ const preprocessInt = (min = 1) =>
 
 const quizQuestionCreateSchema = z.object({
   questionText: z
-    .string({ required_error: 'questionText is required' })
+    .string({ required_error: "questionText is required" })
     .trim()
-    .min(1, 'questionText is required'),
+    .min(1, "questionText is required"),
   questionType: questionTypeEnum.optional(),
   points: z.number().min(0).optional(),
   explanation: z.string().trim().optional(),
   meta: z.record(z.any()).optional(),
-  quizId: z.string().uuid({ message: 'quizId must be a valid UUID' }).optional(),
+  quizId: z
+    .string()
+    .uuid({ message: "quizId must be a valid UUID" })
+    .optional(),
   orderIndex: preprocessInt().optional(),
 });
 
@@ -170,18 +192,21 @@ const quizQuestionUpdateSchema = z
     points: z.number().min(0).optional(),
     explanation: z.string().trim().optional(),
     meta: z.record(z.any()).optional(),
-    quizId: z.string().uuid({ message: 'quizId must be a valid UUID' }).optional(),
+    quizId: z
+      .string()
+      .uuid({ message: "quizId must be a valid UUID" })
+      .optional(),
     orderIndex: preprocessInt().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
 const quizOptionCreateSchema = z.object({
   optionText: z
-    .string({ required_error: 'optionText is required' })
+    .string({ required_error: "optionText is required" })
     .trim()
-    .min(1, 'optionText is required'),
+    .min(1, "optionText is required"),
   isCorrect: z.boolean().optional(),
   orderIndex: preprocessInt().optional(),
   points: z.number().min(0).optional(),
@@ -199,14 +224,14 @@ const quizOptionUpdateSchema = z
     meta: z.record(z.any()).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
 const courseCreateSchema = z.object({
   title: z
-    .string({ required_error: 'title is required' })
+    .string({ required_error: "title is required" })
     .trim()
-    .min(1, 'title is required'),
+    .min(1, "title is required"),
   description: z.string().optional(),
   level: z.string().optional(),
   ownerUserId: z.string().uuid().optional(),
@@ -214,37 +239,43 @@ const courseCreateSchema = z.object({
 
 const courseUpdateSchema = z
   .object({
-    title: z.string().trim().min(1, 'title is required').optional(),
+    title: z.string().trim().min(1, "title is required").optional(),
     description: z.string().optional(),
     level: z.string().optional(),
     ownerUserId: z.string().uuid().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
 const instructorAssignSchema = z.object({
   instructorIds: z.array(z.string().uuid()).optional(),
 });
 
-const staffRoleEnum = z.enum(['instructor', 'content_editor', 'enrollment_manager']);
+const staffRoleEnum = z.enum([
+  "instructor",
+  "content_editor",
+  "enrollment_manager",
+]);
 
 const courseStaffAssignSchema = z.object({
-  userId: z.string({ required_error: 'userId is required' }).uuid({ message: 'userId must be a valid UUID' }),
+  userId: z
+    .string({ required_error: "userId is required" })
+    .uuid({ message: "userId must be a valid UUID" }),
   roles: z
-    .array(staffRoleEnum, { required_error: 'roles is required' })
-    .min(1, 'At least one role is required')
-    .refine(
-      (items) => new Set(items).size === items.length,
-      { message: 'roles must be unique', path: ['roles'] },
-    ),
+    .array(staffRoleEnum, { required_error: "roles is required" })
+    .min(1, "At least one role is required")
+    .refine((items) => new Set(items).size === items.length, {
+      message: "roles must be unique",
+      path: ["roles"],
+    }),
 });
 
 const moduleCreateSchema = z.object({
   title: z
-    .string({ required_error: 'title is required' })
+    .string({ required_error: "title is required" })
     .trim()
-    .min(1, 'title is required'),
+    .min(1, "title is required"),
   orderIndex: preprocessInt().optional(),
 });
 
@@ -254,56 +285,67 @@ const moduleUpdateSchema = z
     orderIndex: preprocessInt().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
 const lessonCreateSchema = z.object({
   title: z
-    .string({ required_error: 'title is required' })
+    .string({ required_error: "title is required" })
     .trim()
-    .min(1, 'title is required'),
+    .min(1, "title is required"),
   contentText: z.string().optional(),
   contentMarkdown: z.string().optional(),
   contentHtml: z.string().optional(),
+  contentJson: z.any().optional().nullable(),
   videoUrl: z.string().url().optional(),
   estimatedMinutes: preprocessInt().optional(),
   orderIndex: preprocessInt().optional(),
 });
 
-const lessonUpdateSchema = z
-  .object({
-    title: z.string().trim().min(1).optional(),
-    contentText: z.string().optional(),
-    contentMarkdown: z.string().optional(),
-    contentHtml: z.string().optional(),
-    videoUrl: z.string().url().optional(),
-    estimatedMinutes: preprocessInt().optional(),
-    orderIndex: preprocessInt().optional(),
-  })
-  .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
-  });
+const lessonUpdateSchema = z.object({
+  title: z.string().trim().min(1).optional(),
+  contentText: z.string().optional(),
+  contentMarkdown: z.string().optional(),
+  contentHtml: z.string().optional(),
+  contentJson: z.any().optional().nullable(),
+  videoUrl: z.string().url().optional(),
+
+  coverImage: z.string().nullable().optional(),
+  cover_image_url: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+
+  estimatedMinutes: preprocessInt().optional(),
+  orderIndex: preprocessInt().optional(),
+});
 
 const urlString = z.string().url();
 
 const liveSeriesCreateSchema = z.object({
   moduleId: z.string().uuid().optional().nullable(),
-  classTypeId: z.string({ required_error: 'classTypeId is required' }).uuid({
-    message: 'classTypeId must be a valid UUID',
+  classTypeId: z.string({ required_error: "classTypeId is required" }).uuid({
+    message: "classTypeId must be a valid UUID",
   }),
-  hostTeacherId: z.string({ required_error: 'hostTeacherId is required' }).uuid({
-    message: 'hostTeacherId must be a valid UUID',
-  }),
+  hostTeacherId: z
+    .string({ required_error: "hostTeacherId is required" })
+    .uuid({
+      message: "hostTeacherId must be a valid UUID",
+    }),
   title: z
-    .string({ required_error: 'title is required' })
+    .string({ required_error: "title is required" })
     .trim()
-    .min(2, 'title must be at least 2 characters'),
-  timezone: z.string({ required_error: 'timezone is required' }).trim().min(1, 'timezone required'),
-  rrule: z.string({ required_error: 'rrule is required' }).trim().min(5, 'rrule is required'),
-  dtstart: z.string({ required_error: 'dtstart is required' }).datetime(),
-  dtend: z.string({ required_error: 'dtend is required' }).datetime(),
+    .min(2, "title must be at least 2 characters"),
+  timezone: z
+    .string({ required_error: "timezone is required" })
+    .trim()
+    .min(1, "timezone required"),
+  rrule: z
+    .string({ required_error: "rrule is required" })
+    .trim()
+    .min(5, "rrule is required"),
+  dtstart: z.string({ required_error: "dtstart is required" }).datetime(),
+  dtend: z.string({ required_error: "dtend is required" }).datetime(),
   durationMinutes: preprocessInt().refine((value) => value > 0, {
-    message: 'durationMinutes must be greater than 0',
+    message: "durationMinutes must be greater than 0",
   }),
   joinUrl: urlString.optional().nullable(),
   hostUrl: urlString.optional().nullable(),
@@ -323,10 +365,10 @@ const liveSeriesUpdateSchema = z
     hostUrl: urlString.optional().nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
-const liveSessionStatusEnum = z.enum(['scheduled', 'cancelled', 'completed']);
+const liveSessionStatusEnum = z.enum(["scheduled", "cancelled", "completed"]);
 
 const liveSessionUpdateSchema = z
   .object({
@@ -343,42 +385,42 @@ const liveSessionUpdateSchema = z
     hostUrl: urlString.optional().nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
 const formatZodError = (error) =>
   error.errors
     .map((issue) => {
-      const path = issue.path.length ? issue.path.join('.') : 'value';
+      const path = issue.path.length ? issue.path.join(".") : "value";
       return `${path}: ${issue.message}`;
     })
-    .join(', ');
+    .join(", ");
 
 const enrollStudentSchema = z.object({
   studentId: z
-    .string({ required_error: 'studentId is required' })
+    .string({ required_error: "studentId is required" })
     .trim()
-    .uuid({ message: 'studentId must be a valid UUID' }),
+    .uuid({ message: "studentId must be a valid UUID" }),
   groupId: z
     .string()
-    .uuid({ message: 'groupId must be a valid UUID' })
+    .uuid({ message: "groupId must be a valid UUID" })
     .optional()
     .nullable(),
 });
 
 const assignGroupSchema = z.object({
   groupId: z
-    .string({ required_error: 'groupId is required' })
+    .string({ required_error: "groupId is required" })
     .trim()
-    .uuid({ message: 'groupId must be a valid UUID' })
+    .uuid({ message: "groupId must be a valid UUID" })
     .nullable(),
 });
 
 const groupTeacherAssignSchema = z.object({
   userId: z
-    .string({ required_error: 'userId is required' })
+    .string({ required_error: "userId is required" })
     .trim()
-    .uuid({ message: 'userId must be a valid UUID' }),
+    .uuid({ message: "userId must be a valid UUID" }),
 });
 
 const bulkEnrollSchema = z.object({
@@ -387,12 +429,12 @@ const bulkEnrollSchema = z.object({
       z
         .string()
         .trim()
-        .uuid({ message: 'studentIds must contain valid UUIDs' }),
+        .uuid({ message: "studentIds must contain valid UUIDs" }),
     )
-    .min(1, 'Select at least one student'),
+    .min(1, "Select at least one student"),
   groupId: z
     .string()
-    .uuid({ message: 'groupId must be a valid UUID' })
+    .uuid({ message: "groupId must be a valid UUID" })
     .optional()
     .nullable(),
 });
@@ -400,14 +442,17 @@ const bulkEnrollSchema = z.object({
 const dateString = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/i, 'Must be a valid YYYY-MM-DD date')
+  .regex(/^\d{4}-\d{2}-\d{2}$/i, "Must be a valid YYYY-MM-DD date")
   .optional()
   .nullable();
 
-const groupStatusEnum = z.enum(['active', 'archived']);
+const groupStatusEnum = z.enum(["active", "archived"]);
 
 const groupCreateSchema = z.object({
-  name: z.string({ required_error: 'name is required' }).trim().min(1, 'name is required'),
+  name: z
+    .string({ required_error: "name is required" })
+    .trim()
+    .min(1, "name is required"),
   code: z.string().trim().min(1).optional().nullable(),
   timezone: z.string().trim().min(1).optional(),
   startDate: dateString,
@@ -431,71 +476,71 @@ const groupUpdateSchema = z
     scheduleText: z.string().trim().min(1).optional().nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: "At least one field must be provided",
   });
 
 const announcementCreateSchema = z
   .object({
-    scope: z.enum(['academy', 'course', 'group'], {
-      errorMap: () => ({ message: 'Invalid scope value' }),
+    scope: z.enum(["academy", "course", "group"], {
+      errorMap: () => ({ message: "Invalid scope value" }),
     }),
     courseId: uuidSchema.optional().nullable(),
     groupId: uuidSchema.optional().nullable(),
     title: z
-      .string({ required_error: 'title is required' })
+      .string({ required_error: "title is required" })
       .trim()
-      .min(3, 'title must be at least 3 characters')
-      .max(200, 'title must be at most 200 characters'),
+      .min(3, "title must be at least 3 characters")
+      .max(200, "title must be at most 200 characters"),
     body: z
-      .string({ required_error: 'body is required' })
+      .string({ required_error: "body is required" })
       .trim()
-      .min(1, 'body is required')
-      .max(20000, 'body must be at most 20000 characters'),
-    status: z.enum(['draft', 'published', 'archived']).optional(),
+      .min(1, "body is required")
+      .max(20000, "body must be at most 20000 characters"),
+    status: z.enum(["draft", "published", "archived"]).optional(),
     priority: z.number().int().min(1).max(3).optional(),
     startsAt: z.string().datetime().optional().nullable(),
     expiresAt: z.string().datetime().optional().nullable(),
   })
   .superRefine((data, ctx) => {
-    if (data.scope === 'academy') {
+    if (data.scope === "academy") {
       if (data.courseId !== undefined && data.courseId !== null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['courseId'],
-          message: 'courseId must be empty for academy scope',
+          path: ["courseId"],
+          message: "courseId must be empty for academy scope",
         });
       }
       if (data.groupId !== undefined && data.groupId !== null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['groupId'],
-          message: 'groupId must be empty for academy scope',
+          path: ["groupId"],
+          message: "groupId must be empty for academy scope",
         });
       }
     }
 
-    if (data.scope === 'course') {
+    if (data.scope === "course") {
       if (!data.courseId) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['courseId'],
-          message: 'courseId is required for course scope',
+          path: ["courseId"],
+          message: "courseId is required for course scope",
         });
       }
       if (data.groupId !== undefined && data.groupId !== null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['groupId'],
-          message: 'groupId must be empty for course scope',
+          path: ["groupId"],
+          message: "groupId must be empty for course scope",
         });
       }
     }
 
-    if (data.scope === 'group' && !data.groupId) {
+    if (data.scope === "group" && !data.groupId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['groupId'],
-        message: 'groupId is required for group scope',
+        path: ["groupId"],
+        message: "groupId is required for group scope",
       });
     }
 
@@ -505,8 +550,8 @@ const announcementCreateSchema = z
       if (expiresAtTime <= startsAtTime) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['expiresAt'],
-          message: 'expiresAt must be later than startsAt',
+          path: ["expiresAt"],
+          message: "expiresAt must be later than startsAt",
         });
       }
     }
@@ -514,14 +559,26 @@ const announcementCreateSchema = z
 
 const announcementUpdateSchema = z
   .object({
-    scope: z.enum(['academy', 'course', 'group'], {
-      errorMap: () => ({ message: 'Invalid scope value' }),
-    }).optional(),
+    scope: z
+      .enum(["academy", "course", "group"], {
+        errorMap: () => ({ message: "Invalid scope value" }),
+      })
+      .optional(),
     courseId: uuidSchema.optional().nullable(),
     groupId: uuidSchema.optional().nullable(),
-    title: z.string().trim().min(3, 'title must be at least 3 characters').max(200, 'title must be at most 200 characters').optional(),
-    body: z.string().trim().min(1, 'body is required').max(20000, 'body must be at most 20000 characters').optional(),
-    status: z.enum(['draft', 'published', 'archived']).optional(),
+    title: z
+      .string()
+      .trim()
+      .min(3, "title must be at least 3 characters")
+      .max(200, "title must be at most 200 characters")
+      .optional(),
+    body: z
+      .string()
+      .trim()
+      .min(1, "body is required")
+      .max(20000, "body must be at most 20000 characters")
+      .optional(),
+    status: z.enum(["draft", "published", "archived"]).optional(),
     priority: z.number().int().min(1).max(3).optional(),
     startsAt: z.string().datetime().optional().nullable(),
     expiresAt: z.string().datetime().optional().nullable(),
@@ -530,62 +587,67 @@ const announcementUpdateSchema = z
     if (!Object.keys(data).length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['value'],
-        message: 'No updates provided',
+        path: ["value"],
+        message: "No updates provided",
       });
       return;
     }
 
-    if (data.scope === 'academy') {
+    if (data.scope === "academy") {
       if (data.courseId !== undefined && data.courseId !== null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['courseId'],
-          message: 'courseId must be empty for academy scope',
+          path: ["courseId"],
+          message: "courseId must be empty for academy scope",
         });
       }
       if (data.groupId !== undefined && data.groupId !== null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['groupId'],
-          message: 'groupId must be empty for academy scope',
+          path: ["groupId"],
+          message: "groupId must be empty for academy scope",
         });
       }
     }
 
-    if (data.scope === 'course') {
+    if (data.scope === "course") {
       if (!data.courseId) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['courseId'],
-          message: 'courseId is required for course scope',
+          path: ["courseId"],
+          message: "courseId is required for course scope",
         });
       }
       if (data.groupId !== undefined && data.groupId !== null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['groupId'],
-          message: 'groupId must be empty for course scope',
+          path: ["groupId"],
+          message: "groupId must be empty for course scope",
         });
       }
     }
 
-    if (data.scope === 'group' && !data.groupId) {
+    if (data.scope === "group" && !data.groupId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['groupId'],
-        message: 'groupId is required for group scope',
+        path: ["groupId"],
+        message: "groupId is required for group scope",
       });
     }
 
-    if (data.startsAt !== undefined && data.expiresAt !== undefined && data.startsAt && data.expiresAt) {
+    if (
+      data.startsAt !== undefined &&
+      data.expiresAt !== undefined &&
+      data.startsAt &&
+      data.expiresAt
+    ) {
       const startsAtTime = new Date(data.startsAt).getTime();
       const expiresAtTime = new Date(data.expiresAt).getTime();
       if (expiresAtTime <= startsAtTime) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['expiresAt'],
-          message: 'expiresAt must be later than startsAt',
+          path: ["expiresAt"],
+          message: "expiresAt must be later than startsAt",
         });
       }
     }
@@ -593,69 +655,83 @@ const announcementUpdateSchema = z
 
 const coursePostCreateSchema = z
   .object({
-    target: z.enum(['course', 'group'], {
-      errorMap: () => ({ message: 'Invalid target value' }),
+    target: z.enum(["course", "group"], {
+      errorMap: () => ({ message: "Invalid target value" }),
     }),
-    groupId: z.string().uuid({ message: 'groupId must be a valid UUID' }).optional().nullable(),
+    groupId: z
+      .string()
+      .uuid({ message: "groupId must be a valid UUID" })
+      .optional()
+      .nullable(),
     title: z
-      .string({ required_error: 'title is required' })
+      .string({ required_error: "title is required" })
       .trim()
-      .min(3, 'title must be at least 3 characters'),
+      .min(3, "title must be at least 3 characters"),
     body: z
-      .string({ required_error: 'body is required' })
+      .string({ required_error: "body is required" })
       .trim()
-      .min(1, 'body is required'),
+      .min(1, "body is required"),
   })
   .superRefine((data, ctx) => {
-    if (data.target === 'course' && data.groupId) {
+    if (data.target === "course" && data.groupId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['groupId'],
-        message: 'groupId must be empty for course target',
+        path: ["groupId"],
+        message: "groupId must be empty for course target",
       });
     }
 
-    if (data.target === 'group' && !data.groupId) {
+    if (data.target === "group" && !data.groupId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['groupId'],
-        message: 'groupId is required for group target',
+        path: ["groupId"],
+        message: "groupId is required for group target",
       });
     }
   });
 
 const coursePostUpdateSchema = z
   .object({
-    target: z.enum(['course', 'group'], {
-      errorMap: () => ({ message: 'Invalid target value' }),
-    }).optional(),
-    groupId: z.string().uuid({ message: 'groupId must be a valid UUID' }).optional().nullable(),
-    title: z.string().trim().min(3, 'title must be at least 3 characters').optional(),
-    body: z.string().trim().min(1, 'body is required').optional(),
+    target: z
+      .enum(["course", "group"], {
+        errorMap: () => ({ message: "Invalid target value" }),
+      })
+      .optional(),
+    groupId: z
+      .string()
+      .uuid({ message: "groupId must be a valid UUID" })
+      .optional()
+      .nullable(),
+    title: z
+      .string()
+      .trim()
+      .min(3, "title must be at least 3 characters")
+      .optional(),
+    body: z.string().trim().min(1, "body is required").optional(),
   })
   .superRefine((data, ctx) => {
     if (!Object.keys(data).length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['value'],
-        message: 'No updates provided',
+        path: ["value"],
+        message: "No updates provided",
       });
       return;
     }
 
-    if (data.target === 'course' && data.groupId) {
+    if (data.target === "course" && data.groupId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['groupId'],
-        message: 'groupId must be empty for course target',
+        path: ["groupId"],
+        message: "groupId must be empty for course target",
       });
     }
 
-    if (data.target === 'group' && !data.groupId) {
+    if (data.target === "group" && !data.groupId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['groupId'],
-        message: 'groupId is required for group target',
+        path: ["groupId"],
+        message: "groupId is required for group target",
       });
     }
   });

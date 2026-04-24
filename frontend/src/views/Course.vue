@@ -12,7 +12,7 @@
 
     <Card v-else-if="error">
       <template #content>
-        <p>{{ t('course.errorLoad') }}</p>
+        <p>{{ t("course.errorLoad") }}</p>
         <Button
           :label="t('common.reload')"
           icon="pi pi-refresh"
@@ -23,251 +23,328 @@
     </Card>
 
     <div v-else class="course-main-shell">
-    <Card class="course-main-card">
-      <template #title>
-        <div class="course-header">
-          <div>
-            <h2>{{ course.title }}</h2>
-            <p class="description">{{ course.description }}</p>
-          </div>
-
-          <div class="progress" v-show="!isLiveTabActive">
-            <span>{{ t('course.progressLabel') }}</span>
-            <ProgressBar :value="progress?.percent ?? 0" />
-            <small>{{ progressSummaryText }}</small>
-            <small v-if="progress?.nextLessonTitle">
-              {{ nextLessonText }}
-            </small>
-          </div>
-
-          <div class="live-session-image-card" v-if="isLiveTabActive">
-            <div class="live-session-image-card__text">
-              <h3>Clases en vivo</h3>
-              <p>Visualiza primero tus clases de esta semana y luego el resto de sesiones</p>
-            </div>
-            <div class="live-session-image-card__media">
+      <Card class="course-main-card">
+        <template #title>
+          <div class="course-header">
+            <div class="course-brand-header">
               <img
-                src="/assets/3dIcons/schedule_live.png"
-                alt="Live schedule"
+                :src="'/assets/images/LogoGo4.png'"
+                alt="Go4+"
+                class="course-brand-logo"
               />
+
+              <div class="course-brand-text">
+                <h2>{{ course.title }}</h2>
+                <p class="description">
+                  Continúa tu aprendizaje y revisa tus próximas actividades.
+                </p>
+              </div>
+            </div>
+
+            <div class="progress" v-show="!isLiveTabActive">
+              <span>{{ t("course.progressLabel") }}</span>
+              <ProgressBar :value="progress?.percent ?? 0" />
+              <small>{{ progressSummaryText }}</small>
+              <small v-if="progress?.nextLessonTitle">
+                {{ nextLessonText }}
+              </small>
+            </div>
+
+            <div class="live-session-image-card" v-if="isLiveTabActive">
+              <div class="live-session-image-card__text">
+                <h3>Clases en vivo</h3>
+                <p>
+                  Visualiza primero tus clases de esta semana y luego el resto
+                  de sesiones
+                </p>
+              </div>
+              <div class="live-session-image-card__media">
+                <img
+                  src="/assets/3dIcons/schedule_live.png"
+                  alt="Live schedule"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </template>
+        </template>
 
-      <template #content>
-        <TabView class="course-tabs" v-model:activeIndex="activeTabIndex">
-          <TabPanel>
-            <template #header>
-              <span class="course-tab-title">
-                <i class="pi pi-comment" />
-                <span>Posts</span>
-              </span>
-            </template>
-            <CoursePostsFeed :course-id="route.params.id" />
-          </TabPanel>
+        <template #content>
+          <TabView class="course-tabs" v-model:activeIndex="activeTabIndex">
+            <TabPanel>
+              <template #header>
+                <span class="course-tab-title">
+                  <i class="pi pi-comment" />
+                  <span>Posts</span>
+                </span>
+              </template>
+              <CoursePostsFeed :course-id="route.params.id" />
+            </TabPanel>
 
-          <TabPanel>
-            <template #header>
-              <span class="course-tab-title">
-                <i class="pi pi-book" />
-                <span>{{ t('course.tabs.lessons') }}</span>
-              </span>
-            </template>
-            <section class="student-course-hero">
-              <div class="continue-card">
-                <div class="continue-content">
-                  <h2>Continue with</h2>
-                  <h3>{{ nextLessonTitle || t('course.courseCompleted') }}</h3>
-                  <Button
-                    class="btn-primary"
-                    icon="pi pi-arrow-right"
-                    label="Continue"
-                    :disabled="!nextLesson"
-                    @click="openNextLesson"
-                  />
-                </div>
-                <img
-                  src="/assets/3dIcons/laptop_reports.png"
-                  alt="Continue lesson"
-                  class="continue-image"
-                />
-              </div>
-
-              <div class="progress-card">
-                <img
-                  src="/assets/3dIcons/orTrophy.png"
-                  alt="Progress trophy"
-                  class="progress-image"
-                />
-
-                <div class="progress-info">
-                  <label>Progress</label>
-                  <ProgressBar :value="progressPercentage" />
-                  <p>Completed {{ completedCount }} / {{ totalCount }}</p>
-                  <small>Next: {{ nextLessonTitle || t('course.courseCompleted') }}</small>
-                </div>
-              </div>
-            </section>
-
-            <section class="student-modules-list">
-              <section
-                v-for="module in courseModules"
-                :key="module.id"
-                class="module-node"
-              >
-                <div class="module-header" @click="toggleModule(module.id)">
-                  <div class="module-info">
-                    <i class="pi pi-book module-icon"></i>
-                    <h4>{{ module.title }}</h4>
+            <TabPanel>
+              <template #header>
+                <span class="course-tab-title">
+                  <i class="pi pi-book" />
+                  <span>{{ t("course.tabs.lessons") }}</span>
+                </span>
+              </template>
+              <section class="student-course-hero">
+                <div class="continue-card">
+                  <div class="continue-content">
+                    <h2>Continue with</h2>
+                    <h3>
+                      {{ nextLessonTitle || t("course.courseCompleted") }}
+                    </h3>
+                    <Button
+                      class="btn-primary"
+                      icon="pi pi-arrow-right"
+                      label="Continue"
+                      :disabled="!nextLesson"
+                      @click="openNextLesson"
+                    />
                   </div>
-
-                  <Button
-                    :icon="expandedModules.includes(module.id)
-                      ? 'pi pi-chevron-up'
-                      : 'pi pi-chevron-down'"
-                    class="p-button-text"
+                  <img
+                    src="/assets/3dIcons/laptop_reports.png"
+                    alt="Continue lesson"
+                    class="continue-image"
                   />
                 </div>
 
-                <div
-                  v-if="expandedModules.includes(module.id)"
-                  class="module-lessons"
+                <div class="progress-card">
+                  <img
+                    src="/assets/3dIcons/orTrophy.png"
+                    alt="Progress trophy"
+                    class="progress-image"
+                  />
+
+                  <div class="progress-info">
+                    <label>Progress</label>
+                    <ProgressBar :value="progressPercentage" />
+                    <p>Completed {{ completedCount }} / {{ totalCount }}</p>
+                    <small
+                      >Next:
+                      {{
+                        nextLessonTitle || t("course.courseCompleted")
+                      }}</small
+                    >
+                  </div>
+                </div>
+              </section>
+
+              <section class="student-modules-list">
+                <section
+                  v-for="module in courseModules"
+                  :key="module.id"
+                  class="module-node"
                 >
-                  <div class="module-lessons-heading">
-                    <span>Lecciones del módulo</span>
-                  </div>
-                  <div
-                    v-for="(lesson, lessonIndex) in module.lessons"
-                    :key="lesson.id"
-                    class="lesson-row"
-                  >
-                    <div class="lesson-title-group">
-                      <span class="lesson-title-main">
-                        <i class="pi pi-file lesson-row-icon" />
-                        {{ lesson.title }}
+                  <div class="module-header" @click="toggleModule(module.id)">
+                    <div class="module-info">
+                      <span class="module-icon-wrap">
+                        <i class="pi pi-book module-icon"></i>
                       </span>
-                      <small class="lesson-order">Clase {{ lessonIndex + 1 }}</small>
-                      <small>{{ lesson.estimated_minutes }} min</small>
+
+                      <div>
+                        <h4>{{ module.title }}</h4>
+                        <small
+                          >{{ module.lessons?.length || 0 }} lección(es)</small
+                        >
+                      </div>
                     </div>
 
-                    <div class="lesson-actions">
-                      <Button
-                        icon="pi pi-external-link"
-                        class="p-button-text"
-                        @click="openLesson(lesson.id)"
-                      />
-
-                      <Button
-                        label="Open"
-                        class="btn-open"
-                        @click="openLesson(lesson.id)"
-                      />
-
-                      <Button
-                        :label="isLessonDone(lesson) ? 'Done' : 'Mark done'"
-                        class="btn-done"
-                        :severity="isLessonDone(lesson) ? 'success' : 'secondary'"
-                        icon="pi pi-check"
-                        :disabled="isLessonDone(lesson) || isPreview"
-                        :loading="!isLessonDone(lesson) && updatingLesson === lesson.id"
-                        @click="!isLessonDone(lesson) && markDone(lesson.id)"
-                      />
-                    </div>
+                    <Button
+                      :icon="
+                        expandedModules.includes(module.id)
+                          ? 'pi pi-chevron-up'
+                          : 'pi pi-chevron-down'
+                      "
+                      class="module-toggle-btn p-button-text"
+                    />
                   </div>
-                </div>
+
+                  <div
+                    v-if="expandedModules.includes(module.id)"
+                    class="module-lessons"
+                  >
+                    <article
+                      v-for="(lesson, lessonIndex) in module.lessons"
+                      :key="lesson.id"
+                      class="lesson-card-modern"
+                      :class="{ 'is-completed': isLessonDone(lesson) }"
+                    >
+                      <div class="lesson-cover">
+                        <img
+                          :src="
+                            lesson.cover_image_url ||
+                            lesson.image_url ||
+                            '/assets/images/pollito.png'
+                          "
+                          :alt="lesson.title"
+                        />
+
+                        <span class="lesson-kind-badge">
+                          <i class="pi pi-pencil"></i>
+                          Lección
+                        </span>
+                      </div>
+
+                      <div class="lesson-card-content">
+                        <div class="lesson-card-header">
+                          <h5>{{ lesson.title }}</h5>
+
+                          <span
+                            class="lesson-status-pill"
+                            :class="{ completed: isLessonDone(lesson) }"
+                          >
+                            {{
+                              isLessonDone(lesson) ? "Completada" : "Pendiente"
+                            }}
+                          </span>
+                        </div>
+
+                        <div class="lesson-meta-row">
+                          <span>Clase {{ lessonIndex + 1 }}</span>
+                          <span>
+                            <i class="pi pi-clock"></i>
+                            {{ lesson.estimated_minutes || 0 }} min
+                          </span>
+                        </div>
+
+                        <div class="lesson-card-actions">
+                          <Button
+                            label="Ver lección"
+                            icon="pi pi-arrow-right"
+                            iconPos="right"
+                            class="btn-open"
+                            @click="openLesson(lesson.id)"
+                          />
+
+                          <Button
+                            :label="
+                              isLessonDone(lesson)
+                                ? 'Completada'
+                                : 'Marcar hecha'
+                            "
+                            class="btn-done"
+                            icon="pi pi-check"
+                            :disabled="isLessonDone(lesson) || isPreview"
+                            :loading="
+                              !isLessonDone(lesson) &&
+                              updatingLesson === lesson.id
+                            "
+                            @click="
+                              !isLessonDone(lesson) && markDone(lesson.id)
+                            "
+                          />
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </section>
               </section>
-            </section>
-          </TabPanel>
+            </TabPanel>
 
-          <TabPanel>
-            <template #header>
-              <span class="course-tab-title">
-                <i class="pi pi-video" />
-                <span>{{ t('course.tabs.liveSessions') }}</span>
-              </span>
-            </template>
-            <div v-if="liveSessionsLoading" class="live-tab-skeleton">
-              <Skeleton height="2rem" class="mb-2" />
-              <Skeleton height="2rem" class="mb-2" />
-              <Skeleton height="2rem" />
-            </div>
-
-            <div v-else-if="liveSessionsError" class="live-tab-error">
-              <p>{{ t('course.liveSessions.error') }}</p>
-              <Button
-                :label="t('common.reload')"
-                icon="pi pi-refresh"
-                class="p-button-text"
-                @click="loadLiveSessions(course.id)"
-              />
-            </div>
-
-            <div v-else>
-              <section class="live-sessions-hero">
-                <div class="hero-icon">
-                  <i class="pi pi-calendar" />
-                </div>
-
-                <div class="hero-info">
-                  <h2>Clases en vivo</h2>
-                  <small>Primero verás tus clases de esta semana y luego el historial o próximas semanas</small>
-                </div>
-
-                <div class="hero-badge">
-                  <Tag :value="`${liveSessionsThisWeek} sesiones esta semana`" severity="info" />
-                </div>
-              </section>
-
-              <div class="live-session-filters">
-                <Dropdown
-                  v-model="selectedLiveGroup"
-                  :options="liveSessionGroupOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Filter by group"
-                  showClear
-                  class="filter-dropdown"
-                />
-
-                <Dropdown
-                  v-model="selectedLiveInstructor"
-                  :options="liveSessionInstructorOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Filter by instructor"
-                  showClear
-                  class="filter-dropdown"
-                />
-
-                <div class="session-chip-row">
-                  <Button
-                    v-for="filter in sessionStatusFilters"
-                    :key="filter.key"
-                    :label="filter.label"
-                    class="session-chip"
-                    :class="{ 'is-active': activeSessionFilters.includes(filter.key) }"
-                    severity="secondary"
-                    text
-                    @click="toggleSessionFilter(filter.key)"
-                  />
-                </div>
+            <TabPanel>
+              <template #header>
+                <span class="course-tab-title">
+                  <i class="pi pi-video" />
+                  <span>{{ t("course.tabs.liveSessions") }}</span>
+                </span>
+              </template>
+              <div v-if="liveSessionsLoading" class="live-tab-skeleton">
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" class="mb-2" />
+                <Skeleton height="2rem" />
               </div>
 
-              <div>
+              <div v-else-if="liveSessionsError" class="live-tab-error">
+                <p>{{ t("course.liveSessions.error") }}</p>
+                <Button
+                  :label="t('common.reload')"
+                  icon="pi pi-refresh"
+                  class="p-button-text"
+                  @click="loadLiveSessions(course.id)"
+                />
+              </div>
+
+              <div v-else>
+                <section class="live-sessions-hero">
+                  <div class="hero-icon">
+                    <i class="pi pi-calendar" />
+                  </div>
+
+                  <div class="hero-info">
+                    <h2>Clases en vivo</h2>
+                    <small
+                      >Primero verás tus clases de esta semana y luego el
+                      historial o próximas semanas</small
+                    >
+                  </div>
+
+                  <div class="hero-badge">
+                    <Tag
+                      :value="`${liveSessionsThisWeek} sesiones esta semana`"
+                      severity="info"
+                    />
+                  </div>
+                </section>
+
+                <div class="live-session-filters">
+                  <Dropdown
+                    v-model="selectedLiveGroup"
+                    :options="liveSessionGroupOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Filter by group"
+                    showClear
+                    class="filter-dropdown"
+                  />
+
+                  <Dropdown
+                    v-model="selectedLiveInstructor"
+                    :options="liveSessionInstructorOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Filter by instructor"
+                    showClear
+                    class="filter-dropdown"
+                  />
+
+                  <div class="session-chip-row">
+                    <Button
+                      v-for="filter in sessionStatusFilters"
+                      :key="filter.key"
+                      :label="filter.label"
+                      class="session-chip"
+                      :class="{
+                        'is-active': activeSessionFilters.includes(filter.key),
+                      }"
+                      severity="secondary"
+                      text
+                      @click="toggleSessionFilter(filter.key)"
+                    />
+                  </div>
+                </div>
+
+                <div>
                   <div
                     v-if="!currentWeekGroup && !otherWeekGroups.length"
                     class="empty-state"
                   >
-                    {{ t('course.liveSessions.empty') }}
+                    {{ t("course.liveSessions.empty") }}
                   </div>
 
                   <div v-else class="live-sessions-layout">
-                    <section v-if="currentWeekGroup" class="current-week-section">
+                    <section
+                      v-if="currentWeekGroup"
+                      class="current-week-section"
+                    >
                       <div class="section-header">
                         <div>
                           <h3>Esta semana</h3>
-                          <small>{{ currentWeekGroup.weekRange.text }} · {{ currentWeekGroup.sessions.length }} sesión(es)</small>
+                          <small
+                            >{{ currentWeekGroup.weekRange.text }} ·
+                            {{ currentWeekGroup.sessions.length }}
+                            sesión(es)</small
+                          >
                         </div>
                       </div>
 
@@ -285,27 +362,33 @@
                           <div class="session-leading-icon">
                             <i
                               class="pi"
-                              :class="session.status === 'live'
-                                ? 'pi-video'
-                                : session.status === 'upcoming'
-                                  ? 'pi-calendar-clock'
-                                  : 'pi-check-circle'"
+                              :class="
+                                session.status === 'live'
+                                  ? 'pi-video'
+                                  : session.status === 'upcoming'
+                                    ? 'pi-calendar-clock'
+                                    : 'pi-check-circle'
+                              "
                             />
                           </div>
 
                           <div class="session-main">
                             <div class="session-topline">
                               <Tag
-                                :value="session.status === 'live'
-                                  ? 'Live'
-                                  : session.status === 'upcoming'
-                                    ? 'Upcoming'
-                                    : 'Past'"
-                                :severity="session.status === 'live'
-                                  ? 'success'
-                                  : session.status === 'upcoming'
-                                    ? 'info'
-                                    : 'secondary'"
+                                :value="
+                                  session.status === 'live'
+                                    ? 'Live'
+                                    : session.status === 'upcoming'
+                                      ? 'Upcoming'
+                                      : 'Past'
+                                "
+                                :severity="
+                                  session.status === 'live'
+                                    ? 'success'
+                                    : session.status === 'upcoming'
+                                      ? 'info'
+                                      : 'secondary'
+                                "
                                 class="session-status-tag"
                               />
 
@@ -317,7 +400,7 @@
                             </div>
 
                             <h4 class="session-title-text">
-                              {{ session.title || 'Clase en vivo' }}
+                              {{ session.title || "Clase en vivo" }}
                             </h4>
 
                             <div class="session-details-row">
@@ -333,10 +416,15 @@
 
                               <div class="session-detail">
                                 <i class="pi pi-user"></i>
-                                <span>{{ session.instructorName || 'Instructor pending' }}</span>
+                                <span>{{
+                                  session.instructorName || "Instructor pending"
+                                }}</span>
                               </div>
 
-                              <div v-if="session.groupName" class="session-detail">
+                              <div
+                                v-if="session.groupName"
+                                class="session-detail"
+                              >
                                 <i class="pi pi-users"></i>
                                 <span>{{ session.groupName }}</span>
                               </div>
@@ -346,13 +434,23 @@
                           <div class="session-actions">
                             <Button
                               icon="pi pi-sign-in"
-                              :label="session.status === 'past' ? 'Closed' : 'Join'"
+                              :label="
+                                session.status === 'past' ? 'Closed' : 'Join'
+                              "
                               class="btn-join"
-                              :class="{ 'btn-join-past': session.status === 'past' }"
-                              :disabled="session.status === 'past' || !isSessionJoinable(session)"
+                              :class="{
+                                'btn-join-past': session.status === 'past',
+                              }"
+                              :disabled="
+                                session.status === 'past' ||
+                                !isSessionJoinable(session)
+                              "
                               @click="joinSession(session.joinUrl)"
                             />
-                            <small v-if="session.startsIn" class="session-starts-in">
+                            <small
+                              v-if="session.startsIn"
+                              class="session-starts-in"
+                            >
                               Starts in {{ session.startsIn }}
                             </small>
                           </div>
@@ -360,11 +458,17 @@
                       </div>
                     </section>
 
-                    <section v-if="otherWeekGroups.length" class="other-weeks-section">
+                    <section
+                      v-if="otherWeekGroups.length"
+                      class="other-weeks-section"
+                    >
                       <div class="section-header">
                         <div>
                           <h3>Otras semanas</h3>
-                          <small>Consulta próximas o pasadas sin saturar la vista principal</small>
+                          <small
+                            >Consulta próximas o pasadas sin saturar la vista
+                            principal</small
+                          >
                         </div>
                       </div>
 
@@ -388,27 +492,33 @@
                               <div class="session-leading-icon">
                                 <i
                                   class="pi"
-                                  :class="session.status === 'live'
-                                    ? 'pi-video'
-                                    : session.status === 'upcoming'
-                                      ? 'pi-calendar-clock'
-                                      : 'pi-check-circle'"
+                                  :class="
+                                    session.status === 'live'
+                                      ? 'pi-video'
+                                      : session.status === 'upcoming'
+                                        ? 'pi-calendar-clock'
+                                        : 'pi-check-circle'
+                                  "
                                 />
                               </div>
 
                               <div class="session-main">
                                 <div class="session-topline">
                                   <Tag
-                                    :value="session.status === 'live'
-                                      ? 'Live'
-                                      : session.status === 'upcoming'
-                                        ? 'Upcoming'
-                                        : 'Past'"
-                                    :severity="session.status === 'live'
-                                      ? 'success'
-                                      : session.status === 'upcoming'
-                                        ? 'info'
-                                        : 'secondary'"
+                                    :value="
+                                      session.status === 'live'
+                                        ? 'Live'
+                                        : session.status === 'upcoming'
+                                          ? 'Upcoming'
+                                          : 'Past'
+                                    "
+                                    :severity="
+                                      session.status === 'live'
+                                        ? 'success'
+                                        : session.status === 'upcoming'
+                                          ? 'info'
+                                          : 'secondary'
+                                    "
                                     class="session-status-tag"
                                   />
 
@@ -420,7 +530,7 @@
                                 </div>
 
                                 <h4 class="session-title-text">
-                                  {{ session.title || 'Clase en vivo' }}
+                                  {{ session.title || "Clase en vivo" }}
                                 </h4>
 
                                 <div class="session-details-row">
@@ -436,10 +546,16 @@
 
                                   <div class="session-detail">
                                     <i class="pi pi-user"></i>
-                                    <span>{{ session.instructorName || 'Instructor pending' }}</span>
+                                    <span>{{
+                                      session.instructorName ||
+                                      "Instructor pending"
+                                    }}</span>
                                   </div>
 
-                                  <div v-if="session.groupName" class="session-detail">
+                                  <div
+                                    v-if="session.groupName"
+                                    class="session-detail"
+                                  >
                                     <i class="pi pi-users"></i>
                                     <span>{{ session.groupName }}</span>
                                   </div>
@@ -449,13 +565,25 @@
                               <div class="session-actions">
                                 <Button
                                   icon="pi pi-sign-in"
-                                  :label="session.status === 'past' ? 'Closed' : 'Join'"
+                                  :label="
+                                    session.status === 'past'
+                                      ? 'Closed'
+                                      : 'Join'
+                                  "
                                   class="btn-join"
-                                  :class="{ 'btn-join-past': session.status === 'past' }"
-                                  :disabled="session.status === 'past' || !isSessionJoinable(session)"
+                                  :class="{
+                                    'btn-join-past': session.status === 'past',
+                                  }"
+                                  :disabled="
+                                    session.status === 'past' ||
+                                    !isSessionJoinable(session)
+                                  "
                                   @click="joinSession(session.joinUrl)"
                                 />
-                                <small v-if="session.startsIn" class="session-starts-in">
+                                <small
+                                  v-if="session.startsIn"
+                                  class="session-starts-in"
+                                >
                                   Starts in {{ session.startsIn }}
                                 </small>
                               </div>
@@ -465,78 +593,77 @@
                       </Accordion>
                     </section>
                   </div>
+                </div>
               </div>
-            </div>
-          </TabPanel>
+            </TabPanel>
 
-          <TabPanel>
-            <template #header>
-              <span class="course-tab-title">
-                <i class="pi pi-calendar" />
-                <span>Calendario</span>
+            <TabPanel>
+              <template #header>
+                <span class="course-tab-title">
+                  <i class="pi pi-calendar" />
+                  <span>Calendario</span>
+                </span>
+              </template>
+
+              <section class="course-calendar-tab">
+                <FullCalendar
+                  class="course-fullcalendar"
+                  :options="courseCalendarOptions"
+                />
+              </section>
+            </TabPanel>
+
+            <TabPanel>
+              <template #header>
+                <span class="course-tab-title">
+                  <i class="pi pi-comments" />
+                  <span>Foro</span>
+                </span>
+              </template>
+              <ForumBoard scope="course" :course-id="route.params.id" />
+            </TabPanel>
+          </TabView>
+        </template>
+      </Card>
+
+      <aside class="course-main-aside">
+        <div class="live-calendar-card">
+          <Calendar v-model="liveCalendarDate" inline :manualInput="false">
+            <template #date="slotProps">
+              <span
+                class="live-calendar-day"
+                :class="{ 'has-class': isCalendarClassDay(slotProps?.date) }"
+              >
+                {{ slotProps?.date?.day }}
               </span>
             </template>
-
-            <section class="course-calendar-tab">
-              <FullCalendar class="course-fullcalendar" :options="courseCalendarOptions" />
-            </section>
-          </TabPanel>
-
-          <TabPanel>
-            <template #header>
-              <span class="course-tab-title">
-                <i class="pi pi-comments" />
-                <span>Foro</span>
-              </span>
-            </template>
-            <ForumBoard scope="course" :course-id="route.params.id" />
-          </TabPanel>
-        </TabView>
-      </template>
-    </Card>
-
-    <aside class="course-main-aside">
-      <div class="live-calendar-card">
-        <Calendar
-          v-model="liveCalendarDate"
-          inline
-          :manualInput="false"
-        >
-          <template #date="slotProps">
-            <span
-              class="live-calendar-day"
-              :class="{ 'has-class': isCalendarClassDay(slotProps?.date) }"
-            >
-              {{ slotProps?.date?.day }}
-            </span>
-          </template>
-        </Calendar>
-      </div>
-    </aside>
+          </Calendar>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast';
-import { useAuthStore } from '../stores/auth';
-import { useI18n } from 'vue-i18n';
-import TabPanel from 'primevue/tabpanel';
-import TabView from 'primevue/tabview';
-import Accordion from 'primevue/accordion';
-import AccordionTab from 'primevue/accordiontab';
-import FullCalendar from '@fullcalendar/vue3';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin from '@fullcalendar/interaction';
-import esLocale from '@fullcalendar/core/locales/es';
-import PreviewBanner from '../components/PreviewBanner.vue';
-import CoursePostsFeed from '../components/student/posts/CoursePostsFeed.vue';
-import ForumBoard from '../components/forums/ForumBoard.vue';
-import api from '../api/axios';
-import { mySessions } from '../api/liveSessions';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
+import { useAuthStore } from "../stores/auth";
+import { useI18n } from "vue-i18n";
+import TabPanel from "primevue/tabpanel";
+import TabView from "primevue/tabview";
+import Accordion from "primevue/accordion";
+import AccordionTab from "primevue/accordiontab";
+import FullCalendar from "@fullcalendar/vue3";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
+import interactionPlugin from "@fullcalendar/interaction";
+import esLocale from "@fullcalendar/core/locales/es";
+import PreviewBanner from "../components/PreviewBanner.vue";
+import CoursePostsFeed from "../components/student/posts/CoursePostsFeed.vue";
+import ForumBoard from "../components/forums/ForumBoard.vue";
+import api from "../api/axios";
+import { mySessions } from "../api/liveSessions";
 
 const route = useRoute();
 const router = useRouter();
@@ -552,7 +679,7 @@ const updatingLesson = ref(null);
 const completedLessons = ref(new Set());
 
 const isPreview = computed(
-  () => route.query.preview === '1' || route.query.preview === 'true',
+  () => route.query.preview === "1" || route.query.preview === "true",
 );
 
 const markLessonCompleted = (lessonId) => {
@@ -564,7 +691,9 @@ const markLessonCompleted = (lessonId) => {
 const isLessonCompleted = (lessonId) => completedLessons.value.has(lessonId);
 
 const showPreviewBanner = computed(
-  () => isPreview.value && auth.hasAnyRole(['admin', 'instructor', 'content_editor']),
+  () =>
+    isPreview.value &&
+    auth.hasAnyRole(["admin", "instructor", "content_editor"]),
 );
 
 const liveSessions = ref([]);
@@ -594,12 +723,12 @@ const defaultProgress = {
 
 const selectedLiveGroup = ref(null);
 const selectedLiveInstructor = ref(null);
-const activeSessionFilters = ref(['this-week', 'upcoming', 'past']);
+const activeSessionFilters = ref(["this-week", "upcoming", "past"]);
 
 const sessionStatusFilters = [
-  { key: 'this-week', label: 'This week' },
-  { key: 'upcoming', label: 'Upcoming' },
-  { key: 'past', label: 'Past' },
+  { key: "this-week", label: "This week" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "past", label: "Past" },
 ];
 
 const expandedModules = ref([]);
@@ -614,18 +743,21 @@ const toggleModule = (id) => {
   expandedModules.value.push(id);
 };
 
-const totalCount = computed(() =>
-  progress.value?.totalLessons ??
-  courseModules.value.reduce((sum, m) => sum + (m.lessons?.length || 0), 0),
+const totalCount = computed(
+  () =>
+    progress.value?.totalLessons ??
+    courseModules.value.reduce((sum, m) => sum + (m.lessons?.length || 0), 0),
 );
 
-const isLessonDone = (lesson) => lesson.completed || isLessonCompleted(lesson.id);
+const isLessonDone = (lesson) =>
+  lesson.completed || isLessonCompleted(lesson.id);
 
 const completedCount = computed(
   () =>
     progress.value?.completedLessons ??
     courseModules.value.reduce(
-      (sum, m) => sum + (m.lessons?.filter((lesson) => isLessonDone(lesson)).length || 0),
+      (sum, m) =>
+        sum + (m.lessons?.filter((lesson) => isLessonDone(lesson)).length || 0),
       0,
     ),
 );
@@ -640,7 +772,7 @@ const nextLesson = computed(() => {
   return null;
 });
 
-const nextLessonTitle = computed(() => nextLesson.value?.title || '');
+const nextLessonTitle = computed(() => nextLesson.value?.title || "");
 
 const fetchProgress = async (id) => {
   if (isPreview.value) {
@@ -650,7 +782,9 @@ const fetchProgress = async (id) => {
   const { data } = await api.get(`/courses/${id}/progress`);
   progress.value = data;
   if (Array.isArray(data.completedLessonDetails)) {
-    const doneSet = new Set(data.completedLessonDetails.map((lesson) => lesson.id));
+    const doneSet = new Set(
+      data.completedLessonDetails.map((lesson) => lesson.id),
+    );
     completedLessons.value = doneSet;
   }
 };
@@ -695,19 +829,23 @@ const loadLiveSessions = async (courseId) => {
             title: item.title,
             startsAt: item.startsAt || item.starts_at,
             endsAt: item.endsAt || item.ends_at,
-            classTypeName: item.classTypeName || item.class_type_name || '',
-            hostTeacherName: item.hostTeacherName || item.host_teacher_name || '',
-            groupName: item.groupName || item.group_name || '',
-            joinUrl: item.joinUrl || item.join_url || '',
+            classTypeName: item.classTypeName || item.class_type_name || "",
+            hostTeacherName:
+              item.hostTeacherName || item.host_teacher_name || "",
+            groupName: item.groupName || item.group_name || "",
+            joinUrl: item.joinUrl || item.join_url || "",
           }))
           .sort(
             (a, b) =>
-              new Date(a.startsAt || 0).getTime() - new Date(b.startsAt || 0).getTime(),
+              new Date(a.startsAt || 0).getTime() -
+              new Date(b.startsAt || 0).getTime(),
           )
       : [];
 
     liveSessions.value = sanitized;
-    const firstSessionDate = sanitized[0]?.startsAt ? new Date(sanitized[0].startsAt) : null;
+    const firstSessionDate = sanitized[0]?.startsAt
+      ? new Date(sanitized[0].startsAt)
+      : null;
     if (firstSessionDate && !Number.isNaN(firstSessionDate.getTime())) {
       liveCalendarDate.value = firstSessionDate;
     }
@@ -743,9 +881,9 @@ const fetchData = async (id) => {
   } catch (err) {
     error.value = true;
     toast.add({
-      severity: 'error',
-      summary: t('common.notifications.error'),
-      detail: t('course.toastLoadError'),
+      severity: "error",
+      summary: t("common.notifications.error"),
+      detail: t("course.toastLoadError"),
       life: 3000,
     });
   } finally {
@@ -756,7 +894,7 @@ const fetchData = async (id) => {
 const reload = () => fetchData(route.params.id);
 
 const openLesson = (lessonId) => {
-  const query = isPreview.value ? { preview: '1' } : {};
+  const query = isPreview.value ? { preview: "1" } : {};
   router.push({
     path: `/student/course/${route.params.id}/lesson/${lessonId}`,
     query,
@@ -772,9 +910,9 @@ const openNextLesson = () => {
 const markDone = async (lessonId) => {
   if (isPreview.value) {
     toast.add({
-      severity: 'info',
-      summary: t('course.previewToastTitle'),
-      detail: t('course.previewToastMessage'),
+      severity: "info",
+      summary: t("course.previewToastTitle"),
+      detail: t("course.previewToastMessage"),
       life: 2500,
     });
     return;
@@ -783,14 +921,14 @@ const markDone = async (lessonId) => {
   updatingLesson.value = lessonId;
   try {
     await api.post(`/lessons/${lessonId}/progress`, {
-      status: 'done',
+      status: "done",
       progressPercent: 100,
     });
 
     toast.add({
-      severity: 'success',
-      summary: t('common.notifications.success'),
-      detail: t('course.updatedToast'),
+      severity: "success",
+      summary: t("common.notifications.success"),
+      detail: t("course.updatedToast"),
       life: 2000,
     });
 
@@ -798,9 +936,9 @@ const markDone = async (lessonId) => {
     markLessonCompleted(lessonId);
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: t('common.notifications.error'),
-      detail: t('course.updateError'),
+      severity: "error",
+      summary: t("common.notifications.error"),
+      detail: t("course.updateError"),
       life: 3000,
     });
   } finally {
@@ -809,39 +947,39 @@ const markDone = async (lessonId) => {
 };
 
 const formatSessionDate = (value) => {
-  if (!value) return '';
+  if (!value) return "";
   const date = new Date(value);
   return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
+    weekday: "short",
+    month: "short",
+    day: "numeric",
   });
 };
 
 const formatSessionRange = (start, end) => {
-  if (!start) return '';
+  if (!start) return "";
   const startDate = new Date(start);
   const endDate = end ? new Date(end) : null;
 
   const startTime = startDate.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
   const endTime = endDate
     ? endDate.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
+        hour: "2-digit",
+        minute: "2-digit",
       })
-    : '';
+    : "";
 
   return endTime ? `${startTime} — ${endTime}` : startTime;
 };
 
 const formatCountdown = (value) => {
-  if (!value) return '';
+  if (!value) return "";
   const diff = new Date(value).getTime() - now.value.getTime();
-  if (Number.isNaN(diff) || diff <= 0) return '';
+  if (Number.isNaN(diff) || diff <= 0) return "";
 
   const days = Math.floor(diff / 86_400_000);
   const hours = Math.floor((diff % 86_400_000) / 3_600_000);
@@ -851,17 +989,17 @@ const formatCountdown = (value) => {
   if (days) parts.push(`${days}d`);
   if (hours) parts.push(`${hours}h`);
   if (minutes) parts.push(`${minutes}m`);
-  if (!parts.length) parts.push('moments');
+  if (!parts.length) parts.push("moments");
 
-  return `${parts.join(' ')}`;
+  return `${parts.join(" ")}`;
 };
 
 const formatWeekDateLabel = (value) => {
-  if (!value) return '';
+  if (!value) return "";
   try {
     return new Intl.DateTimeFormat(locale.value || undefined, {
-      month: 'short',
-      day: 'numeric',
+      month: "short",
+      day: "numeric",
     }).format(value);
   } catch (_) {
     return value.toLocaleDateString();
@@ -887,8 +1025,8 @@ const getWeekBounds = (value) => {
 };
 
 const formatWeekLabel = (start, end) => {
-  if (!start || !end) return '';
-  return t('course.liveSessions.weekLabel', {
+  if (!start || !end) return "";
+  return t("course.liveSessions.weekLabel", {
     start: formatWeekDateLabel(start),
     end: formatWeekDateLabel(end),
   });
@@ -896,12 +1034,12 @@ const formatWeekLabel = (start, end) => {
 
 const formatWeekMeta = (count) =>
   count === 1
-    ? t('course.liveSessions.weekMetaSingle')
-    : t('course.liveSessions.weekMetaMany', { count });
+    ? t("course.liveSessions.weekMetaSingle")
+    : t("course.liveSessions.weekMetaMany", { count });
 
 const liveSessionGroupOptions = computed(() => {
   const values = liveSessions.value
-    .map((session) => session.groupName || session.group_name || '')
+    .map((session) => session.groupName || session.group_name || "")
     .filter(Boolean);
 
   return Array.from(new Set(values)).map((value) => ({ label: value, value }));
@@ -909,14 +1047,18 @@ const liveSessionGroupOptions = computed(() => {
 
 const liveSessionInstructorOptions = computed(() => {
   const values = liveSessions.value
-    .map((session) => session.hostTeacherName || session.host_teacher_name || '')
+    .map(
+      (session) => session.hostTeacherName || session.host_teacher_name || "",
+    )
     .filter(Boolean);
 
   return Array.from(new Set(values)).map((value) => ({ label: value, value }));
 });
 
-const liveSessionsThisWeek = computed(() =>
-  liveSessions.value.filter((session) => isSessionInWeek(session, now.value)).length,
+const liveSessionsThisWeek = computed(
+  () =>
+    liveSessions.value.filter((session) => isSessionInWeek(session, now.value))
+      .length,
 );
 
 const getSessionDate = (session) => {
@@ -927,13 +1069,13 @@ const getSessionDate = (session) => {
 
 const getSessionStatus = (session) => {
   const start = getSessionDate(session);
-  if (!start) return 'upcoming';
+  if (!start) return "upcoming";
 
   const end = session.endsAt ? new Date(session.endsAt) : null;
 
-  if (start <= now.value && (!end || end >= now.value)) return 'live';
-  if (start > now.value) return 'upcoming';
-  return 'past';
+  if (start <= now.value && (!end || end >= now.value)) return "live";
+  if (start > now.value) return "upcoming";
+  return "past";
 };
 
 const isSessionInWeek = (session, reference) => {
@@ -957,16 +1099,18 @@ const filteredLiveSessions = computed(() => {
       }
 
       if (selectedLiveInstructor.value) {
-        const instructor = session.hostTeacherName || session.host_teacher_name || '';
+        const instructor =
+          session.hostTeacherName || session.host_teacher_name || "";
         if (instructor !== selectedLiveInstructor.value) return false;
       }
 
       if (!statuses.length) return true;
 
       return statuses.some((status) => {
-        if (status === 'this-week') return isSessionInWeek(session, now.value);
-        if (status === 'upcoming') return getSessionStatus(session) === 'upcoming';
-        if (status === 'past') return getSessionStatus(session) === 'past';
+        if (status === "this-week") return isSessionInWeek(session, now.value);
+        if (status === "upcoming")
+          return getSessionStatus(session) === "upcoming";
+        if (status === "past") return getSessionStatus(session) === "past";
         return false;
       });
     })
@@ -977,13 +1121,14 @@ const filteredLiveSessions = computed(() => {
         startsAtDate: sessionDate,
         status: getSessionStatus(session),
         dayLabel: sessionDate
-          ? sessionDate.toLocaleDateString(undefined, { weekday: 'long' })
-          : '',
+          ? sessionDate.toLocaleDateString(undefined, { weekday: "long" })
+          : "",
         dateLabel: formatSessionDate(session.startsAt),
         timeLabel: formatSessionRange(session.startsAt, session.endsAt),
-        instructorName: session.hostTeacherName || session.host_teacher_name || '',
-        groupName: session.groupName || session.group_name || '',
-        typeLabel: session.classTypeName || session.class_type_name || 'Live',
+        instructorName:
+          session.hostTeacherName || session.host_teacher_name || "",
+        groupName: session.groupName || session.group_name || "",
+        typeLabel: session.classTypeName || session.class_type_name || "Live",
         startsIn: formatCountdown(session.startsAt),
       };
     });
@@ -1026,9 +1171,7 @@ const groupedLiveSessions = computed(() => {
         meta: formatWeekMeta(orderedSessions.length),
       },
       sessions: orderedSessions,
-      isCurrentWeek:
-        now.value >= group.weekStart &&
-        now.value <= group.weekEnd,
+      isCurrentWeek: now.value >= group.weekStart && now.value <= group.weekEnd,
     };
   });
 });
@@ -1038,50 +1181,52 @@ const calendarTabEvents = computed(() =>
     .filter((session) => session?.startsAt)
     .map((session) => ({
       id: session.id,
-      title: session.title || 'Clase en vivo',
+      title: session.title || "Clase en vivo",
       start: session.startsAt,
       end: session.endsAt || null,
       extendedProps: {
-        joinUrl: session.joinUrl || '',
-        instructorName: session.hostTeacherName || session.host_teacher_name || '',
-        classTypeName: session.classTypeName || session.class_type_name || 'Live',
+        joinUrl: session.joinUrl || "",
+        instructorName:
+          session.hostTeacherName || session.host_teacher_name || "",
+        classTypeName:
+          session.classTypeName || session.class_type_name || "Live",
       },
     })),
 );
 
 const courseCalendarOptions = computed(() => ({
   plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
-  initialView: 'dayGridMonth',
+  initialView: "dayGridMonth",
   headerToolbar: {
-    left: 'prev,next today',
-    center: 'title',
-    right: 'dayGridMonth,timeGridWeek,timeGridDay',
+    left: "prev,next today",
+    center: "title",
+    right: "dayGridMonth,timeGridWeek,timeGridDay",
   },
-  height: 'auto',
+  height: "auto",
   firstDay: 1,
-  locale: locale.value?.startsWith('es') ? esLocale : 'en',
-  buttonText: locale.value?.startsWith('es')
+  locale: locale.value?.startsWith("es") ? esLocale : "en",
+  buttonText: locale.value?.startsWith("es")
     ? {
-        today: 'Hoy',
-        month: 'Mes',
-        week: 'Semana',
-        day: 'Día',
+        today: "Hoy",
+        month: "Mes",
+        week: "Semana",
+        day: "Día",
       }
     : undefined,
   events: calendarTabEvents.value,
   eventTimeFormat: {
-    hour: '2-digit',
-    minute: '2-digit',
+    hour: "2-digit",
+    minute: "2-digit",
     meridiem: false,
   },
   eventClick: (info) => {
     const joinUrl = info?.event?.extendedProps?.joinUrl;
-    if (joinUrl) window.open(joinUrl, '_blank', 'noopener');
+    if (joinUrl) window.open(joinUrl, "_blank", "noopener");
   },
 }));
 
-const currentWeekGroup = computed(() =>
-  groupedLiveSessions.value.find((group) => group.isCurrentWeek) || null,
+const currentWeekGroup = computed(
+  () => groupedLiveSessions.value.find((group) => group.isCurrentWeek) || null,
 );
 
 const otherWeekGroups = computed(() =>
@@ -1103,10 +1248,10 @@ const toggleSessionFilter = (key) => {
 
 const toLocalDateKey = (value) => {
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
@@ -1121,7 +1266,11 @@ const classDaysKeySet = computed(() => {
 
 const isCalendarClassDay = (calendarDate) => {
   if (!calendarDate) return false;
-  const date = new Date(calendarDate.year, calendarDate.month, calendarDate.day);
+  const date = new Date(
+    calendarDate.year,
+    calendarDate.month,
+    calendarDate.day,
+  );
   return classDaysKeySet.value.has(toLocalDateKey(date));
 };
 
@@ -1133,7 +1282,7 @@ const isSessionJoinable = (session) => {
 
 const joinSession = (url) => {
   if (!url) return;
-  window.open(url, '_blank', 'noopener');
+  window.open(url, "_blank", "noopener");
 };
 
 onMounted(() => {
@@ -1147,14 +1296,11 @@ onBeforeUnmount(() => {
   }
 });
 
-watch(
-  [() => route.params.id, () => route.query.preview],
-  ([newId]) => {
-    if (newId) {
-      fetchData(newId);
-    }
-  },
-);
+watch([() => route.params.id, () => route.query.preview], ([newId]) => {
+  if (newId) {
+    fetchData(newId);
+  }
+});
 
 watch(courseModules, (modules) => {
   if (!modules.length) {
@@ -1168,35 +1314,37 @@ watch(courseModules, (modules) => {
 
 const previewQuery = computed(() => {
   if (!isPreview.value) return null;
-  const previewValue = route.query.preview === 'true' ? 'true' : '1';
+  const previewValue = route.query.preview === "true" ? "true" : "1";
   return { preview: previewValue };
 });
 
 const breadcrumbHome = computed(() => ({
-  label: t('course.breadcrumbHome'),
+  label: t("course.breadcrumbHome"),
   command: (event) => {
     event?.originalEvent?.preventDefault();
     const query = previewQuery.value;
-    const destination = query ? { path: '/student', query } : { path: '/student' };
+    const destination = query
+      ? { path: "/student", query }
+      : { path: "/student" };
     router.push(destination);
   },
 }));
 
 const breadcrumbItems = computed(() => [
   {
-    label: course.value?.title || t('course.breadcrumbFallback'),
+    label: course.value?.title || t("course.breadcrumbFallback"),
   },
 ]);
 
 const progressSummaryText = computed(() =>
-  t('course.progressSummary', {
+  t("course.progressSummary", {
     done: progress.value?.completedLessons ?? 0,
     total: progress.value?.totalLessons ?? 0,
   }),
 );
 
 const nextLessonText = computed(() =>
-  t('course.nextLesson', { title: progress.value?.nextLessonTitle || '' }),
+  t("course.nextLesson", { title: progress.value?.nextLessonTitle || "" }),
 );
 </script>
 
@@ -1268,7 +1416,8 @@ const nextLessonText = computed(() =>
   scrollbar-width: none;
 }
 
-:deep(.p-breadcrumb::-webkit-scrollbar) {
+:deep(.p-breadcrumb::-webkit-scrollbar),
+:deep(.p-tabview-nav::-webkit-scrollbar) {
   display: none;
 }
 
@@ -1284,10 +1433,6 @@ const nextLessonText = computed(() =>
   scrollbar-width: none;
 }
 
-:deep(.p-tabview-nav::-webkit-scrollbar) {
-  display: none;
-}
-
 :deep(.p-tabview-nav li) {
   flex: 0 0 auto;
 }
@@ -1296,166 +1441,85 @@ const nextLessonText = computed(() =>
   white-space: nowrap;
 }
 
-.course-tab-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.course-calendar-tab {
-  min-width: 0;
-  border: 1px solid #dbe7f5;
-  border-radius: 18px;
-  background: #ffffff;
-  padding: 0.95rem;
-}
-
-.course-fullcalendar {
-  min-width: 0;
-}
-
-.course-fullcalendar :deep(.fc) {
-  --fc-border-color: #e2e8f0;
-  --fc-today-bg-color: #eff6ff;
-  --fc-page-bg-color: #ffffff;
-  --fc-neutral-bg-color: #f8fafc;
-  --fc-event-bg-color: #1d4ed8;
-  --fc-event-border-color: #1d4ed8;
-  --fc-event-text-color: #ffffff;
-  color: #0f172a;
-  font-size: 0.95rem;
-}
-
-.course-fullcalendar :deep(.fc-toolbar-title) {
-  font-size: clamp(1rem, 2.2vw, 1.25rem);
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.course-fullcalendar :deep(.fc-header-toolbar) {
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.9rem;
-}
-
-.course-fullcalendar :deep(.fc .fc-button) {
-  border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #1e3a8a;
-  font-weight: 600;
-  text-transform: capitalize;
-  box-shadow: none;
-}
-
-.course-fullcalendar :deep(.fc .fc-button:hover) {
-  background: #e2e8f0;
-  border-color: #cbd5e1;
-  color: #1e3a8a;
-}
-
-.course-fullcalendar :deep(.fc .fc-button-primary:not(:disabled).fc-button-active),
-.course-fullcalendar :deep(.fc .fc-button-primary:not(:disabled):active) {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  color: #1d4ed8;
-}
-
-.course-fullcalendar :deep(.fc-col-header-cell-cushion) {
-  color: #334155;
-  font-weight: 700;
-  padding: 0.45rem 0.2rem;
-}
-
-.course-fullcalendar :deep(.fc-daygrid-day-number) {
-  color: #475569;
-  font-weight: 600;
-}
-
-.course-fullcalendar :deep(.fc-event) {
-  border-radius: 8px;
-  padding: 0.1rem 0.3rem;
-  font-size: 0.79rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.course-fullcalendar :deep(.fc-event-time) {
-  font-weight: 700;
-}
-
-.course-fullcalendar :deep(.fc-daygrid-event-dot) {
-  border-color: #1d4ed8;
-}
-
-.course-fullcalendar :deep(.fc-theme-standard .fc-scrollgrid) {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
 :deep(.p-progressbar) {
   height: 0.7rem;
   border-radius: 999px;
   overflow: hidden;
 }
 
+.course-tab-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 /* =========================
-   HEADER
+   HEADER PREMIUM
 ========================= */
 .course-header {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
-  gap: 1.5rem;
-  align-items: start;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.85fr);
+  gap: 1.25rem;
+  align-items: stretch;
+  min-width: 0;
+  padding: 1.15rem;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #dbe7f5;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.course-brand-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   min-width: 0;
 }
 
-.course-header > * {
+.course-brand-logo {
+  width: 92px;
+  height: 92px;
+  padding: 0.65rem;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.course-brand-text {
   min-width: 0;
 }
 
-.course-header h2 {
+.course-brand-text h2 {
   margin: 0;
-  font-size: clamp(1.7rem, 3.4vw, 2.6rem);
+  font-size: clamp(1.45rem, 2.4vw, 2.15rem);
   line-height: 1.08;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-weight: 900;
   color: #0f172a;
+  letter-spacing: -0.035em;
   overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
-.description {
-  margin: 0.75rem 0 0;
+.course-brand-text .description {
+  margin: 0.5rem 0 0;
+  max-width: 620px;
+  font-size: 0.95rem;
   color: #64748b;
-  font-size: 1rem;
-  line-height: 1.55;
-  max-width: 720px;
-  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .progress {
+  align-self: center;
   min-width: 0;
-  background: linear-gradient(135deg, #f8fafc 0%, #eef4ff 100%);
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #dbe7f5;
+  border-radius: 20px;
   padding: 1rem;
   display: grid;
   gap: 0.55rem;
-}
-
-.progress span {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.progress small {
-  color: #64748b;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* =========================
@@ -1487,18 +1551,14 @@ const nextLessonText = computed(() =>
 }
 
 .student-course-hero .progress-card {
-  background: linear-gradient(
-    135deg,
-    #e8f6f1 0%,
-    #e3f0fb 50%,
-    #f7fbff 100%
-  );
+  background: linear-gradient(135deg, #e8f6f1 0%, #e3f0fb 50%, #f7fbff 100%);
   box-shadow:
     0 10px 30px rgba(16, 185, 129, 0.08),
     0 20px 60px rgba(59, 130, 246, 0.08);
 }
 
-.continue-content {
+.continue-content,
+.progress-info {
   min-width: 0;
   flex: 1;
 }
@@ -1534,11 +1594,6 @@ const nextLessonText = computed(() =>
   border: none;
 }
 
-.progress-info {
-  flex: 1;
-  min-width: 0;
-}
-
 .progress-info label {
   font-size: 0.82rem;
   color: #64748b;
@@ -1563,184 +1618,262 @@ const nextLessonText = computed(() =>
 }
 
 /* =========================
-   MODULES / LESSONS
+   MODULES / LESSONS - HORIZONTAL CARDS
 ========================= */
 .student-modules-list {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 1rem;
   margin-top: 1rem;
   min-width: 0;
 }
 
 .module-node {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.85rem;
   min-width: 0;
 }
 
 .module-header {
-  padding: 0.9rem 1rem;
+  padding: 1rem 1.1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
   cursor: pointer;
   background: #ffffff;
-  border: 1px solid #dbe6f4;
-  border-radius: 14px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+  border: 1px solid #dbe7f5;
+  border-radius: 18px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
   min-width: 0;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.module-header:hover {
+  transform: translateY(-1px);
+  border-color: #bfdbfe;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
 }
 
 .module-info {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.85rem;
   min-width: 0;
+}
+
+.module-icon-wrap {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.module-icon {
+  font-size: 1.25rem;
 }
 
 .module-info h4 {
   margin: 0;
   font-size: 1rem;
-  line-height: 1.3;
+  line-height: 1.25;
   color: #0f172a;
-  font-weight: 700;
+  font-weight: 800;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.module-icon {
-  font-size: 1.35rem;
-  color: #1d4ed8;
+.module-info small {
+  display: block;
+  margin-top: 0.18rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.module-toggle-btn {
   flex-shrink: 0;
+  color: #2563eb !important;
 }
 
 .module-lessons {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
   min-width: 0;
-  padding: 0.2rem 0 0.1rem 1.15rem;
+}
+
+.lesson-card-modern {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1.35rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.9rem;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  min-width: 0;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.lesson-card-modern:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.09);
+}
+
+.lesson-cover {
   position: relative;
+  height: 140px;
+  border-radius: 13px;
+  background: #f1f5f9;
+  overflow: hidden;
 }
 
-.module-lessons::before {
-  content: '';
+.lesson-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Sin overlay para que la imagen quede limpia como la referencia */
+.lesson-cover::after {
+  content: none;
+}
+
+.lesson-kind-badge {
   position: absolute;
-  left: 0.55rem;
-  top: 0.45rem;
-  bottom: 0.45rem;
-  width: 2px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #bfdbfe 0%, #dbeafe 100%);
-}
-
-.module-lessons-heading {
-  padding-left: 0.45rem;
-}
-
-.module-lessons-heading span {
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  font-size: 0.79rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #64748b;
+  gap: 0.35rem;
+  padding: 0.32rem 0.65rem;
+  border-radius: 999px;
+  background: #f97316;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.22);
+}
+
+.lesson-kind-badge i {
+  font-size: 0.72rem;
+}
+
+.lesson-card-content {
+  display: block;
   min-width: 0;
 }
 
-.lesson-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.85rem 0.95rem;
-  border: 1px solid #dce6f4;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
-  min-width: 0;
-  margin-left: 0.45rem;
-  position: relative;
+.lesson-card-header {
+  display: grid;
+  gap: 0.45rem;
 }
 
-.lesson-row::before {
-  content: '';
-  position: absolute;
-  left: -0.48rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 0.4rem;
-  height: 2px;
-  background: #bfdbfe;
-}
-
-.lesson-title-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.lesson-title-group span {
-  font-weight: 600;
+.lesson-card-header h5 {
+  margin: 0;
   color: #0f172a;
-  line-height: 1.35;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  font-weight: 900;
+  text-transform: uppercase;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.lesson-title-main {
+.lesson-status-pill {
+  width: fit-content;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
+  font-weight: 800;
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.lesson-status-pill.completed {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.lesson-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin: 0.65rem 0 0.95rem;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.lesson-meta-row span {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
-.lesson-row-icon {
-  color: #1d4ed8;
-  font-size: 0.92rem;
-}
-
-.lesson-order {
-  color: #2563eb;
-  font-weight: 600;
-}
-
-.lesson-title-group small {
-  color: #64748b;
-  line-height: 1.3;
-}
-
-.lesson-actions {
-  display: flex;
+.lesson-card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 0.5rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  min-width: 0;
+  max-width: 100%;
+}
+
+.lesson-card-actions :deep(.p-button) {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 10px !important;
+  font-size: 0.8rem;
+  font-weight: 800;
+  justify-content: center;
 }
 
 .btn-open {
-  background: #1e3a8a;
-  color: #ffffff;
-  border: none;
+  background: #0f4778 !important;
+  color: #ffffff !important;
+  border: 0 !important;
+}
+
+.btn-open:hover {
+  background: #123f68 !important;
+  color: #ffffff !important;
 }
 
 .btn-done {
-  background: #10b981;
-  color: #ffffff;
-  border: none;
+  background: #ffffff !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
 }
 
-.mb-2 {
-  margin-bottom: 0.75rem;
+.btn-done:hover {
+  background: #f8fafc !important;
+  color: #0f172a !important;
 }
 
-.course-tabs {
-  margin-top: 1rem;
-  min-width: 0;
+.btn-done:disabled {
+  opacity: 1 !important;
+  background: #ffffff !important;
+  color: #64748b !important;
+  border-color: #dbe3ed !important;
 }
 
 /* =========================
@@ -1783,16 +1916,11 @@ const nextLessonText = computed(() =>
 /* =========================
    LIVE SESSIONS
 ========================= */
-.live-tab-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
+.live-tab-skeleton,
 .live-tab-error {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .live-sessions-hero {
@@ -1883,12 +2011,6 @@ const nextLessonText = computed(() =>
   border-radius: 999px;
 }
 
-.live-calendar-day.has-class {
-  background: rgba(37, 99, 235, 0.16);
-  color: #1d4ed8;
-  font-weight: 700;
-}
-
 .live-calendar-day {
   display: inline-flex;
   align-items: center;
@@ -1900,8 +2022,14 @@ const nextLessonText = computed(() =>
   position: relative;
 }
 
+.live-calendar-day.has-class {
+  background: rgba(37, 99, 235, 0.16);
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
 .live-calendar-day.has-class::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: 0.22rem;
   left: 50%;
@@ -1912,16 +2040,19 @@ const nextLessonText = computed(() =>
   background: #1d4ed8;
 }
 
-.live-sessions-layout {
+.live-sessions-layout,
+.current-week-section,
+.other-weeks-section {
   display: flex;
   flex-direction: column;
+}
+
+.live-sessions-layout {
   gap: 1.5rem;
 }
 
 .current-week-section,
 .other-weeks-section {
-  display: flex;
-  flex-direction: column;
   gap: 0.9rem;
 }
 
@@ -1956,16 +2087,18 @@ const nextLessonText = computed(() =>
   background: #ffffff;
   border: 1px solid #e5e7eb;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.current-week-card {
-  box-shadow: 0 12px 28px rgba(29, 78, 216, 0.08);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .session-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.current-week-card {
+  box-shadow: 0 12px 28px rgba(29, 78, 216, 0.08);
 }
 
 .session-leading-icon {
@@ -1987,11 +2120,15 @@ const nextLessonText = computed(() =>
   gap: 0.5rem;
 }
 
-.session-topline {
+.session-topline,
+.session-details-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.session-topline {
+  gap: 0.45rem;
 }
 
 .session-title-text {
@@ -2003,8 +2140,6 @@ const nextLessonText = computed(() =>
 }
 
 .session-details-row {
-  display: flex;
-  flex-wrap: wrap;
   gap: 0.75rem 1rem;
 }
 
@@ -2090,17 +2225,8 @@ const nextLessonText = computed(() =>
       rgba(59, 130, 246, 0.16),
       transparent 42%
     ),
-    radial-gradient(
-      circle at 68% 36%,
-      rgba(34, 197, 94, 0.1),
-      transparent 48%
-    ),
-    linear-gradient(
-      135deg,
-      #eef6ff 0%,
-      #eaf4ff 42%,
-      #f7fbff 100%
-    );
+    radial-gradient(circle at 68% 36%, rgba(34, 197, 94, 0.1), transparent 48%),
+    linear-gradient(135deg, #eef6ff 0%, #eaf4ff 42%, #f7fbff 100%);
   border: 1px solid #dbeafe;
   min-width: 320px;
   max-width: 100%;
@@ -2141,6 +2267,33 @@ const nextLessonText = computed(() =>
 }
 
 /* =========================
+   CALENDAR
+========================= */
+.course-calendar-tab {
+  min-width: 0;
+  border: 1px solid #dbe7f5;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 0.95rem;
+}
+
+.course-fullcalendar {
+  min-width: 0;
+}
+
+.course-fullcalendar :deep(.fc) {
+  --fc-border-color: #e2e8f0;
+  --fc-today-bg-color: #eff6ff;
+  --fc-page-bg-color: #ffffff;
+  --fc-neutral-bg-color: #f8fafc;
+  --fc-event-bg-color: #1d4ed8;
+  --fc-event-border-color: #1d4ed8;
+  --fc-event-text-color: #ffffff;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+/* =========================
    LARGE TABLET
 ========================= */
 @media (max-width: 1024px) {
@@ -2150,6 +2303,14 @@ const nextLessonText = computed(() =>
 
   .course-main-aside {
     position: static;
+  }
+
+  .lesson-card-modern {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .lesson-cover {
+    height: 130px;
   }
 
   .session-card {
@@ -2192,6 +2353,16 @@ const nextLessonText = computed(() =>
   }
 
   .description {
+    max-width: 100%;
+  }
+
+  .lesson-card-modern {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .lesson-card-actions {
+    grid-template-columns: 1fr;
     max-width: 100%;
   }
 
@@ -2278,6 +2449,59 @@ const nextLessonText = computed(() =>
     font-size: 1.2rem;
   }
 
+  .module-header {
+    padding: 0.9rem;
+    border-radius: 16px;
+  }
+
+  .module-icon-wrap {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .module-info h4 {
+    font-size: 0.96rem;
+  }
+
+  .module-info small {
+    font-size: 0.78rem;
+  }
+
+  .module-lessons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .lesson-card-modern {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+    padding: 0.8rem;
+    border-radius: 16px;
+  }
+
+  .lesson-cover {
+    height: 165px;
+  }
+
+  .lesson-card-content {
+    padding: 0;
+  }
+
+  .lesson-card-header h5 {
+    font-size: 0.96rem;
+  }
+
+  .lesson-card-actions {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+
+  .lesson-card-actions :deep(.p-button) {
+    min-height: 38px;
+  }
+
   .live-sessions-hero {
     grid-template-columns: 1fr;
     gap: 0.8rem;
@@ -2330,23 +2554,6 @@ const nextLessonText = computed(() =>
     text-align: left;
   }
 
-  .lesson-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.8rem;
-    margin-left: 0.3rem;
-  }
-
-  .lesson-actions {
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-
-  .lesson-actions :deep(.p-button) {
-    flex: 1 1 auto;
-  }
-
   .live-session-image-card {
     grid-template-columns: 1fr;
     padding: 1rem;
@@ -2369,21 +2576,33 @@ const nextLessonText = computed(() =>
     max-width: 120px;
   }
 
-  .course-calendar-tab {
+  .course-header {
+    grid-template-columns: 1fr;
+    padding: 0.95rem;
+    border-radius: 20px;
+  }
+
+  .course-brand-header {
+    align-items: flex-start;
     gap: 0.8rem;
   }
 
-  .module-lessons {
-    padding: 0.75rem 0.7rem 0.85rem 0.95rem;
+  .course-brand-logo {
+    width: 74px;
+    height: 74px;
+    border-radius: 18px;
   }
 
-  .module-lessons::before {
-    left: 0.72rem;
+  .course-brand-text h2 {
+    font-size: 1.45rem;
   }
 
-  .lesson-row::before {
-    left: -0.4rem;
-    width: 0.35rem;
+  .course-brand-text .description {
+    font-size: 0.88rem;
+  }
+
+  .course-calendar-tab {
+    gap: 0.8rem;
   }
 
   .course-fullcalendar :deep(.fc-header-toolbar) {
@@ -2421,6 +2640,37 @@ const nextLessonText = computed(() =>
     font-size: 1.08rem;
   }
 
+  .module-header {
+    padding: 0.85rem;
+  }
+
+  .lesson-card-modern {
+    grid-template-columns: 1fr;
+    padding: 0.75rem;
+    border-radius: 14px;
+  }
+
+  .lesson-card-header h5 {
+    font-size: 0.92rem;
+  }
+
+  .lesson-status-pill {
+    font-size: 0.68rem;
+  }
+
+  .lesson-meta-row {
+    font-size: 0.78rem;
+  }
+
+  .lesson-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-card-actions :deep(.p-button) {
+    width: 100%;
+    min-height: 36px;
+  }
+
   .session-title-text {
     font-size: 0.98rem;
   }
@@ -2429,17 +2679,16 @@ const nextLessonText = computed(() =>
     font-size: 0.86rem;
   }
 
-  .lesson-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .lesson-actions :deep(.p-button) {
-    width: 100%;
-  }
-
   .course-fullcalendar :deep(.fc-toolbar-title) {
     font-size: 1.02rem;
+  }
+
+  .lesson-cover {
+    height: 150px;
+  }
+
+  .lesson-card-content {
+    padding: 0;
   }
 }
 </style>
