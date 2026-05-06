@@ -784,8 +784,11 @@
                 <strong>{{ gamificationSummary?.weekly?.pointsTotal ?? 0 }}</strong>
               </div>
               <div class="course-gamification-item">
-                <small>Racha</small>
-                <strong>{{ gamificationSummary?.streak?.currentWeekStreak ?? 0 }}</strong>
+                <small>Racha diaria</small>
+                <strong class="course-streak-value">
+                  <img :src="fireIcon" alt="Racha" class="course-streak-fire-icon" />
+                  {{ gamificationSummary?.streak?.currentDayStreak ?? 0 }}
+                </strong>
               </div>
               <div class="course-gamification-item">
                 <small>Lecciones</small>
@@ -822,6 +825,7 @@ import esLocale from "@fullcalendar/core/locales/es";
 import PreviewBanner from "../components/PreviewBanner.vue";
 import CoursePostsFeed from "../components/student/posts/CoursePostsFeed.vue";
 import ForumBoard from "../components/forums/ForumBoard.vue";
+import fireIcon from "../assets/fuego.png";
 import api from "../api/axios";
 import { mySessions } from "../api/liveSessions";
 
@@ -2364,6 +2368,18 @@ const nextLessonText = computed(() =>
   color: #0f172a;
   font-size: 1.2rem;
   line-height: 1;
+}
+
+.course-streak-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.course-streak-fire-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .course-gamification-card__error {

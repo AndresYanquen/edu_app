@@ -1,4 +1,5 @@
 const pool = require('../db');
+const STREAK_TIMEZONE = process.env.GAMIFICATION_STREAK_TIMEZONE || 'America/Bogota';
 
 const RULES = {
   lesson_completed_student: { ruleCode: 'lesson_done_v1', points: 10, active: true, bucket: 'lessons_done' },
@@ -45,10 +46,10 @@ const recomputeUserStreak = async (client, userId, referenceWeekStart) => {
 
   const rowsRes = await client.query(
     `
-      SELECT week_start
+      SELECT DISTINCT DATE_TRUNC('week', week_start::timestamp)::date AS week_start
       FROM weekly_user_stats
       WHERE user_id = $1
-        AND week_start <= $2::date
+        AND DATE_TRUNC('week', week_start::timestamp)::date <= $2::date
         AND active_events > 0
       ORDER BY week_start DESC
       LIMIT 260
@@ -58,9 +59,20 @@ const recomputeUserStreak = async (client, userId, referenceWeekStart) => {
 
   let currentWeekStreak = 0;
   let bestWeekStreak = 0;
+  let currentDayStreak = 0;
+  let bestDayStreak = 0;
+  let lastActiveDay = null;
 
   if (rowsRes.rows.length) {
-    const weeks = rowsRes.rows.map((row) => row.week_start);
+    const weeks = rowsRes.rows
+      .map((row) => {
+        if (!row.week_start) return null;
+        const value = row.week_start instanceof Date
+          ? row.week_start.toISOString().slice(0, 10)
+          : String(row.week_start).slice(0, 10);
+        return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+      })
+      .filter(Boolean);
     let prev = null;
     let running = 0;
     for (const wk of weeks) {
@@ -92,6 +104,67 @@ const recomputeUserStreak = async (client, userId, referenceWeekStart) => {
     }
   }
 
+  const dayRowsRes = await client.query(
+    `
+      SELECT DISTINCT ((ge.occurred_at AT TIME ZONE $2)::date) AS active_day
+      FROM points_ledger pl
+      JOIN gamification_events ge ON ge.id = pl.source_event_id
+      WHERE pl.user_id = $1
+      ORDER BY active_day DESC
+      LIMIT 730
+    `,
+    [userId, STREAK_TIMEZONE],
+  );
+
+  const activeDays = dayRowsRes.rows
+    .map((row) => {
+      if (!row.active_day) return null;
+      return row.active_day instanceof Date
+        ? row.active_day.toISOString().slice(0, 10)
+        : String(row.active_day).slice(0, 10);
+    })
+    .filter(Boolean);
+
+  if (activeDays.length) {
+    lastActiveDay = activeDays[0];
+    let prev = null;
+    let running = 0;
+    for (const day of activeDays) {
+      const dayDate = new Date(`${day}T00:00:00.000Z`);
+      if (!prev) {
+        running = 1;
+      } else {
+        const prevDate = new Date(`${prev}T00:00:00.000Z`);
+        const diffDays = Math.round((prevDate.getTime() - dayDate.getTime()) / (24 * 60 * 60 * 1000));
+        running = diffDays === 1 ? running + 1 : 1;
+      }
+      if (running > bestDayStreak) bestDayStreak = running;
+      prev = day;
+    }
+
+    const nowLocalDateRes = await client.query(`SELECT (now() AT TIME ZONE $1)::date AS current_day`, [
+      STREAK_TIMEZONE,
+    ]);
+    const nowLocalDay = nowLocalDateRes.rows[0]?.current_day;
+    const nowLocalDayKey = nowLocalDay instanceof Date
+      ? nowLocalDay.toISOString().slice(0, 10)
+      : String(nowLocalDay || '').slice(0, 10);
+
+    if (activeDays[0] === nowLocalDayKey) {
+      currentDayStreak = 1;
+      let expected = new Date(`${nowLocalDayKey}T00:00:00.000Z`);
+      for (let i = 1; i < activeDays.length; i += 1) {
+        expected = new Date(expected.getTime() - 24 * 60 * 60 * 1000);
+        const expectedKey = expected.toISOString().slice(0, 10);
+        if (activeDays[i] === expectedKey) {
+          currentDayStreak += 1;
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
   await client.query(
     `
       INSERT INTO user_streaks (
@@ -99,17 +172,23 @@ const recomputeUserStreak = async (client, userId, referenceWeekStart) => {
         current_week_streak,
         best_week_streak,
         last_active_week_start,
+        current_day_streak,
+        best_day_streak,
+        last_active_day,
         updated_at
       )
-      VALUES ($1, $2, $3, $4::date, now())
+      VALUES ($1, $2, $3, $4::date, $5, $6, $7::date, now())
       ON CONFLICT (user_id)
       DO UPDATE SET
         current_week_streak = EXCLUDED.current_week_streak,
         best_week_streak = GREATEST(user_streaks.best_week_streak, EXCLUDED.best_week_streak),
         last_active_week_start = EXCLUDED.last_active_week_start,
+        current_day_streak = EXCLUDED.current_day_streak,
+        best_day_streak = GREATEST(user_streaks.best_day_streak, EXCLUDED.best_day_streak),
+        last_active_day = EXCLUDED.last_active_day,
         updated_at = now()
     `,
-    [userId, currentWeekStreak, bestWeekStreak, weekStart],
+    [userId, currentWeekStreak, bestWeekStreak, weekStart, currentDayStreak, bestDayStreak, lastActiveDay],
   );
 };
 
@@ -173,6 +252,80 @@ const applyWeeklyStats = async (client, userId, occurredAt, pointsDelta, bucket,
 
   if (active) {
     await recomputeUserStreak(client, userId, weekStart);
+  }
+};
+
+const backfillUserGamification = async (userId) => {
+  // Backfill legacy lesson completions that predate gamification hooks.
+  const lessonRes = await pool.query(
+    `
+      SELECT
+        lp.lesson_id,
+        m.course_id,
+        lp.last_seen_at
+      FROM lesson_progress lp
+      JOIN lessons l ON l.id = lp.lesson_id
+      JOIN modules m ON m.id = l.module_id
+      LEFT JOIN gamification_events ge
+        ON ge.user_id = lp.user_id
+       AND ge.event_type = 'lesson_completed_student'
+       AND ge.event_key = CONCAT('lesson_done:', lp.user_id, ':', lp.lesson_id)
+      WHERE lp.user_id = $1
+        AND lp.status = 'done'
+        AND ge.id IS NULL
+      ORDER BY lp.last_seen_at ASC NULLS LAST
+      LIMIT 500
+    `,
+    [userId],
+  );
+
+  for (const row of lessonRes.rows) {
+    await recordGamificationEvent({
+      userId,
+      courseId: row.course_id,
+      groupId: null,
+      actorUserId: userId,
+      eventType: 'lesson_completed_student',
+      eventKey: `lesson_done:${userId}:${row.lesson_id}`,
+      occurredAt: row.last_seen_at || new Date(),
+      meta: { lessonId: row.lesson_id, source: 'backfill_lesson_progress' },
+    });
+  }
+
+  // Backfill legacy passed quiz attempts that predate gamification hooks.
+  const quizRes = await pool.query(
+    `
+      SELECT
+        qa.lesson_id,
+        qa.submitted_at,
+        m.course_id
+      FROM quiz_attempts qa
+      JOIN lessons l ON l.id = qa.lesson_id
+      JOIN modules m ON m.id = l.module_id
+      LEFT JOIN gamification_events ge
+        ON ge.user_id = qa.user_id
+       AND ge.event_type = 'quiz_passed_student'
+       AND ge.event_key = CONCAT('quiz_pass:', qa.user_id, ':', qa.lesson_id)
+      WHERE qa.user_id = $1
+        AND qa.passed = true
+        AND ge.id IS NULL
+      ORDER BY qa.submitted_at ASC NULLS LAST
+      LIMIT 500
+    `,
+    [userId],
+  );
+
+  for (const row of quizRes.rows) {
+    await recordGamificationEvent({
+      userId,
+      courseId: row.course_id,
+      groupId: null,
+      actorUserId: userId,
+      eventType: 'quiz_passed_student',
+      eventKey: `quiz_pass:${userId}:${row.lesson_id}`,
+      occurredAt: row.submitted_at || new Date(),
+      meta: { lessonId: row.lesson_id, source: 'backfill_quiz_attempt' },
+    });
   }
 };
 
@@ -278,6 +431,8 @@ const recordGamificationEvent = async (params, client = null) => {
 };
 
 const getUserGamificationSummary = async (userId, options = {}) => {
+  await backfillUserGamification(userId);
+
   const weekStart = resolveSafeWeekStart(options.weekStart);
   const weekEndExclusive = addDaysUtc(weekStart, 7);
 
@@ -285,18 +440,17 @@ const getUserGamificationSummary = async (userId, options = {}) => {
     pool.query(
       `
         SELECT
-          points_total,
-          lessons_done,
-          quizzes_passed,
-          sessions_attended,
-          sessions_late,
-          sessions_excused,
-          attendance_taken_count,
-          active_events
+          COALESCE(SUM(points_total), 0)::int AS points_total,
+          COALESCE(SUM(lessons_done), 0)::int AS lessons_done,
+          COALESCE(SUM(quizzes_passed), 0)::int AS quizzes_passed,
+          COALESCE(SUM(sessions_attended), 0)::int AS sessions_attended,
+          COALESCE(SUM(sessions_late), 0)::int AS sessions_late,
+          COALESCE(SUM(sessions_excused), 0)::int AS sessions_excused,
+          COALESCE(SUM(attendance_taken_count), 0)::int AS attendance_taken_count,
+          COALESCE(SUM(active_events), 0)::int AS active_events
         FROM weekly_user_stats
         WHERE user_id = $1
-          AND week_start = $2::date
-        LIMIT 1
+          AND DATE_TRUNC('week', week_start::timestamp)::date = $2::date
       `,
       [userId, weekStart],
     ),
@@ -315,7 +469,10 @@ const getUserGamificationSummary = async (userId, options = {}) => {
         SELECT
           current_week_streak,
           best_week_streak,
-          last_active_week_start
+          last_active_week_start,
+          current_day_streak,
+          best_day_streak,
+          last_active_day
         FROM user_streaks
         WHERE user_id = $1
         LIMIT 1
@@ -347,7 +504,10 @@ const getUserGamificationSummary = async (userId, options = {}) => {
           SELECT
             current_week_streak,
             best_week_streak,
-            last_active_week_start
+            last_active_week_start,
+            current_day_streak,
+            best_day_streak,
+            last_active_day
           FROM user_streaks
           WHERE user_id = $1
           LIMIT 1
@@ -385,6 +545,9 @@ const getUserGamificationSummary = async (userId, options = {}) => {
       currentWeekStreak: Number(streak?.current_week_streak || 0),
       bestWeekStreak: Number(streak?.best_week_streak || 0),
       lastActiveWeekStart: streak?.last_active_week_start || null,
+      currentDayStreak: Number(streak?.current_day_streak || 0),
+      bestDayStreak: Number(streak?.best_day_streak || 0),
+      lastActiveDay: streak?.last_active_day || null,
     },
   };
 };

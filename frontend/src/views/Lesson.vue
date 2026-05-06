@@ -233,6 +233,14 @@
 
         <Divider />
 
+        <div v-if="!isPreview" class="lesson-streak-summary">
+          <img :src="fireIcon" alt="Racha diaria" />
+          <div>
+            <small>Racha diaria</small>
+            <strong>{{ gamificationSummary?.streak?.currentDayStreak ?? 0 }}</strong>
+          </div>
+        </div>
+
         <div class="progress-actions">
           <Button
             :label="t('lesson.actions.markInProgress')"
@@ -304,6 +312,7 @@ import PreviewBanner from "../components/PreviewBanner.vue";
 import RichContent from "../components/RichContent.vue";
 import { useAuthStore } from "../stores/auth";
 import { extractInlineQuestionIds } from "../utils/richContent";
+import fireIcon from "../assets/fuego.png";
 
 const route = useRoute();
 const router = useRouter();
@@ -331,6 +340,7 @@ const quizError = ref(false);
 const quizExists = ref(false);
 const quizPassed = ref(false);
 let inlineQuizScoreRefreshTimer = null;
+const gamificationSummary = ref(null);
 
 // Quiz score state
 const quizScore = ref(null);
@@ -642,6 +652,9 @@ const updateStatus = async (status, progressPercent, key) => {
       status,
       progressPercent,
     });
+    if (status === "done") {
+      await loadGamificationSummary();
+    }
     const detail =
       status === "done"
         ? t("lesson.toasts.done")
@@ -662,6 +675,16 @@ const updateStatus = async (status, progressPercent, key) => {
     });
   } finally {
     updating.value = null;
+  }
+};
+
+const loadGamificationSummary = async () => {
+  if (isPreview.value) return;
+  try {
+    const { data } = await api.get("/gamification/me");
+    gamificationSummary.value = data || null;
+  } catch {
+    // Informational only; skip UI noise if this request fails.
   }
 };
 
@@ -875,6 +898,7 @@ const handleInlineQuizAttempted = () => {
 
 onMounted(() => {
   loadLesson();
+  loadGamificationSummary();
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   window.addEventListener("keydown", handleKeyNavigation);
 });
@@ -1022,6 +1046,40 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.lesson-streak-summary {
+  margin-bottom: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  background: #fff7ed;
+}
+
+.lesson-streak-summary img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.lesson-streak-summary small {
+  display: block;
+  color: #9a3412;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.lesson-streak-summary strong {
+  display: block;
+  color: #7c2d12;
+  font-size: 1rem;
+  line-height: 1.1;
 }
 
 .quiz-card {

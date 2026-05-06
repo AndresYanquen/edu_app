@@ -90,27 +90,55 @@
 
         <div class="student-hero__stats">
           <div class="hero-stat-card">
-            <span class="hero-stat-card__label">Cursos</span>
-            <strong>{{ courses.length }}</strong>
-            <small>{{ courses.length === 1 ? 'curso disponible' : 'cursos disponibles' }}</small>
+            <div class="hero-stat-card__top">
+              <span class="hero-stat-card__icon hero-stat-card__icon--purple">
+                <img :src="educationIcon" alt="Cursos" />
+              </span>
+              <div>
+                <span class="hero-stat-card__label hero-stat-card__label--purple">Cursos</span>
+                <strong>{{ courses.length }}</strong>
+                <small>{{ courses.length === 1 ? 'curso disponible' : 'cursos disponibles' }}</small>
+              </div>
+            </div>
           </div>
 
           <div class="hero-stat-card">
-            <span class="hero-stat-card__label">Esta semana</span>
-            <strong>{{ pendingSessions.length }}</strong>
-            <small>{{ pendingSessions.length === 1 ? 'clase pendiente' : 'clases pendientes' }}</small>
+            <div class="hero-stat-card__top">
+              <span class="hero-stat-card__icon hero-stat-card__icon--blue">
+                <img :src="computerIcon" alt="Agenda semanal" />
+              </span>
+              <div>
+                <span class="hero-stat-card__label hero-stat-card__label--blue">Esta semana</span>
+                <strong>{{ pendingSessions.length }}</strong>
+                <small>{{ pendingSessions.length === 1 ? 'clase pendiente' : 'clases pendientes' }}</small>
+              </div>
+            </div>
           </div>
 
           <div class="hero-stat-card">
-            <span class="hero-stat-card__label">Puntos totales</span>
-            <strong>{{ gamificationSummary?.lifetime?.totalPoints ?? 0 }}</strong>
-            <small>acumulados</small>
+            <div class="hero-stat-card__top">
+              <span class="hero-stat-card__icon hero-stat-card__icon--green">
+                <img :src="awardIcon" alt="Puntos totales" />
+              </span>
+              <div>
+                <span class="hero-stat-card__label hero-stat-card__label--green">Puntos totales</span>
+                <strong>{{ gamificationSummary?.lifetime?.totalPoints ?? 0 }}</strong>
+                <small>acumulados</small>
+              </div>
+            </div>
           </div>
 
           <div class="hero-stat-card">
-            <span class="hero-stat-card__label">Racha semanal</span>
-            <strong>{{ gamificationSummary?.streak?.currentWeekStreak ?? 0 }}</strong>
-            <small>semanas activas</small>
+            <div class="hero-stat-card__top">
+              <span class="hero-stat-card__icon hero-stat-card__icon--orange">
+                <img :src="fireIcon" alt="Racha diaria" />
+              </span>
+              <div>
+                <span class="hero-stat-card__label hero-stat-card__label--orange">Racha diaria</span>
+                <strong>{{ gamificationSummary?.streak?.currentDayStreak ?? 0 }}</strong>
+                <small>días consecutivos</small>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -148,20 +176,40 @@
 
         <div v-else class="achievement-grid">
           <article class="achievement-item">
-            <span class="achievement-item__label">Lecciones completadas</span>
+            <div class="achievement-item__top">
+              <span class="achievement-item__icon achievement-item__icon--purple">
+                <img :src="educationIcon" alt="Lecciones" />
+              </span>
+              <span class="achievement-item__label achievement-item__label--purple">Lecciones completadas</span>
+            </div>
             <strong>{{ gamificationSummary?.weekly?.lessonsDone ?? 0 }}</strong>
           </article>
           <article class="achievement-item">
-            <span class="achievement-item__label">Quizzes aprobados</span>
+            <div class="achievement-item__top">
+              <span class="achievement-item__icon achievement-item__icon--blue">
+                <img :src="computerIcon" alt="Quizzes" />
+              </span>
+              <span class="achievement-item__label achievement-item__label--blue">Quizzes aprobados</span>
+            </div>
             <strong>{{ gamificationSummary?.weekly?.quizzesPassed ?? 0 }}</strong>
           </article>
           <article class="achievement-item">
-            <span class="achievement-item__label">Asistencias</span>
+            <div class="achievement-item__top">
+              <span class="achievement-item__icon achievement-item__icon--green">
+                <img :src="awardIcon" alt="Asistencias" />
+              </span>
+              <span class="achievement-item__label achievement-item__label--green">Asistencias</span>
+            </div>
             <strong>{{ (gamificationSummary?.weekly?.sessionsAttended ?? 0) + (gamificationSummary?.weekly?.sessionsLate ?? 0) + (gamificationSummary?.weekly?.sessionsExcused ?? 0) }}</strong>
           </article>
           <article class="achievement-item">
-            <span class="achievement-item__label">Mejor racha</span>
-            <strong>{{ gamificationSummary?.streak?.bestWeekStreak ?? 0 }}</strong>
+            <div class="achievement-item__top">
+              <span class="achievement-item__icon achievement-item__icon--orange">
+                <img :src="fireIcon" alt="Mejor racha" />
+              </span>
+              <span class="achievement-item__label achievement-item__label--orange">Mejor racha</span>
+            </div>
+            <strong>{{ gamificationSummary?.streak?.bestDayStreak ?? 0 }}</strong>
           </article>
         </div>
       </template>
@@ -249,9 +297,14 @@
     <Card class="dashboard-card">
       <template #title>
         <div class="card-title-row">
-          <div>
+          <div class="card-title-row__with-icon">
+            <span class="card-title-row__icon">
+              <img :src="bookIcon" alt="Mis cursos" />
+            </span>
+            <div>
             <h3>{{ t('student.title') }}</h3>
             <p>Accede rápidamente a tus cursos y revisa su estado.</p>
+            </div>
           </div>
         </div>
       </template>
@@ -298,16 +351,6 @@
                 </template>
               </Column>
 
-              <Column :header="t('student.columns.status')">
-                <template #body="{ data }">
-                  <Tag
-                    :value="statusLabel(data.status)"
-                    :severity="statusSeverity(data.status)"
-                    rounded
-                  />
-                </template>
-              </Column>
-
               <Column :header="t('student.columns.actions')">
                 <template #body="{ data }">
                   <Button
@@ -332,12 +375,6 @@
                 <div class="course-mobile-card__title-wrap">
                   <h4>{{ course.title }}</h4>
                 </div>
-
-                <Tag
-                  :value="statusLabel(course.status)"
-                  :severity="statusSeverity(course.status)"
-                  rounded
-                />
               </div>
 
               <div class="course-mobile-card__meta">
@@ -346,10 +383,6 @@
                   <strong>{{ course.level || '—' }}</strong>
                 </div>
 
-                <div class="course-mobile-card__meta-item">
-                  <span>Estado</span>
-                  <strong>{{ statusLabel(course.status) }}</strong>
-                </div>
               </div>
 
               <div class="course-mobile-card__actions">
@@ -391,6 +424,11 @@ import api from '../api/axios';
 import { useAuthStore } from '../stores/auth';
 import { listMyLiveSessions } from '../api/liveSessions';
 import ravenMascot from '../assets/raven.svg';
+import fireIcon from '../assets/fuego.png';
+import computerIcon from '../assets/computadora.png';
+import educationIcon from '../assets/educacion.png';
+import awardIcon from '../assets/premio.png';
+import bookIcon from '../assets/libro.png';
 
 const courses = ref([]);
 const loading = ref(true);
@@ -444,24 +482,6 @@ const greetingByHour = computed(() => {
 
 const greetingTitle = computed(() => `${greetingByHour.value}, ${firstName.value} 👋`);
 const greetingSubtitle = computed(() => 'Tu resumen de aprendizaje de hoy.');
-
-const statusSeverity = (status) => {
-  if (!status) return 'info';
-  const normalized = String(status).toUpperCase();
-  if (normalized === 'PUBLISHED') return 'success';
-  if (normalized === 'DRAFT') return 'warning';
-  if (normalized === 'IN_PROGRESS') return 'info';
-  if (normalized === 'COMPLETED') return 'success';
-  return 'info';
-};
-
-const statusLabel = (status) => {
-  if (!status) return '';
-  const key = String(status).toLowerCase();
-  const translationKey = `student.status.${key}`;
-  const translated = t(translationKey);
-  return translated === translationKey ? status : translated;
-};
 
 const openCourse = (id) => {
   router.push(`/student/course/${id}`);
@@ -1316,19 +1336,58 @@ onBeforeUnmount(() => {
 
 .hero-stat-card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #dfe8f5;
   border-radius: 16px;
-  padding: 0.85rem 0.9rem;
-  min-height: 92px;
+  padding: 1rem;
+  min-height: 108px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.22rem;
+  gap: 0.35rem;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+}
+
+.hero-stat-card__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.hero-stat-card__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.hero-stat-card__icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.hero-stat-card__icon--purple {
+  background: #ede9fe;
+}
+
+.hero-stat-card__icon--blue {
+  background: #dbeafe;
+}
+
+.hero-stat-card__icon--green {
+  background: #dcfce7;
+}
+
+.hero-stat-card__icon--orange {
+  background: #ffedd5;
 }
 
 .hero-stat-card__label {
   display: block;
-  font-size: 0.73rem;
+  font-size: 0.74rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1336,12 +1395,18 @@ onBeforeUnmount(() => {
   line-height: 1.1;
 }
 
+.hero-stat-card__label--purple { color: #4f46e5; }
+.hero-stat-card__label--blue { color: #2563eb; }
+.hero-stat-card__label--green { color: #16a34a; }
+.hero-stat-card__label--orange { color: #ea580c; }
+
 .hero-stat-card strong {
-  display: block;
+  display: inline-block;
   font-size: 1.55rem;
   line-height: 1;
   font-weight: 800;
   color: #0f172a;
+  margin-top: 0.12rem;
 }
 
 .hero-stat-card small {
@@ -1349,6 +1414,7 @@ onBeforeUnmount(() => {
   font-size: 0.8rem;
   line-height: 1.25;
   color: #64748b;
+  margin-top: 0.16rem;
 }
 
 .achievement-grid {
@@ -1358,27 +1424,61 @@ onBeforeUnmount(() => {
 }
 
 .achievement-item {
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  border: 1px solid #dfe8f5;
+  border-radius: 16px;
   background: #ffffff;
-  padding: 0.9rem;
+  padding: 0.95rem 1rem;
   display: grid;
-  gap: 0.25rem;
+  gap: 0.4rem;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
 }
 
 .achievement-item__label {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   text-transform: uppercase;
-  color: #64748b;
+  color: #5b6b84;
   letter-spacing: 0.04em;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .achievement-item strong {
-  font-size: 1.35rem;
+  font-size: 1.9rem;
   line-height: 1;
   color: #0f172a;
 }
+
+.achievement-item__top {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.achievement-item__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.achievement-item__icon img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.achievement-item__icon--purple { background: #ede9fe; }
+.achievement-item__icon--blue { background: #dbeafe; }
+.achievement-item__icon--green { background: #dcfce7; }
+.achievement-item__icon--orange { background: #ffedd5; }
+
+.achievement-item__label--purple { color: #4f46e5; }
+.achievement-item__label--blue { color: #2563eb; }
+.achievement-item__label--green { color: #16a34a; }
+.achievement-item__label--orange { color: #ea580c; }
 
 /* =========================
    CARDS / PRIMEVUE
@@ -1414,6 +1514,29 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.card-title-row__with-icon {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.card-title-row__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #dbeafe;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-title-row__icon img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .card-title-row h3 {
