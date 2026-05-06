@@ -212,7 +212,6 @@ const requireCourseRoleOrAdmin = (resolver, roles = []) => {
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      console.log(resolver);
       const resolved = await resolveCourseId(resolver, req);
       const courseId =
         typeof resolved === "string" ? resolved : resolved?.courseId;
@@ -431,7 +430,15 @@ router.get("/courses", async (req, res) => {
           LEFT JOIN course_user_roles cur
             ON cur.course_id = c.id AND cur.user_id = $1
           LEFT JOIN roles r ON r.id = cur.role_id
-          WHERE c.owner_user_id = $1 OR r.name = ANY($2)
+          WHERE c.owner_user_id = $1
+             OR r.name = ANY($2)
+             OR EXISTS (
+               SELECT 1
+               FROM groups g
+               JOIN group_teachers gt ON gt.group_id = g.id
+               WHERE g.course_id = c.id
+                 AND gt.user_id = $1
+             )
           ORDER BY c.created_at DESC
         `,
         [req.user.id, COURSE_STAFF_ROLES],
@@ -2777,6 +2784,7 @@ router.delete("/quiz/options/:id", async (req, res) => {
 router.get(
   "/courses/:courseId/groups",
   requireCourseRoleOrAdmin(resolveCourseIdFromParam("courseId"), [
+    "instructor",
     "enrollment_manager",
     "admin",
   ]),
@@ -2811,6 +2819,7 @@ router.get(
 router.post(
   "/courses/:courseId/groups",
   requireCourseRoleOrAdmin(resolveCourseIdFromParam("courseId"), [
+    "instructor",
     "enrollment_manager",
     "admin",
   ]),
@@ -2949,6 +2958,7 @@ router.patch(
 router.delete(
   "/groups/:groupId",
   requireCourseRoleOrAdmin(resolveCourseIdFromGroupParam("groupId"), [
+    "instructor",
     "enrollment_manager",
     "admin",
   ]),

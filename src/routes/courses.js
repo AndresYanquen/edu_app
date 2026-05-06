@@ -4,6 +4,7 @@ const auth = require("../middleware/auth");
 const { requireGlobalRoleAny, hasGlobalRole } = require("../middleware/roles");
 const { uuidSchema, formatZodError } = require("../utils/validators");
 const { canEditCourse } = require("../utils/cmsPermissions");
+const { recordGamificationEvent } = require("../services/gamification");
 const {
   ensureCourseExists,
   hasCourseRole: hasScopedCourseRole,
@@ -621,6 +622,64 @@ router.put("/:courseId/attendance/week", async (req, res) => {
       }
 
       await client.query("COMMIT");
+
+      const studentEvents = normalized.filter(
+        (item) =>
+          item.status === "present" ||
+          item.status === "late" ||
+          item.status === "excused",
+      );
+      for (const item of studentEvents) {
+        const eventTypeByStatus = {
+          present: "attendance_present_student",
+          late: "attendance_late_student",
+          excused: "attendance_excused_student",
+        };
+        const eventType = eventTypeByStatus[item.status];
+        if (!eventType) continue;
+        try {
+          await recordGamificationEvent({
+            userId: item.userId,
+            courseId,
+            groupId: group.id,
+            actorUserId: req.user.id,
+            eventType,
+            eventKey: `attendance:${item.sessionId}:${item.userId}`,
+            occurredAt: new Date(),
+            meta: {
+              sessionId: item.sessionId,
+              status: item.status,
+              source: "course_attendance_week",
+            },
+          });
+        } catch (gamificationErr) {
+          console.warn(
+            "Failed to record student attendance gamification event",
+            gamificationErr,
+          );
+        }
+      }
+
+      for (const sessionId of touchedSessionIds) {
+        try {
+          await recordGamificationEvent({
+            userId: req.user.id,
+            courseId,
+            groupId: group.id,
+            actorUserId: req.user.id,
+            eventType: "attendance_taken_teacher",
+            eventKey: `attendance_taken:${sessionId}:${req.user.id}`,
+            occurredAt: new Date(),
+            meta: { sessionId, source: "course_attendance_week" },
+          });
+        } catch (gamificationErr) {
+          console.warn(
+            "Failed to record teacher attendance-taking gamification event",
+            gamificationErr,
+          );
+        }
+      }
+
       return res.json({ updated: updatedCount || normalized.length });
     } catch (err) {
       await client.query("ROLLBACK");

@@ -262,6 +262,24 @@ const isGroupTeacher = async (userId, groupId, client = pool) => {
   return rows.length > 0;
 };
 
+const isCourseGroupTeacher = async (userId, courseId, client = pool) => {
+  if (!userId || !courseId) {
+    return false;
+  }
+  const { rows } = await client.query(
+    `
+      SELECT 1
+      FROM group_teachers gt
+      JOIN groups g ON g.id = gt.group_id
+      WHERE gt.user_id = $1
+        AND g.course_id = $2
+      LIMIT 1
+    `,
+    [userId, courseId],
+  );
+  return rows.length > 0;
+};
+
 module.exports = {
   STAFF_ROLES,
   getGlobalRolesForUser,
@@ -275,4 +293,5 @@ module.exports = {
   setCourseStaffRoles,
   removeCourseStaffRole,
   isGroupTeacher,
+  isCourseGroupTeacher,
 };

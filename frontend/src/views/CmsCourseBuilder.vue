@@ -130,11 +130,21 @@
         <InputText v-model="lessonForm.title" placeholder="Lesson title" />
       </div>
       <div class="dialog-field">
+        <label>Lesson type</label>
+        <Dropdown
+          v-model="lessonForm.lessonType"
+          :options="lessonTypeOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Select lesson type"
+        />
+      </div>
+      <div class="dialog-field">
         <label>Estimated minutes</label>
         <InputNumber v-model="lessonForm.estimatedMinutes" showButtons />
       </div>
       <div class="dialog-field">
-        <label>Video URL</label>
+        <label>Video URL (optional)</label>
         <InputText v-model="lessonForm.videoUrl" placeholder="https://..." />
       </div>
       <template #footer>
@@ -672,6 +682,13 @@ const lessonStatusOptions = [
   { label: 'Published', value: 'published' },
   { label: 'Draft', value: 'draft' },
 ];
+const lessonTypeOptions = [
+  { label: 'Text', value: 'text' },
+  { label: 'Video', value: 'video' },
+  { label: 'Link', value: 'link' },
+  { label: 'File', value: 'file' },
+  { label: 'Embed', value: 'embed' },
+];
 const loadingModules = ref(true);
 const loadingLessons = ref(false);
 
@@ -683,6 +700,7 @@ const savingModule = ref(false);
 const showLessonDialog = ref(false);
 const lessonForm = ref({
   title: '',
+  lessonType: 'text',
   estimatedMinutes: 0,
   videoUrl: '',
 });
@@ -2199,7 +2217,7 @@ const reorderModule = async (module, direction) => {
 
 const openLessonDialog = () => {
   if (!selectedModuleId.value) return;
-  lessonForm.value = { title: '', estimatedMinutes: 0, videoUrl: '' };
+  lessonForm.value = { title: '', lessonType: 'text', estimatedMinutes: 0, videoUrl: '' };
   showLessonDialog.value = true;
 };
 
@@ -2222,10 +2240,20 @@ const submitLesson = async () => {
     toast.add({ severity: 'warn', summary: 'Title required', detail: 'Lesson title is required', life: 2500 });
     return;
   }
+  if (!lessonForm.value.lessonType) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Lesson type required',
+      detail: 'Select the lesson type before saving',
+      life: 2500,
+    });
+    return;
+  }
   savingLesson.value = true;
   try {
     const payload = {
       title: lessonForm.value.title,
+      contentType: lessonForm.value.lessonType,
       estimatedMinutes: lessonForm.value.estimatedMinutes,
     };
     const trimmedVideoUrl = lessonForm.value.videoUrl?.trim();

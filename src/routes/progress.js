@@ -3,6 +3,7 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 const { requireGlobalRoleAny } = require('../middleware/roles');
 const { lessonProgressSchema, formatZodError } = require('../utils/validators');
+const { recordGamificationEvent } = require('../services/gamification');
 
 const router = express.Router();
 
@@ -67,6 +68,24 @@ router.post('/lessons/:id/progress', auth, requireGlobalRoleAny(['student']), as
     );
 
     const record = progressRes.rows[0];
+
+    if (record?.status === 'done') {
+      try {
+        await recordGamificationEvent({
+          userId: req.user.id,
+          courseId: lesson.course_id,
+          groupId: null,
+          actorUserId: req.user.id,
+          eventType: 'lesson_completed_student',
+          eventKey: `lesson_done:${req.user.id}:${lesson.id}`,
+          occurredAt: record.last_seen_at || new Date(),
+          meta: { lessonId: lesson.id, source: 'lesson_progress' },
+        });
+      } catch (gamificationErr) {
+        console.warn('Failed to record lesson completion gamification event', gamificationErr);
+      }
+    }
+
     return res.json({
       userId: record.user_id,
       lessonId: record.lesson_id,

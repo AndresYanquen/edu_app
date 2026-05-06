@@ -293,6 +293,7 @@ const lessonCreateSchema = z.object({
     .string({ required_error: "title is required" })
     .trim()
     .min(1, "title is required"),
+  contentType: z.enum(['video', 'text', 'link', 'file', 'embed']).optional(),
   contentText: z.string().optional(),
   contentMarkdown: z.string().optional(),
   contentHtml: z.string().optional(),
@@ -304,6 +305,7 @@ const lessonCreateSchema = z.object({
 
 const lessonUpdateSchema = z.object({
   title: z.string().trim().min(1).optional(),
+    contentType: z.enum(['video', 'text', 'link', 'file', 'embed']).optional(),
   contentText: z.string().optional(),
   contentMarkdown: z.string().optional(),
   contentHtml: z.string().optional(),

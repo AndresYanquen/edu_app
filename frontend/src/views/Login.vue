@@ -248,7 +248,16 @@ const handleLogin = async () => {
 
   try {
     await auth.login(email.value, password.value);
-    router.push(auth.getDefaultRoute());
+    const nextRoute = auth.getDefaultRoute();
+    if (typeof window !== 'undefined') {
+      const shouldShowStudentWelcome = nextRoute === '/student';
+      if (shouldShowStudentWelcome) {
+        window.sessionStorage.setItem('academy:student:welcome-on-login', '1');
+      } else {
+        window.sessionStorage.removeItem('academy:student:welcome-on-login');
+      }
+    }
+    router.push(nextRoute);
   } catch (err) {
     generalError.value =
       'Correo o contraseña incorrectos. Verifica tus datos e intenta nuevamente.';

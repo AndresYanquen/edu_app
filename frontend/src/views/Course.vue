@@ -607,10 +607,80 @@
 
               <section class="course-calendar-tab">
                 <FullCalendar
+                  ref="courseCalendarRef"
                   class="course-fullcalendar"
                   :options="courseCalendarOptions"
                 />
+                <div class="course-calendar-agenda">
+                  <div class="course-calendar-agenda__header">
+                    <h4>Agenda del día</h4>
+                    <span>{{ selectedCalendarDateLabel }}</span>
+                  </div>
+                  <div
+                    v-if="selectedCalendarSessions.length"
+                    class="course-calendar-agenda__list"
+                  >
+                    <article
+                      v-for="session in selectedCalendarSessions"
+                      :key="session.id"
+                      class="course-calendar-agenda__item"
+                    >
+                      <div class="course-calendar-agenda__time">
+                        {{ formatSessionTime(session.startsAt) }}
+                      </div>
+                      <div class="course-calendar-agenda__content">
+                        <strong>{{ session.title || "Clase en vivo" }}</strong>
+                        <small>
+                          {{ session.hostTeacherName || "Profesor por definir" }}
+                          <span v-if="session.classTypeName">
+                            · {{ session.classTypeName }}
+                          </span>
+                        </small>
+                      </div>
+                    </article>
+                  </div>
+                  <p v-else class="course-calendar-agenda__empty">
+                    No hay clases programadas para este día.
+                  </p>
+                </div>
               </section>
+
+              <Dialog
+                v-model:visible="showCalendarEventDialog"
+                modal
+                :closable="true"
+                :dismissableMask="true"
+                header="Detalle de clase"
+                class="calendar-event-dialog"
+              >
+                <div v-if="selectedCalendarEvent" class="calendar-event-dialog__content">
+                  <h4>{{ selectedCalendarEvent.title }}</h4>
+                  <p>
+                    <strong>Tipo:</strong>
+                    {{ selectedCalendarEvent.classTypeName || "Clase en vivo" }}
+                  </p>
+                  <p>
+                    <strong>Profesor:</strong>
+                    {{ selectedCalendarEvent.instructorName || "Por definir" }}
+                  </p>
+                  <p>
+                    <strong>Inicio:</strong>
+                    {{ formatSessionDateTime(selectedCalendarEvent.startsAt) }}
+                  </p>
+                  <p v-if="selectedCalendarEvent.endsAt">
+                    <strong>Fin:</strong>
+                    {{ formatSessionDateTime(selectedCalendarEvent.endsAt) }}
+                  </p>
+                  <div class="calendar-event-dialog__actions">
+                    <Button
+                      label="Unirse"
+                      icon="pi pi-sign-in"
+                      :disabled="!selectedCalendarEvent.joinUrl"
+                      @click="joinSession(selectedCalendarEvent.joinUrl)"
+                    />
+                  </div>
+                </div>
+              </Dialog>
             </TabPanel>
 
             <TabPanel>
@@ -628,7 +698,12 @@
 
       <aside class="course-main-aside">
         <div class="live-calendar-card">
-          <Calendar v-model="liveCalendarDate" inline :manualInput="false">
+          <Calendar
+            v-model="liveCalendarDate"
+            inline
+            :manualInput="false"
+            @date-select="onSideCalendarDateSelect"
+          >
             <template #date="slotProps">
               <span
                 class="live-calendar-day"
@@ -639,6 +714,90 @@
             </template>
           </Calendar>
         </div>
+
+        <Dialog
+          v-model:visible="showSideCalendarDialog"
+          modal
+          :closable="true"
+          :dismissableMask="true"
+          header="Agenda del día"
+          class="calendar-event-dialog"
+        >
+          <div class="calendar-event-dialog__content">
+            <h4>{{ sideCalendarDateLabel }}</h4>
+            <template v-if="sideCalendarSessions.length">
+              <article
+                v-for="session in sideCalendarSessions"
+                :key="session.id"
+                class="course-calendar-agenda__item"
+              >
+                <div class="course-calendar-agenda__time">
+                  {{ formatSessionTime(session.startsAt) }}
+                </div>
+                <div class="course-calendar-agenda__content">
+                  <strong>{{ session.title || "Clase en vivo" }}</strong>
+                  <small>
+                    {{ session.hostTeacherName || "Profesor por definir" }}
+                    <span v-if="session.classTypeName"> · {{ session.classTypeName }}</span>
+                  </small>
+                </div>
+              </article>
+            </template>
+            <p v-else class="course-calendar-agenda__empty">
+              No hay clases o eventos para este día.
+            </p>
+            <div class="calendar-event-dialog__actions">
+              <Button
+                v-if="sideCalendarSessions[0]?.joinUrl"
+                label="Unirse a próxima"
+                icon="pi pi-sign-in"
+                @click="joinSession(sideCalendarSessions[0].joinUrl)"
+              />
+            </div>
+          </div>
+        </Dialog>
+
+        <Card class="course-gamification-card">
+          <template #title>
+            <div class="course-gamification-card__title">
+              <i class="pi pi-star-fill" />
+              <span>Tu resumen semanal</span>
+            </div>
+          </template>
+          <template #content>
+            <div v-if="gamificationLoading" class="course-gamification-card__loading">
+              <Skeleton height="2.6rem" class="mb-2" />
+              <Skeleton height="2.6rem" />
+            </div>
+            <div v-else-if="gamificationError" class="course-gamification-card__error">
+              <small>No se pudo cargar gamificación.</small>
+              <Button
+                label="Reintentar"
+                icon="pi pi-refresh"
+                class="p-button-sm p-button-text"
+                @click="loadGamificationSummary"
+              />
+            </div>
+            <div v-else class="course-gamification-card__stats">
+              <div class="course-gamification-item">
+                <small>Puntos</small>
+                <strong>{{ gamificationSummary?.weekly?.pointsTotal ?? 0 }}</strong>
+              </div>
+              <div class="course-gamification-item">
+                <small>Racha</small>
+                <strong>{{ gamificationSummary?.streak?.currentWeekStreak ?? 0 }}</strong>
+              </div>
+              <div class="course-gamification-item">
+                <small>Lecciones</small>
+                <strong>{{ gamificationSummary?.weekly?.lessonsDone ?? 0 }}</strong>
+              </div>
+              <div class="course-gamification-item">
+                <small>Quizzes</small>
+                <strong>{{ gamificationSummary?.weekly?.quizzesPassed ?? 0 }}</strong>
+              </div>
+            </div>
+          </template>
+        </Card>
       </aside>
     </div>
   </div>
@@ -654,6 +813,7 @@ import TabPanel from "primevue/tabpanel";
 import TabView from "primevue/tabview";
 import Accordion from "primevue/accordion";
 import AccordionTab from "primevue/accordiontab";
+import Dialog from "primevue/dialog";
 import FullCalendar from "@fullcalendar/vue3";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -699,7 +859,14 @@ const showPreviewBanner = computed(
 const liveSessions = ref([]);
 const liveSessionsLoading = ref(false);
 const liveSessionsError = ref(false);
+const gamificationSummary = ref(null);
+const gamificationLoading = ref(true);
+const gamificationError = ref(false);
 const liveCalendarDate = ref(new Date());
+const selectedCalendarDateKey = ref("");
+const selectedCalendarEvent = ref(null);
+const showCalendarEventDialog = ref(false);
+const showSideCalendarDialog = ref(false);
 const now = ref(new Date());
 
 let countdownIntervalId = null;
@@ -790,6 +957,7 @@ const fetchProgress = async (id) => {
 };
 
 const activeTabIndex = ref(0);
+const courseCalendarRef = ref(null);
 const TAB_INDEX = {
   posts: 0,
   lessons: 1,
@@ -877,6 +1045,7 @@ const fetchData = async (id) => {
 
     completedLessons.value = doneSet;
     loadLiveSessions(id);
+    loadGamificationSummary();
     await fetchProgress(id);
   } catch (err) {
     error.value = true;
@@ -888,6 +1057,19 @@ const fetchData = async (id) => {
     });
   } finally {
     loading.value = false;
+  }
+};
+
+const loadGamificationSummary = async () => {
+  gamificationLoading.value = true;
+  gamificationError.value = false;
+  try {
+    const { data } = await api.get('/gamification/me');
+    gamificationSummary.value = data || null;
+  } catch (err) {
+    gamificationError.value = true;
+  } finally {
+    gamificationLoading.value = false;
   }
 };
 
@@ -1194,6 +1376,53 @@ const calendarTabEvents = computed(() =>
     })),
 );
 
+const selectedCalendarSessions = computed(() => {
+  return liveSessions.value
+    .filter((session) => toLocalDateKey(session?.startsAt) === selectedCalendarDateKey.value)
+    .sort(
+      (a, b) =>
+        new Date(a?.startsAt || 0).getTime() - new Date(b?.startsAt || 0).getTime(),
+    );
+});
+
+const sideCalendarSessions = computed(() => {
+  const selectedKey = toLocalDateKey(liveCalendarDate.value);
+  return liveSessions.value
+    .filter((session) => toLocalDateKey(session?.startsAt) === selectedKey)
+    .sort(
+      (a, b) =>
+        new Date(a?.startsAt || 0).getTime() - new Date(b?.startsAt || 0).getTime(),
+    );
+});
+
+const selectedCalendarDateLabel = computed(() => {
+  if (!selectedCalendarDateKey.value) return "";
+  const [year, month, day] = selectedCalendarDateKey.value.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  return new Intl.DateTimeFormat(locale.value?.startsWith("es") ? "es-CO" : "en-US", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+});
+
+const sideCalendarDateLabel = computed(() => {
+  const date = liveCalendarDate.value instanceof Date
+    ? liveCalendarDate.value
+    : new Date(liveCalendarDate.value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(
+    locale.value?.startsWith("es") ? "es-CO" : "en-US",
+    {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    },
+  ).format(date);
+});
+
 const courseCalendarOptions = computed(() => ({
   plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
   initialView: "dayGridMonth",
@@ -1214,16 +1443,51 @@ const courseCalendarOptions = computed(() => ({
       }
     : undefined,
   events: calendarTabEvents.value,
+  eventDisplay: "block",
   eventTimeFormat: {
     hour: "2-digit",
     minute: "2-digit",
     meridiem: false,
   },
+  eventContent: (info) => {
+    const time = info.timeText || "";
+    const classType = info.event?.extendedProps?.classTypeName || "Clase";
+    return {
+      html: `<span class="course-calendar-event-pill">${time} · ${classType}</span>`,
+    };
+  },
+  eventDidMount: (info) => {
+    const classType = info.event?.extendedProps?.classTypeName || "Clase en vivo";
+    info.el.setAttribute("data-class-type", `Tipo: ${classType}`);
+  },
+  dateClick: (info) => {
+    selectedCalendarDateKey.value = toLocalDateKey(info?.date);
+  },
   eventClick: (info) => {
-    const joinUrl = info?.event?.extendedProps?.joinUrl;
-    if (joinUrl) window.open(joinUrl, "_blank", "noopener");
+    info.jsEvent?.preventDefault?.();
+    selectedCalendarDateKey.value = toLocalDateKey(info?.event?.start);
+    selectedCalendarEvent.value = {
+      id: info?.event?.id,
+      title: info?.event?.title || "Clase en vivo",
+      startsAt: info?.event?.start ? info.event.start.toISOString() : "",
+      endsAt: info?.event?.end ? info.event.end.toISOString() : "",
+      joinUrl: info?.event?.extendedProps?.joinUrl || "",
+      classTypeName: info?.event?.extendedProps?.classTypeName || "",
+      instructorName: info?.event?.extendedProps?.instructorName || "",
+    };
+    showCalendarEventDialog.value = true;
   },
 }));
+
+const formatSessionTime = (iso) => {
+  if (!iso) return "--:--";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return new Intl.DateTimeFormat(locale.value?.startsWith("es") ? "es-CO" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
 
 const currentWeekGroup = computed(
   () => groupedLiveSessions.value.find((group) => group.isCurrentWeek) || null,
@@ -1285,7 +1549,28 @@ const joinSession = (url) => {
   window.open(url, "_blank", "noopener");
 };
 
+const onSideCalendarDateSelect = () => {
+  showSideCalendarDialog.value = true;
+};
+
+const formatSessionDateTime = (iso) => {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(
+    locale.value?.startsWith("es") ? "es-CO" : "en-US",
+    {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  ).format(date);
+};
+
 onMounted(() => {
+  selectedCalendarDateKey.value = toLocalDateKey(new Date());
   fetchData(route.params.id);
   startCountdownTimer();
 });
@@ -1300,6 +1585,16 @@ watch([() => route.params.id, () => route.query.preview], ([newId]) => {
   if (newId) {
     fetchData(newId);
   }
+});
+
+watch(activeTabIndex, (idx) => {
+  if (idx !== TAB_INDEX.calendar) return;
+  requestAnimationFrame(() => {
+    const api = courseCalendarRef.value?.getApi?.();
+    if (!api) return;
+    api.changeView('dayGridMonth');
+    api.updateSize();
+  });
 });
 
 watch(courseModules, (modules) => {
@@ -1377,6 +1672,8 @@ const nextLessonText = computed(() =>
 }
 
 .course-main-aside {
+  display: grid;
+  gap: 0.9rem;
   position: sticky;
   top: 1rem;
 }
@@ -2028,6 +2325,52 @@ const nextLessonText = computed(() =>
   font-weight: 700;
 }
 
+.course-gamification-card {
+  border-radius: 18px;
+}
+
+.course-gamification-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #1e3a8a;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.course-gamification-card__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.course-gamification-item {
+  border: 1px solid #dbe7f5;
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: #f8fbff;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.course-gamification-item small {
+  color: #64748b;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.course-gamification-item strong {
+  color: #0f172a;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.course-gamification-card__error {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .live-calendar-day.has-class::after {
   content: "";
   position: absolute;
@@ -2293,6 +2636,201 @@ const nextLessonText = computed(() =>
   font-size: 0.95rem;
 }
 
+.course-fullcalendar :deep(.fc-toolbar-title) {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #24344f;
+  text-transform: capitalize;
+}
+
+.course-fullcalendar :deep(.fc-col-header-cell-cushion) {
+  font-size: 0.95rem;
+  color: #334155;
+  font-weight: 700;
+  padding: 0.6rem 0.25rem;
+}
+
+.course-fullcalendar :deep(.fc-daygrid-day-number) {
+  font-size: 0.9rem;
+  color: #334155;
+  font-weight: 700;
+  padding: 0.4rem 0.45rem;
+}
+
+.course-fullcalendar :deep(.fc-day-today) {
+  background: #f9f4dc !important;
+}
+
+.course-fullcalendar :deep(.fc-daygrid-day-frame) {
+  min-height: 110px;
+}
+
+.course-fullcalendar :deep(.fc-daygrid-event) {
+  border: 0;
+  background: transparent;
+  margin-top: 0.2rem;
+  cursor: pointer;
+}
+
+.course-fullcalendar :deep(.course-calendar-event-pill) {
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid #b8d4ff;
+  background: #eaf3ff;
+  color: #1e3a8a;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.course-fullcalendar :deep(.fc-daygrid-event:hover .course-calendar-event-pill) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+}
+
+.course-fullcalendar :deep(.fc-daygrid-event) {
+  position: relative;
+}
+
+.course-fullcalendar :deep(.fc-daygrid-event::after) {
+  content: attr(data-class-type);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translate(-50%, 4px);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  z-index: 25;
+  transition: opacity 0.08s ease, transform 0.08s ease;
+}
+
+.course-fullcalendar :deep(.fc-daygrid-event:hover::after) {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.course-fullcalendar :deep(.fc-daygrid-more-link) {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.course-calendar-agenda {
+  margin-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.95rem;
+}
+
+.course-calendar-agenda__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.course-calendar-agenda__header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.course-calendar-agenda__header span {
+  font-size: 0.9rem;
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+.course-calendar-agenda__list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.course-calendar-agenda__item {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+}
+
+.course-calendar-agenda__time {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.course-calendar-agenda__content {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.course-calendar-agenda__content strong {
+  font-size: 0.93rem;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.course-calendar-agenda__content small {
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.course-calendar-agenda__empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.calendar-event-dialog :deep(.p-dialog-header) {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.calendar-event-dialog__content {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.calendar-event-dialog__content h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1.2rem;
+  color: #0f172a;
+}
+
+.calendar-event-dialog__content p {
+  margin: 0;
+  color: #334155;
+}
+
+.calendar-event-dialog__actions {
+  margin-top: 0.7rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* =========================
    LARGE TABLET
 ========================= */
@@ -2408,6 +2946,17 @@ const nextLessonText = computed(() =>
   .course-header h2 {
     font-size: 1.9rem;
     line-height: 1.1;
+  }
+
+  .course-calendar-agenda__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+  }
+
+  .course-calendar-agenda__item {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
   }
 
   .description {

@@ -27,9 +27,17 @@
       >
         <AccordionTab v-for="(module, index) in modules" :key="module.id">
           <template #header>
-            <div class="module-tab-header" @click.stop="selectModuleFromTab(module.id)">
+            <div class="module-tab-header" @click="selectModuleFromTab(module.id)">
               <div class="module-tab-title">
-                <span class="module-name">{{ module.title }}</span>
+                <button
+                  type="button"
+                  class="module-name-btn"
+                  @click.stop="openModuleDialog(module)"
+                  title="Editar módulo"
+                  aria-label="Editar módulo"
+                >
+                  <span class="module-name">{{ module.title }}</span>
+                </button>
                 <Tag
                   :value="module.is_published ? 'Published' : 'Draft'"
                   :severity="module.is_published ? 'success' : 'warning'"
@@ -38,16 +46,26 @@
               </div>
 
               <div class="module-tab-actions" @click.stop>
-                <Button icon="pi pi-pencil" class="p-button-text" @click="openModuleDialog(module)" />
+                <Button
+                  icon="pi pi-pencil"
+                  class="p-button-text"
+                  title="Editar módulo"
+                  aria-label="Editar módulo"
+                  @click="openModuleDialog(module)"
+                />
                 <Button
                   :icon="module.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
                   class="p-button-text"
+                  :title="module.is_published ? 'Despublicar módulo' : 'Publicar módulo'"
+                  :aria-label="module.is_published ? 'Despublicar módulo' : 'Publicar módulo'"
                   @click="toggleModulePublish(module)"
                 />
                 <Button
                   icon="pi pi-trash"
                   class="p-button-text p-button-danger"
                   severity="danger"
+                  title="Eliminar módulo"
+                  aria-label="Eliminar módulo"
                   :loading="deletingModuleId === module.id"
                   :disabled="deletingModuleId === module.id"
                   @click.stop="openDeleteModuleDialog(module)"
@@ -55,12 +73,16 @@
                 <Button
                   icon="pi pi-arrow-up"
                   class="p-button-text"
+                  title="Mover módulo arriba"
+                  aria-label="Mover módulo arriba"
                   :disabled="index === 0"
                   @click="reorderModule(module, 'up')"
                 />
                 <Button
                   icon="pi pi-arrow-down"
                   class="p-button-text"
+                  title="Mover módulo abajo"
+                  aria-label="Mover módulo abajo"
                   :disabled="index === modules.length - 1"
                   @click="reorderModule(module, 'down')"
                 />
@@ -120,8 +142,20 @@
                 class="list-item lesson-item lesson-item--nested"
               >
                 <div class="lesson-info">
-                  <strong class="item-title">{{ lesson.title }}</strong>
-                  <p class="lesson-meta muted">{{ lesson.estimated_minutes || 0 }} min</p>
+                  <button
+                    type="button"
+                    class="item-title-btn"
+                    @click="editLesson(lesson)"
+                    title="Editar lección"
+                    aria-label="Editar lección"
+                  >
+                    <strong class="item-title">{{ lesson.title }}</strong>
+                  </button>
+                  <p class="lesson-meta muted">
+                    {{ lesson.estimated_minutes || 0 }} min
+                    <span class="lesson-dot">•</span>
+                    {{ formatLessonTypeLabel(lesson.content_type) }}
+                  </p>
                 </div>
 
                 <div class="module-actions" @click.stop>
@@ -129,16 +163,26 @@
                     :value="lesson.is_published ? 'Published' : 'Draft'"
                     :severity="lesson.is_published ? 'success' : 'warning'"
                   />
-                  <Button icon="pi pi-pencil" class="p-button-text" @click="editLesson(lesson)" />
+                  <Button
+                    icon="pi pi-pencil"
+                    class="p-button-text"
+                    title="Editar lección"
+                    aria-label="Editar lección"
+                    @click="editLesson(lesson)"
+                  />
                   <Button
                     :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
                     class="p-button-text"
+                    :title="lesson.is_published ? 'Despublicar lección' : 'Publicar lección'"
+                    :aria-label="lesson.is_published ? 'Despublicar lección' : 'Publicar lección'"
                     @click="toggleLessonPublish(lesson, module.id)"
                   />
                   <Button
                     icon="pi pi-trash"
                     class="p-button-text p-button-danger"
                     severity="danger"
+                    title="Eliminar lección"
+                    aria-label="Eliminar lección"
                     :loading="deletingLessonId === lesson.id"
                     :disabled="deletingLessonId === lesson.id"
                     @click.stop="openDeleteLessonDialogForModule(module.id, lesson)"
@@ -146,12 +190,16 @@
                   <Button
                     icon="pi pi-arrow-up"
                     class="p-button-text"
+                    title="Mover lección arriba"
+                    aria-label="Mover lección arriba"
                     :disabled="lessonIndex === 0"
                     @click="reorderLessonForModule(module.id, lesson, 'up')"
                   />
                   <Button
                     icon="pi pi-arrow-down"
                     class="p-button-text"
+                    title="Mover lección abajo"
+                    aria-label="Mover lección abajo"
                     :disabled="lessonIndex === filteredLessonsForModule(module.id).length - 1"
                     @click="reorderLessonForModule(module.id, lesson, 'down')"
                   />
@@ -196,6 +244,15 @@ const {
   openDeleteLessonDialogForModule,
   reorderLessonForModule,
 } = builder;
+
+const formatLessonTypeLabel = (value) => {
+  const type = String(value || 'text').toLowerCase();
+  if (type === 'video') return 'Video';
+  if (type === 'link') return 'Link';
+  if (type === 'file') return 'File';
+  if (type === 'embed') return 'Embed';
+  return 'Text';
+};
 </script>
 
 <style scoped>
@@ -209,20 +266,164 @@ const {
   align-items: center;
 }
 
+.section-header {
+  gap: 0.75rem;
+}
+
+.modules-accordion {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.modules-accordion :deep(.p-accordion-tab) {
+  border: none;
+  background: transparent;
+}
+
+.modules-accordion :deep(.p-accordion-header-link) {
+  background: #ffffff;
+  border: 1px solid #dbe6f4;
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+}
+
+.modules-accordion :deep(.p-accordion-content) {
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0 0.05rem;
+}
+
 .lessons-head {
-  margin: 1rem 0;
+  margin: 0.25rem 0 0.85rem;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .lessons-toolbar {
   width: 100%;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.lessons-search {
+  flex: 1 1 260px;
+}
+
+.lessons-search :deep(.p-inputtext) {
+  width: 100%;
+}
+
+.lessons-filter {
+  width: min(220px, 100%);
 }
 
 .module-actions {
   gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .module-tab-header {
-  width: 80%;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.module-tab-title {
+  min-width: 0;
+  gap: 0.65rem;
+}
+
+.module-name {
+  font-weight: 700;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.module-name-btn,
+.item-title-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.module-name-btn:hover .module-name,
+.item-title-btn:hover .item-title {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.module-lessons-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0.2rem 0 0.1rem 1.2rem;
+  position: relative;
+}
+
+.module-lessons-wrap::before {
+  content: '';
+  position: absolute;
+  left: 0.55rem;
+  top: 0.4rem;
+  bottom: 0.25rem;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #bfdbfe 0%, #dbeafe 100%);
+}
+
+.lessons-title {
+  font-weight: 700;
+  color: #334155;
+}
+
+.lesson-list-scroll {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.lesson-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.9rem;
+  border: 1px solid #dce6f4;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+  padding: 0.8rem 0.9rem;
+  min-width: 0;
+}
+
+.lesson-item--nested {
+  margin-left: 0.45rem;
+  position: relative;
+}
+
+.lesson-item--nested::before {
+  content: '';
+  position: absolute;
+  left: -0.48rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.4rem;
+  height: 2px;
+  background: #bfdbfe;
+}
+
+.lesson-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.item-title {
+  overflow-wrap: anywhere;
 }
 
 .lesson-meta {
@@ -230,5 +431,44 @@ const {
   color: #6b7280;
   font-size: 0.85rem;
 }
-</style>
 
+.lesson-dot {
+  margin: 0 0.3rem;
+}
+
+.lessons-loading,
+.empty-state {
+  margin-left: 0.45rem;
+}
+
+@media (max-width: 900px) {
+  .module-lessons-wrap {
+    padding-left: 1rem;
+  }
+
+  .module-lessons-wrap::before {
+    left: 0.45rem;
+  }
+
+  .lesson-item--nested {
+    margin-left: 0.3rem;
+  }
+
+  .lesson-item--nested::before {
+    left: -0.36rem;
+    width: 0.3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .lesson-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .module-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+</style>

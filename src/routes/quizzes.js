@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const { requireGlobalRoleAny } = require('../middleware/roles');
 const { quizAttemptSchema, inlineQuizAttemptSchema, formatZodError } = require('../utils/validators');
 const { computeQuizScore } = require('../utils/quizScoring');
+const { recordGamificationEvent } = require('../services/gamification');
 
 const router = express.Router();
 
@@ -485,6 +486,24 @@ router.post('/lessons/:id/quiz/attempt', requireGlobalRoleAny(['student']), asyn
       }
 
       await client.query('COMMIT');
+
+      if (passed) {
+        try {
+          await recordGamificationEvent({
+            userId: req.user.id,
+            courseId: lesson.course_id,
+            groupId: null,
+            actorUserId: req.user.id,
+            eventType: 'quiz_passed_student',
+            eventKey: `quiz_pass:${req.user.id}:${lessonId}`,
+            occurredAt: new Date(),
+            meta: { lessonId, attemptNumber, scorePercent, source: 'quiz_attempt' },
+          });
+        } catch (gamificationErr) {
+          console.warn('Failed to record quiz pass gamification event', gamificationErr);
+        }
+      }
+
       return res.json({ scorePercent, scoreRaw: scoring.earnedPoints, passed });
     } catch (err) {
       await client.query('ROLLBACK');

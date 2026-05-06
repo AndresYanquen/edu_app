@@ -5,6 +5,7 @@ const {
   getCourseIdFromModule,
   ensureCourseExists,
   isGroupTeacher,
+  isCourseGroupTeacher,
 } = require('../utils/roleService');
 
 const extractGlobalRoles = (user) =>
@@ -13,7 +14,6 @@ const extractGlobalRoles = (user) =>
 const hasGlobalRole = (user, roleName) => extractGlobalRoles(user).includes(roleName);
 
 const requireGlobalRoleAny = (allowedRoles = []) => (req, res, next) => {
-    console.log(req.method, req.path, allowedRoles, req.user?.globalRoles);
   if (!req.user) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -22,8 +22,6 @@ const requireGlobalRoleAny = (allowedRoles = []) => (req, res, next) => {
   if (!userRoles.length) {
     return res.status(401).json({ error: 'Authentication required' });
   }
-  console.log('roles seen', userRoles);
-  console.log('allowed roles', allowedRoles);
   const allowed =
     allowedRoles.length === 0 || allowedRoles.some((role) => userRoles.includes(role));
 
@@ -67,7 +65,9 @@ const requireCourseRoleAny = (courseResolver, allowedRoles = []) => {
 
       const allowed =
         (allowedRoles.includes('instructor') && course.owner_user_id === req.user.id) ||
-        (await hasCourseRole(req.user.id, course.id, allowedRoles));
+        (await hasCourseRole(req.user.id, course.id, allowedRoles)) ||
+        (allowedRoles.includes('instructor') &&
+          (await isCourseGroupTeacher(req.user.id, course.id)));
       if (!allowed) {
         return res.status(403).json({ error: 'You are not allowed to perform this action' });
       }

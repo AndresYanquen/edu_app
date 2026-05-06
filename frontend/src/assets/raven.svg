@@ -1,0 +1,98 @@
+<svg width="320" height="320" viewBox="0 0 320 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Minimal learning raven mascot</title>
+  <desc id="desc">A minimalist raven logo with a clear beak, wings, and legs, organized in SVG groups for CSS or JavaScript animation.</desc>
+
+  <style>
+    :root {
+      --raven:#1f2933;
+      --raven-dark:#0b1118;
+      --raven-soft:#2c3746;
+      --eye:#ffffff;
+      --beak:#f6b93b;
+      --beak-dark:#d98218;
+    }
+
+    #raven { transform-origin: 160px 168px; }
+    #left-wing, #right-wing { transform-origin: center; }
+    #left-pupil, #right-pupil { transition: transform .18s ease; }
+
+    svg:hover #raven { animation: nod .75s ease-in-out; }
+    svg:hover #left-wing { animation: wing-left .75s ease-in-out; }
+    svg:hover #right-wing { animation: wing-right .75s ease-in-out; }
+
+    @keyframes nod {
+      0%,100% { transform: rotate(0deg); }
+      45% { transform: rotate(-3deg) translateY(-2px); }
+    }
+    @keyframes wing-left {
+      0%,100% { transform: rotate(0deg); }
+      45% { transform: rotate(-10deg) translate(-4px,-2px); }
+    }
+    @keyframes wing-right {
+      0%,100% { transform: rotate(0deg); }
+      45% { transform: rotate(10deg) translate(4px,-2px); }
+    }
+  </style>
+
+  <g id="raven">
+    <!-- legs -->
+    <g id="legs" stroke="var(--beak-dark)" stroke-width="8" stroke-linecap="round" fill="none">
+      <path id="left-leg" d="M137 236 L132 264" />
+      <path id="right-leg" d="M183 236 L188 264" />
+      <path id="left-foot" d="M119 266 H143" />
+      <path id="right-foot" d="M177 266 H201" />
+    </g>
+
+    <!-- wings / hands -->
+    <g id="left-wing">
+      <path d="M87 145 C45 160 41 214 85 232 C105 207 107 174 87 145Z" fill="var(--raven-dark)"/>
+      <path d="M78 176 C65 188 63 204 77 216" stroke="var(--raven-soft)" stroke-width="8" stroke-linecap="round" fill="none"/>
+    </g>
+
+    <g id="right-wing">
+      <path d="M233 145 C275 160 279 214 235 232 C215 207 213 174 233 145Z" fill="var(--raven-dark)"/>
+      <path d="M242 176 C255 188 257 204 243 216" stroke="var(--raven-soft)" stroke-width="8" stroke-linecap="round" fill="none"/>
+    </g>
+
+    <!-- body/head -->
+    <ellipse id="body" cx="160" cy="165" rx="86" ry="94" fill="var(--raven)"/>
+
+    <!-- head feather -->
+    <path
+      id="tuft"
+      d="M122 86 C138 40 199 44 216 78 C196 79 176 86 163 104 C157 112 149 112 143 104 C137 96 130 90 122 86Z"
+      fill="var(--raven-dark)"
+    />
+
+    <!-- face mask -->
+    <path id="face-mask" d="M84 144 C105 116 134 111 160 142 C186 111 215 116 236 144 C231 190 204 220 160 220 C116 220 89 190 84 144Z" fill="var(--raven-dark)" opacity=".78"/>
+
+    <!-- eyes -->
+    <g id="eyes">
+      <g id="left-eye">
+        <circle cx="126" cy="145" r="27" fill="var(--eye)"/>
+        <circle id="left-pupil" cx="134" cy="148" r="10" fill="var(--raven-dark)"/>
+      </g>
+      <g id="right-eye">
+        <circle cx="194" cy="145" r="27" fill="var(--eye)"/>
+        <circle id="right-pupil" cx="202" cy="148" r="10" fill="var(--raven-dark)"/>
+      </g>
+    </g>
+
+    <!-- prominent beak -->
+    <g id="beak">
+      <path d="M120 173 C137 157 183 157 200 173 C184 191 136 191 120 173Z" fill="var(--beak)"/>
+      <path d="M128 174 C144 181 176 181 192 174" stroke="var(--beak-dark)" stroke-width="5" stroke-linecap="round" fill="none"/>
+    </g>
+
+    <!-- right credential -->
+    <g id="credential" transform="translate(210 208)">
+      <circle r="16" fill="#1d4ed8"/>
+      <circle r="16" fill="none" stroke="#1d4ed8" stroke-width="3"/>
+      <circle r="6" fill="#1d4ed8"/>
+    </g>
+
+    <!-- small chest -->
+    <path id="belly" d="M113 224 C132 246 188 246 207 224 C196 267 124 267 113 224Z" fill="var(--raven-soft)"/>
+  </g>
+</svg>
