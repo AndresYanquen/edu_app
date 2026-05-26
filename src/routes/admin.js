@@ -12,6 +12,7 @@ const {
   ensureCourseExists,
   hasCourseRole,
   grantGlobalRoles,
+  getGlobalRolesForUser,
 } = require('../utils/roleService');
 
 const router = express.Router();

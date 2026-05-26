@@ -144,6 +144,82 @@
       </div>
     </section>
 
+    <StudentPaymentBanner
+      :status="paymentStatus"
+      :amount="paymentAmount"
+      :currency="paymentCurrency"
+      :due-date="paymentDueDate"
+      :overdue-days="paymentOverdueDays"
+      :loading="customerStore.loading && !customerStore.loaded"
+      @primary-click="handlePaymentPrimary"
+      @secondary-click="handlePaymentSecondary"
+    />
+
+    <Dialog
+      v-model:visible="paymentDialogVisible"
+      modal
+      header="Pagos pendientes"
+      class="payment-details-dialog"
+      :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
+      :breakpoints="{ '900px': 'calc(100vw - 2rem)' }"
+    >
+      <div class="payment-details">
+        <div class="payment-details__summary">
+          <div>
+            <span>Total pendiente</span>
+            <strong>{{ formatPaymentAmount(paymentTotalAmount, paymentCurrency) }}</strong>
+          </div>
+          <div>
+            <span>Pagos</span>
+            <strong>{{ pendingPayments.length }}</strong>
+          </div>
+        </div>
+
+        <div v-if="customerStore.loading && !customerStore.loaded" class="payment-details__loading">
+          <Skeleton height="3rem" borderRadius="14px" />
+          <Skeleton height="3rem" borderRadius="14px" />
+        </div>
+
+        <div v-else-if="pendingPayments.length" class="payment-details__table-wrap">
+          <DataTable
+            :value="pendingPayments"
+            responsiveLayout="scroll"
+            class="payment-details__table"
+          >
+            <Column header="Concepto">
+              <template #body="{ data }">
+                <div class="payment-concept">
+                  <strong>{{ getPaymentDescription(data) }}</strong>
+                  <small>{{ data.id }}</small>
+                </div>
+              </template>
+            </Column>
+            <Column header="Fecha">
+              <template #body="{ data }">
+                {{ formatPaymentDate(data.createdAt || data.created_at) }}
+              </template>
+            </Column>
+            <Column header="Método">
+              <template #body="{ data }">
+                {{ formatPaymentType(data.type) }}
+              </template>
+            </Column>
+            <Column header="Monto" body-style="text-align:right">
+              <template #body="{ data }">
+                <strong>{{ formatPaymentAmount(getPaymentAmount(data), data.currency || paymentCurrency) }}</strong>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+
+        <div v-else class="payment-details__empty">
+          <i class="pi pi-check-circle" />
+          <strong>No tienes pagos pendientes.</strong>
+          <span>Tu cuenta aparece al día.</span>
+        </div>
+      </div>
+    </Dialog>
+
     <Card class="dashboard-card">
       <template #title>
         <div class="card-title-row">
@@ -422,6 +498,7 @@ import { useToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
 import api from '../api/axios';
 import { useAuthStore } from '../stores/auth';
+import { useCustomerStore } from '../stores/customer';
 import { listMyLiveSessions } from '../api/liveSessions';
 import ravenMascot from '../assets/raven.svg';
 import fireIcon from '../assets/fuego.png';
@@ -429,6 +506,7 @@ import computerIcon from '../assets/computadora.png';
 import educationIcon from '../assets/educacion.png';
 import awardIcon from '../assets/premio.png';
 import bookIcon from '../assets/libro.png';
+import StudentPaymentBanner from '../components/student/StudentPaymentBanner.vue';
 
 const courses = ref([]);
 const loading = ref(true);
@@ -448,6 +526,7 @@ const heroMascotFlyingTop = ref(false);
 const showCelebration = ref(false);
 const confettiPieces = ref([]);
 const balloons = ref([]);
+const paymentDialogVisible = ref(false);
 let nowIntervalId = null;
 let mascotBlinkIntervalId = null;
 let mascotBlinkResetTimeoutId = null;
@@ -466,6 +545,49 @@ const router = useRouter();
 const toast = useToast();
 const { t } = useI18n();
 const auth = useAuthStore();
+const customerStore = useCustomerStore();
+
+const pendingPayments = computed(() => customerStore.pendingPayments || []);
+
+const paymentStatus = computed(() => {
+  if (customerStore.loading && !customerStore.loaded) return 'loading';
+  return pendingPayments.value.length ? 'late' : 'paid';
+});
+
+const paymentCurrency = computed(() => pendingPayments.value[0]?.currency || 'MXN');
+
+const paymentTotalAmount = computed(() =>
+  pendingPayments.value.reduce((total, payment) => total + Number(payment?.amount || 0), 0) / 100,
+);
+
+const overduePayment = computed(() => {
+  if (!pendingPayments.value.length) return null;
+
+  return [...pendingPayments.value].sort((a, b) => {
+    const firstTime = new Date(a?.createdAt || a?.created_at || '').getTime();
+    const secondTime = new Date(b?.createdAt || b?.created_at || '').getTime();
+    return (Number.isFinite(firstTime) ? firstTime : 0) - (Number.isFinite(secondTime) ? secondTime : 0);
+  })[0];
+});
+
+const paymentAmount = computed(() => getPaymentAmount(overduePayment.value));
+
+const paymentDueDate = computed(() => {
+  const value = overduePayment.value?.createdAt || overduePayment.value?.created_at || '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString();
+});
+
+const paymentOverdueDays = computed(() => {
+  if (!paymentDueDate.value) return 0;
+
+  const createdAt = new Date(paymentDueDate.value);
+  if (Number.isNaN(createdAt.getTime())) return 0;
+
+  const elapsedMs = Date.now() - createdAt.getTime();
+  return Math.max(0, Math.floor(elapsedMs / (24 * 60 * 60 * 1000)));
+});
 
 const firstName = computed(() => {
   const rawName = String(auth.user?.fullName || auth.user?.full_name || '').trim();
@@ -485,6 +607,55 @@ const greetingSubtitle = computed(() => 'Tu resumen de aprendizaje de hoy.');
 
 const openCourse = (id) => {
   router.push(`/student/course/${id}`);
+};
+
+const handlePaymentPrimary = () => {
+  toast.add({
+    severity: 'info',
+    summary: 'Pagos',
+    detail: 'Integración de pasarela pendiente (mock).',
+    life: 2200,
+  });
+};
+
+const handlePaymentSecondary = () => {
+  paymentDialogVisible.value = true;
+};
+
+const getPaymentAmount = (payment) => Number(payment?.amount || 0) / 100;
+
+const formatPaymentAmount = (amount, currency = 'MXN') =>
+  new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: currency || 'MXN',
+    maximumFractionDigits: 0,
+  }).format(Number(amount || 0));
+
+const formatPaymentDate = (value) => {
+  if (!value) return 'Por definir';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Por definir';
+
+  return date.toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const formatPaymentType = (type) => {
+  if (type === 'TRANSFER') return 'Transferencia';
+  return type || 'Por definir';
+};
+
+const getPaymentDescription = (payment) => {
+  const firstItem = Array.isArray(payment?.items) ? payment.items[0] : null;
+  return (
+    firstItem?.concept?.displayName ||
+    firstItem?.description ||
+    payment?.description ||
+    'Pago pendiente'
+  );
 };
 
 const getWeekBounds = () => {
@@ -648,6 +819,14 @@ const loadGamificationSummary = async () => {
     gamificationError.value = true;
   } finally {
     loadingGamification.value = false;
+  }
+};
+
+const loadCurrentCustomerData = async () => {
+  try {
+    await customerStore.fetchCurrentUserData();
+  } catch (err) {
+    console.warn('Failed to load current customer data', err);
   }
 };
 
@@ -905,6 +1084,7 @@ onMounted(() => {
   loadCourses();
   loadPendingSessions();
   loadGamificationSummary();
+  loadCurrentCustomerData();
 });
 
 onBeforeUnmount(() => {
@@ -1554,6 +1734,89 @@ onBeforeUnmount(() => {
   color: #64748b;
 }
 
+.payment-details {
+  display: grid;
+  gap: 1rem;
+}
+
+.payment-details__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.payment-details__summary > div {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #f8fafc;
+}
+
+.payment-details__summary span {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+
+.payment-details__summary strong {
+  font-size: 1.2rem;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.payment-details__table-wrap {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.payment-details__table :deep(.p-datatable-wrapper) {
+  border-radius: 14px;
+}
+
+.payment-concept {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 12rem;
+}
+
+.payment-concept strong {
+  color: #0f172a;
+  line-height: 1.25;
+}
+
+.payment-concept small {
+  color: #64748b;
+  word-break: break-all;
+}
+
+.payment-details__empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 1.5rem;
+  border-radius: 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  text-align: center;
+}
+
+.payment-details__empty i {
+  color: #16a34a;
+  font-size: 1.5rem;
+}
+
+.payment-details__empty strong {
+  color: #0f172a;
+}
+
+.payment-details__empty span {
+  color: #64748b;
+}
+
 /* =========================
    STATES
 ========================= */
@@ -1915,6 +2178,10 @@ onBeforeUnmount(() => {
   .card-title-row p {
     font-size: 0.83rem;
     line-height: 1.35;
+  }
+
+  .payment-details__summary {
+    grid-template-columns: 1fr;
   }
 
   .state-box {

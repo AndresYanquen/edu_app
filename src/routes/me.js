@@ -11,6 +11,127 @@ const router = express.Router();
 
 router.use(auth);
 
+const getQuentliConfig = () => ({
+  apiUrl: (process.env.QUENTLI_API_URL || 'https://api.quentli.com').replace(/\/+$/, ''),
+  apiToken: process.env.QUENTLI_API_TOKEN || '',
+});
+
+const fetchQuentliCustomerByEmail = async (email) => {
+  const { apiUrl, apiToken } = getQuentliConfig();
+
+  if (!apiToken) {
+    const err = new Error('QUENTLI_API_TOKEN is not configured');
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const url = new URL('/v1/customers', apiUrl);
+  url.searchParams.set('take', '3');
+  url.searchParams.set('filter[email][contains]', email);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+      },
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let payload = null;
+
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch (err) {
+        payload = text;
+      }
+    }
+
+    if (!response.ok) {
+      const err = new Error('Quentli customer lookup failed');
+      err.statusCode = response.status;
+      err.payload = payload;
+      throw err;
+    }
+
+    return payload;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const normalizeQuentliList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.customers)) return payload.customers;
+  if (Array.isArray(payload?.payments)) return payload.payments;
+  return [];
+};
+
+const getQuentliCustomerUsername = (customerPayload) => {
+  const customer = normalizeQuentliList(customerPayload)[0] || customerPayload?.customer || null;
+  return customer?.username || customer?.userName || customer?.customerUsername || '';
+};
+
+const fetchQuentliPendingPaymentsByUsername = async (username) => {
+  if (!username) {
+    return null;
+  }
+
+  const { apiUrl, apiToken } = getQuentliConfig();
+
+  if (!apiToken) {
+    const err = new Error('QUENTLI_API_TOKEN is not configured');
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const url = new URL('/v1/payments', apiUrl);
+  url.searchParams.set('filter[customer][username][equals]', username);
+  url.searchParams.set('filter[status][equals]', 'INCOMPLETE');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+      },
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let payload = null;
+
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch (err) {
+        payload = text;
+      }
+    }
+
+    if (!response.ok) {
+      const err = new Error('Quentli pending payments lookup failed');
+      err.statusCode = response.status;
+      err.payload = payload;
+      throw err;
+    }
+
+    return payload;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -48,6 +169,40 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('Failed to fetch profile', err);
     return res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+router.get('/customer', requireGlobalRoleAny(['student']), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT email
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id],
+    );
+
+    const email = rows[0]?.email;
+    if (!email) {
+      return res.status(404).json({ error: 'User email not found' });
+    }
+
+    const customerData = await fetchQuentliCustomerByEmail(email);
+    const username = getQuentliCustomerUsername(customerData);
+    const pendingPayments = await fetchQuentliPendingPaymentsByUsername(username);
+
+    return res.json({
+      email,
+      username,
+      customerData,
+      pendingPayments,
+    });
+  } catch (err) {
+    const statusCode = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    console.error('Failed to fetch Quentli customer', err.payload || err);
+    return res.status(statusCode).json({ error: 'Failed to fetch customer data' });
   }
 });
 
