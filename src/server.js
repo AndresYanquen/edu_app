@@ -23,6 +23,7 @@ const notificationsRoutes = require('./routes/notifications');
 const presenceRoutes = require('./routes/presence');
 const forumsRoutes = require('./routes/forums');
 const gamificationRoutes = require('./routes/gamification');
+const submissionsRoutes = require('./routes/submissions');
 const swaggerDocument = require('./docs/openapi');
 
 const app = express();
@@ -83,6 +84,7 @@ app.use(notificationsRoutes);
 app.use(presenceRoutes);
 app.use(forumsRoutes);
 app.use(gamificationRoutes);
+app.use(submissionsRoutes);
 app.use(progressRoutes);
 app.use(quizzesRoutes);
 app.use(instructorRoutes);

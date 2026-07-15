@@ -14,8 +14,11 @@
 <script setup>
 import { useAuthStore } from './stores/auth';
 import AppShell from './components/AppShell.vue';
+import { useZendeskWidget } from './composables/useZendeskWidget';
 
 const auth = useAuthStore();
+
+useZendeskWidget();
 </script>
 
 <style scoped>

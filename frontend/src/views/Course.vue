@@ -130,6 +130,47 @@
                 </div>
               </section>
 
+              <section v-if="activeCourseNotices.length" class="course-banners-zone">
+                <article
+                  v-for="notice in activeCourseNotices"
+                  :key="notice.id"
+                  class="course-banner-card"
+                >
+                  <img
+                    v-if="notice.coverImage || notice.cover_image_url"
+                    :src="notice.coverImage || notice.cover_image_url"
+                    :alt="notice.title"
+                    class="course-banner-image"
+                  />
+                  <div class="course-banner-copy">
+                    <span class="course-banner-kicker">Aviso</span>
+                    <h4>{{ notice.title }}</h4>
+                    <p v-if="notice.contentText">{{ notice.contentText }}</p>
+                    <div
+                      v-if="notice.videoUrl || notice.contentUrl"
+                      class="course-banner-actions"
+                    >
+                      <a
+                        v-if="notice.videoUrl"
+                        :href="notice.videoUrl"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver video
+                      </a>
+                      <a
+                        v-if="notice.contentUrl"
+                        :href="notice.contentUrl"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {{ notice.externalLabel || "Abrir enlace" }}
+                      </a>
+                    </div>
+                  </div>
+                </article>
+              </section>
+
               <section class="student-modules-list">
                 <section
                   v-for="module in courseModules"
@@ -168,7 +209,10 @@
                       v-for="(lesson, lessonIndex) in module.lessons"
                       :key="lesson.id"
                       class="lesson-card-modern"
-                      :class="{ 'is-completed': isLessonDone(lesson) }"
+                      :class="{
+                        'is-completed': isLessonDone(lesson),
+                        'is-locked': !canOpenLesson(lesson),
+                      }"
                     >
                       <div class="lesson-cover">
                         <img
@@ -198,6 +242,16 @@
                               isLessonDone(lesson) ? "Completada" : "Pendiente"
                             }}
                           </span>
+                          <span
+                            v-if="
+                              lesson.availabilityStatus &&
+                              lesson.availabilityStatus !== 'always_available'
+                            "
+                            class="lesson-availability-pill"
+                            :class="`status-${lesson.availabilityStatus}`"
+                          >
+                            {{ lessonAvailabilityLabel(lesson) }}
+                          </span>
                         </div>
 
                         <div class="lesson-meta-row">
@@ -207,6 +261,12 @@
                             {{ lesson.estimated_minutes || 0 }} min
                           </span>
                         </div>
+                        <p
+                          v-if="lessonAvailabilityMessage(lesson)"
+                          class="lesson-availability-note"
+                        >
+                          {{ lessonAvailabilityMessage(lesson) }}
+                        </p>
 
                         <div class="lesson-card-actions">
                           <Button
@@ -214,7 +274,8 @@
                             icon="pi pi-arrow-right"
                             iconPos="right"
                             class="btn-open"
-                            @click="openLesson(lesson.id)"
+                            :disabled="!canOpenLesson(lesson)"
+                            @click="openLesson(lesson)"
                           />
 
                           <Button
@@ -225,7 +286,11 @@
                             "
                             class="btn-done"
                             icon="pi pi-check"
-                            :disabled="isLessonDone(lesson) || isPreview"
+                            :disabled="
+                              isLessonDone(lesson) ||
+                              isPreview ||
+                              !canOpenLesson(lesson)
+                            "
                             :loading="
                               !isLessonDone(lesson) &&
                               updatingLesson === lesson.id
@@ -904,6 +969,11 @@ const sessionStatusFilters = [
 
 const expandedModules = ref([]);
 const courseModules = computed(() => course.value?.modules || []);
+const activeCourseNotices = computed(() =>
+  (course.value?.notices || course.value?.banners || []).filter(
+    (notice) => notice.normalizedType === "notice" && notice.isDisplayActive !== false,
+  ),
+);
 
 const toggleModule = (id) => {
   const idx = expandedModules.value.indexOf(id);
@@ -923,6 +993,56 @@ const totalCount = computed(
 const isLessonDone = (lesson) =>
   lesson.completed || isLessonCompleted(lesson.id);
 
+const canOpenLesson = (lesson) => lesson?.isAvailable !== false && !lesson?.isClosed;
+
+const formatLessonDateTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("es", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+};
+
+const lessonAvailabilityLabel = (lesson) => {
+  switch (lesson?.availabilityStatus) {
+    case "upcoming":
+      return "Próxima";
+    case "available":
+      return "Disponible";
+    case "late_available":
+      return "Entrega tardía";
+    case "overdue":
+      return "Vencida";
+    case "closed":
+      return "Cerrada";
+    default:
+      return "";
+  }
+};
+
+const lessonAvailabilityMessage = (lesson) => {
+  switch (lesson?.availabilityStatus) {
+    case "upcoming":
+      return lesson.availableFrom
+        ? `Disponible desde ${formatLessonDateTime(lesson.availableFrom)}`
+        : "Todavía no está disponible.";
+    case "available":
+      return lesson.dueAt
+        ? `Fecha límite: ${formatLessonDateTime(lesson.dueAt)}`
+        : "";
+    case "late_available":
+      return lesson.lateUntil
+        ? `Vencida, acepta entrega tardía hasta ${formatLessonDateTime(lesson.lateUntil)}`
+        : "Vencida, acepta entrega tardía.";
+    case "closed":
+      return "Esta tarea ya está cerrada.";
+    default:
+      return "";
+  }
+};
+
 const completedCount = computed(
   () =>
     progress.value?.completedLessons ??
@@ -937,7 +1057,9 @@ const progressPercentage = computed(() => progress.value?.percent ?? 0);
 
 const nextLesson = computed(() => {
   for (const module of courseModules.value) {
-    const next = (module.lessons || []).find((lesson) => !isLessonDone(lesson));
+    const next = (module.lessons || []).find(
+      (lesson) => !isLessonDone(lesson) && canOpenLesson(lesson),
+    );
     if (next) return next;
   }
   return null;
@@ -1079,10 +1201,29 @@ const loadGamificationSummary = async () => {
 
 const reload = () => fetchData(route.params.id);
 
-const openLesson = (lessonId) => {
+const openLesson = (lessonOrId) => {
+  const lesson =
+    typeof lessonOrId === "object"
+      ? lessonOrId
+      : courseModules.value
+          .flatMap((module) => module.lessons || [])
+          .find((item) => item.id === lessonOrId);
+
+  if (lesson && !canOpenLesson(lesson)) {
+    toast.add({
+      severity: "info",
+      summary: "Lección no disponible",
+      detail: lessonAvailabilityMessage(lesson) || "Esta lección no está disponible.",
+      life: 3000,
+    });
+    return;
+  }
+
   const query = isPreview.value ? { preview: "1" } : {};
   router.push({
-    path: `/student/course/${route.params.id}/lesson/${lessonId}`,
+    path: `/student/course/${route.params.id}/lesson/${
+      typeof lessonOrId === "object" ? lessonOrId.id : lessonOrId
+    }`,
     query,
   });
 };
@@ -1929,6 +2070,85 @@ const nextLessonText = computed(() =>
   min-width: 0;
 }
 
+.course-banners-zone {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0 0 1.2rem;
+}
+
+.course-banner-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 120px;
+  padding: 1.2rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(14, 165, 233, 0.88)),
+    #2563eb;
+  color: #ffffff;
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.18);
+}
+
+.course-banner-image {
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.2);
+  flex: 0 0 auto;
+}
+
+.course-banner-copy {
+  max-width: 58rem;
+  min-width: 0;
+}
+
+.course-banner-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 0.45rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.course-banner-card h4 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.course-banner-card p {
+  margin: 0.45rem 0 0;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.45;
+}
+
+.course-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.course-banner-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .module-node {
   display: grid;
   gap: 0.85rem;
@@ -2037,6 +2257,10 @@ const nextLessonText = computed(() =>
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.09);
 }
 
+.lesson-card-modern.is-locked {
+  opacity: 0.82;
+}
+
 .lesson-cover {
   position: relative;
   height: 140px;
@@ -2113,6 +2337,40 @@ const nextLessonText = computed(() =>
 .lesson-status-pill.completed {
   color: #166534;
   background: #dcfce7;
+}
+
+.lesson-availability-pill {
+  width: fit-content;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
+  font-weight: 800;
+  color: #075985;
+  background: #e0f2fe;
+}
+
+.lesson-availability-pill.status-upcoming {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.lesson-availability-pill.status-late_available,
+.lesson-availability-pill.status-overdue {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.lesson-availability-pill.status-closed {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.lesson-availability-note {
+  margin: -0.35rem 0 0.85rem;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .lesson-meta-row {
@@ -2948,7 +3206,7 @@ const nextLessonText = computed(() =>
 @media (max-width: 768px) {
   .page {
     gap: 0.9rem;
-    padding-inline: 0.5rem;
+    padding-inline: 0.65rem;
   }
 
   :deep(.p-card-body) {
@@ -2957,6 +3215,32 @@ const nextLessonText = computed(() =>
 
   :deep(.p-breadcrumb) {
     border-radius: 12px;
+    font-size: 0.82rem;
+  }
+
+  :deep(.p-tabview-nav) {
+    gap: 0.45rem;
+    padding-bottom: 0.35rem;
+  }
+
+  :deep(.p-tabview-nav li) {
+    flex: 0 0 auto;
+  }
+
+  :deep(.p-tabview-nav-link) {
+    min-height: 42px;
+    padding: 0.62rem 0.8rem;
+    border: 1px solid #dbe6f4;
+    border-radius: 999px;
+    background: #ffffff;
+    font-size: 0.86rem;
+    font-weight: 800;
+  }
+
+  :deep(.p-tabview-selected .p-tabview-nav-link) {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
   }
 
   .course-header h2 {
@@ -2986,6 +3270,18 @@ const nextLessonText = computed(() =>
     border-radius: 16px;
   }
 
+  .course-banner-card {
+    align-items: flex-start;
+    flex-direction: column;
+    border-radius: 16px;
+  }
+
+  .course-banner-image {
+    width: 100%;
+    height: auto;
+    max-height: 180px;
+  }
+
   .student-course-hero {
     gap: 0.95rem;
     margin-bottom: 1.2rem;
@@ -2995,15 +3291,17 @@ const nextLessonText = computed(() =>
   .progress-card {
     padding: 1rem;
     border-radius: 16px;
-    flex-direction: column;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 84px;
+    align-items: center;
   }
 
   .continue-image,
   .progress-image {
-    width: 92px;
+    width: 84px;
     max-width: 100%;
-    align-self: flex-end;
+    align-self: center;
+    justify-self: end;
   }
 
   .continue-content h2 {
@@ -3014,9 +3312,16 @@ const nextLessonText = computed(() =>
     font-size: 1.2rem;
   }
 
+  .continue-content :deep(.p-button),
+  .progress-info :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
   .module-header {
     padding: 0.9rem;
     border-radius: 16px;
+    align-items: flex-start;
   }
 
   .module-icon-wrap {
@@ -3056,6 +3361,7 @@ const nextLessonText = computed(() =>
 
   .lesson-card-header h5 {
     font-size: 0.96rem;
+    text-transform: none;
   }
 
   .lesson-card-actions {
@@ -3080,6 +3386,7 @@ const nextLessonText = computed(() =>
   .live-session-filters {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.65rem;
   }
 
   .filter-dropdown {
@@ -3089,6 +3396,13 @@ const nextLessonText = computed(() =>
 
   .session-chip-row {
     width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .session-chip-row :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
   }
 
   .session-card {
@@ -3150,20 +3464,28 @@ const nextLessonText = computed(() =>
   .course-brand-header {
     align-items: flex-start;
     gap: 0.8rem;
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 
   .course-brand-logo {
-    width: 74px;
-    height: 74px;
-    border-radius: 18px;
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
   }
 
   .course-brand-text h2 {
-    font-size: 1.45rem;
+    font-size: 1.32rem;
+    letter-spacing: 0;
   }
 
   .course-brand-text .description {
     font-size: 0.88rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .course-calendar-tab {
@@ -3205,14 +3527,40 @@ const nextLessonText = computed(() =>
     font-size: 1.08rem;
   }
 
+  .continue-card,
+  .progress-card {
+    grid-template-columns: 1fr;
+  }
+
+  .continue-image,
+  .progress-image {
+    width: 74px;
+    justify-self: end;
+    margin-top: -0.25rem;
+  }
+
   .module-header {
     padding: 0.85rem;
+  }
+
+  .module-info {
+    align-items: flex-start;
+  }
+
+  .module-toggle-btn {
+    width: 2.25rem;
+    min-width: 2.25rem;
+    height: 2.25rem;
   }
 
   .lesson-card-modern {
     grid-template-columns: 1fr;
     padding: 0.75rem;
     border-radius: 14px;
+  }
+
+  .lesson-cover {
+    height: 138px;
   }
 
   .lesson-card-header h5 {
@@ -3248,8 +3596,13 @@ const nextLessonText = computed(() =>
     font-size: 1.02rem;
   }
 
-  .lesson-cover {
-    height: 150px;
+  .session-chip-row {
+    grid-template-columns: 1fr;
+  }
+
+  :deep(.p-tabview-nav-link) {
+    padding-inline: 0.68rem;
+    font-size: 0.82rem;
   }
 
   .lesson-card-content {

@@ -5,6 +5,8 @@ const { requireGlobalRoleAny, hasGlobalRole } = require("../middleware/roles");
 const { uuidSchema, formatZodError } = require("../utils/validators");
 const { canEditCourse } = require("../utils/cmsPermissions");
 const { recordGamificationEvent } = require("../services/gamification");
+const { decorateLessonAvailability } = require("../utils/lessonAvailability");
+const { normalizeLessonType } = require("../utils/lessonTypes");
 const {
   ensureCourseExists,
   hasCourseRole: hasScopedCourseRole,
@@ -923,6 +925,7 @@ router.get(
             l.content_text,
             l.content_markdown,
             l.content_html,
+            l.content_json,
             l.video_url,
             l.cover_image_url,
             l.content_url,
@@ -931,7 +934,12 @@ router.get(
             l.estimated_minutes,
             l.is_free_preview,
             l.is_published,
-            l.order_index
+            l.order_index,
+            l.available_from,
+            l.due_at,
+            l.allow_late_submission,
+            l.late_until,
+            l.requires_submission
           FROM lessons l
           WHERE l.module_id = ANY($1::uuid[])
           ORDER BY l.order_index ASC
@@ -989,35 +997,76 @@ router.get(
         acc[module.id] = module;
         return acc;
       }, {});
+      const notices = [];
 
       for (const lesson of lessons) {
         const module = moduleMap[lesson.module_id];
         if (module) {
-          module.lessons.push({
+          const availability = decorateLessonAvailability(lesson);
+          const normalizedType = normalizeLessonType(lesson.content_type);
+          let parsedContentJson = null;
+          if (lesson.content_json) {
+            try {
+              parsedContentJson =
+                typeof lesson.content_json === "string"
+                  ? JSON.parse(lesson.content_json)
+                  : lesson.content_json;
+            } catch {
+              parsedContentJson = null;
+            }
+          }
+          const lessonPayload = {
             id: lesson.id,
             title: lesson.title,
             position: lesson.position,
-            contentType: lesson.content_type,
+            contentType: normalizedType,
+            rawContentType: lesson.content_type,
+            normalizedType,
             contentText: lesson.content_text,
             contentMarkdown: lesson.content_markdown,
             contentHtml: lesson.content_html,
+            contentJson: parsedContentJson,
             videoUrl: lesson.video_url,
             coverImage: lesson.cover_image_url,
             cover_image_url: lesson.cover_image_url,
             contentUrl: lesson.content_url,
+            externalLabel: parsedContentJson?.notice?.externalLabel || null,
             embedHtml: lesson.embed_html,
             durationSeconds: lesson.duration_seconds,
             estimatedMinutes: lesson.estimated_minutes,
+            estimated_minutes: lesson.estimated_minutes,
             isFreePreview: lesson.is_free_preview,
             orderIndex: lesson.order_index,
             isPublished: lesson.is_published,
+            availableFrom: availability.availableFrom,
+            dueAt: availability.dueAt,
+            allowLateSubmission: availability.allowLateSubmission,
+            lateUntil: availability.lateUntil,
+            requiresSubmission: availability.requiresSubmission,
+            availabilityStatus: availability.availabilityStatus,
+            isAvailable: availability.isAvailable,
+            isOverdue: availability.isOverdue,
+            isClosed: availability.isClosed,
+            acceptsLateSubmission: availability.acceptsLateSubmission,
+            isDisplayActive: availability.isDisplayActive,
             assets: assetsByLesson[lesson.id] || [],
-          });
+          };
+
+          if (normalizedType === "notice") {
+            if (availability.isDisplayActive || isPreview || isAdmin || isInstructor) {
+              notices.push(lessonPayload);
+            }
+            continue;
+          }
+
+          module.lessons.push(lessonPayload);
         }
       }
 
       return res.json({
         ...course,
+        notices,
+        banners: notices,
         modules: modules.map((module) => ({
           ...module,
           lessons: module.lessons,
@@ -1155,6 +1204,7 @@ router.get(
         FROM lessons l
         JOIN modules m ON m.id = l.module_id
         WHERE m.course_id = $1
+          AND l.content_type::text <> 'banner'
         ORDER BY m.position ASC, l.position ASC
       `,
         [courseId],
@@ -1171,6 +1221,7 @@ router.get(
         WHERE lp.user_id = $1
           AND lp.status = 'done'
           AND m.course_id = $2
+          AND l.content_type::text <> 'banner'
       `,
         [targetStudentId, courseId],
       );

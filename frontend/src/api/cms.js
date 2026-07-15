@@ -78,6 +78,13 @@ export const createQuizEmbed = async (lessonId) => {
 export const listAssets = (params = {}) =>
   unwrap(api.get('/cms/assets', { params }));
 
+export const uploadAssetFile = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return unwrap(api.post('/cms/assets/upload', formData));
+};
+
 export const registerAsset = (payload) => unwrap(api.post('/cms/assets/register', payload));
 
 export const getCourseGroups = groupsApi.listCourseGroups;
@@ -147,5 +154,6 @@ export default {
   removeGroupTeacher,
   listCourseLevels,
   listAssets,
+  uploadAssetFile,
   registerAsset,
 };

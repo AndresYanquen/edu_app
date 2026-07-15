@@ -13,7 +13,7 @@
               <p class="lesson-kicker">Lesson editor</p>
               <h1>{{ form.title || "Untitled lesson" }}</h1>
               <div class="lesson-meta">
-                <span>{{ form.estimatedMinutes || 0 }} min</span>
+                <span>{{ lessonTypeLabel }}</span>
                 <span v-if="courseId">Course active</span>
                 <Tag
                   :value="lesson?.is_published ? 'Published' : 'Draft'"
@@ -24,6 +24,12 @@
           </div>
 
           <div class="lesson-topbar-actions" v-if="lesson">
+            <Button
+              label="Ver como estudiante"
+              icon="pi pi-external-link"
+              class="p-button-outlined"
+              @click="openStudentPreview"
+            />
             <Button
               :label="lesson.is_published ? 'Unpublish' : 'Publish'"
               :icon="lesson.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
@@ -64,7 +70,7 @@
                 <div class="lesson-hero-badges">
                   <span class="lesson-chip">
                     <i class="pi pi-clock"></i>
-                    {{ form.estimatedMinutes || 0 }} min
+                    {{ lessonTypeLabel }}
                   </span>
                   <span class="lesson-chip">
                     <i class="pi pi-file-edit"></i>
@@ -124,13 +130,184 @@
                 </div>
 
                 <div class="dialog-field">
-                  <label>Estimated minutes</label>
-                  <InputNumber v-model="form.estimatedMinutes" showButtons />
+                  <label>Tipo</label>
+                  <Dropdown
+                    v-model="form.contentType"
+                    :options="lessonTypeOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                  />
+                </div>
+
+              </div>
+            </section>
+
+            <section v-if="isNoticeType" class="lesson-section-card notice-editor-card">
+              <div class="section-head">
+                <div>
+                  <h3>Contenido del aviso</h3>
+                  <small>Configura el mensaje visual que verá el estudiante.</small>
+                </div>
+              </div>
+
+              <div class="lesson-info-grid">
+                <div class="dialog-field">
+                  <label>Título</label>
+                  <InputText v-model="form.title" placeholder="Título del aviso" />
+                </div>
+
+                <div class="dialog-field">
+                  <label>Tipo</label>
+                  <Dropdown
+                    v-model="form.contentType"
+                    :options="lessonTypeOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                  />
+                </div>
+              </div>
+
+              <div class="dialog-field">
+                <label>Texto corto</label>
+                <Textarea
+                  v-model="form.noticeText"
+                  rows="4"
+                  autoResize
+                  placeholder="Escribe el mensaje del aviso..."
+                />
+              </div>
+
+              <div class="notice-media-grid">
+                <div class="dialog-field">
+                  <label>Imagen</label>
+                  <div class="block-asset-toolbar">
+                    <Button
+                      label="Subir imagen"
+                      icon="pi pi-upload"
+                      class="p-button-sm"
+                      @click="triggerCoverUpload"
+                    />
+                    <Button
+                      label="Media Library"
+                      icon="pi pi-images"
+                      class="p-button-sm p-button-outlined"
+                      @click="openMediaLibraryForCover"
+                    />
+                    <Button
+                      label="Quitar"
+                      icon="pi pi-times"
+                      class="p-button-sm p-button-text p-button-danger"
+                      @click="form.coverImage = ''"
+                      :disabled="!form.coverImage"
+                    />
+                  </div>
+                  <InputText
+                    v-model="form.coverImage"
+                    placeholder="O pega una URL de imagen"
+                  />
+                </div>
+
+                <div class="dialog-field">
+                  <label>Video opcional</label>
+                  <InputText
+                    v-model="form.noticeVideoUrl"
+                    placeholder="Pega una URL de video"
+                  />
+                </div>
+              </div>
+
+              <div class="lesson-info-grid">
+                <div class="dialog-field">
+                  <label>Texto del botón</label>
+                  <InputText
+                    v-model="form.noticeExternalLabel"
+                    placeholder="Ej. Abrir recurso"
+                  />
+                </div>
+
+                <div class="dialog-field">
+                  <label>URL destino</label>
+                  <InputText
+                    v-model="form.noticeExternalUrl"
+                    placeholder="https://..."
+                  />
                 </div>
               </div>
             </section>
 
-            <section class="lesson-section-card">
+            <section v-else class="lesson-section-card">
+              <div class="section-head">
+                <div>
+                  <h3>{{ availabilitySectionTitle }}</h3>
+                  <small>{{ availabilitySectionHint }}</small>
+                </div>
+              </div>
+
+              <div class="lesson-info-grid">
+                <div class="dialog-field">
+                  <label>{{ startDateLabel }}</label>
+                  <Calendar
+                    v-model="form.availableFrom"
+                    :minDate="calendarMinDate"
+                    showTime
+                    showIcon
+                    iconDisplay="input"
+                    dateFormat="dd/mm/yy"
+                    hourFormat="24"
+                    showButtonBar
+                    :manualInput="false"
+                    placeholder="Sin fecha"
+                  />
+                </div>
+
+                <div class="dialog-field">
+                  <label>{{ endDateLabel }}</label>
+                  <Calendar
+                    v-model="form.dueAt"
+                    :minDate="endDateMinDate"
+                    showTime
+                    showIcon
+                    iconDisplay="input"
+                    dateFormat="dd/mm/yy"
+                    hourFormat="24"
+                    showButtonBar
+                    :manualInput="false"
+                    placeholder="Sin fecha"
+                  />
+                </div>
+              </div>
+
+              <div v-if="isActivityType" class="lesson-switch-grid">
+                <label class="lesson-switch-row">
+                  <InputSwitch v-model="form.requiresSubmission" />
+                  <span>Requiere entrega</span>
+                </label>
+                <label class="lesson-switch-row">
+                  <InputSwitch v-model="form.allowLateSubmission" />
+                  <span>Permitir entrega tarde</span>
+                </label>
+              </div>
+
+              <div v-if="isActivityType && form.allowLateSubmission" class="lesson-info-grid">
+                <div class="dialog-field">
+                  <label>Fecha máxima para entrega tardía</label>
+                  <Calendar
+                    v-model="form.lateUntil"
+                    :minDate="lateDateMinDate"
+                    showTime
+                    showIcon
+                    iconDisplay="input"
+                    dateFormat="dd/mm/yy"
+                    hourFormat="24"
+                    showButtonBar
+                    :manualInput="false"
+                    placeholder="Sin fecha máxima"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section v-if="isActivityType" class="lesson-section-card">
               <div class="section-head">
                 <div>
                   <h3>Lesson pages</h3>
@@ -289,8 +466,22 @@
                       </div>
 
                       <div v-if="block.type === 'text'" class="dialog-field">
-                        <label>Content</label>
-                        <Textarea v-model="block.content" autoResize rows="5" />
+                        <div class="text-editor-label-row">
+                          <label>Content</label>
+                          <Button
+                            label="Enlace"
+                            icon="pi pi-link"
+                            class="p-button-sm p-button-text"
+                            @click="insertTextLink(pageIndex, blockIndex)"
+                          />
+                        </div>
+                        <Textarea
+                          v-model="block.content"
+                          autoResize
+                          rows="5"
+                          :data-text-block-editor="`${pageIndex}-${blockIndex}`"
+                          placeholder="Escribe texto. Selecciona una palabra y usa Enlace para vincularla."
+                        />
                       </div>
 
                       <template
@@ -379,10 +570,10 @@
                         </div>
 
                         <div v-if="block.type === 'audio'" class="dialog-field">
-                          <label>SoundCloud embed URL</label>
+                          <label>SoundCloud URL</label>
                           <InputText
                             v-model="block.embedUrl"
-                            placeholder="https://w.soundcloud.com/player/?url=..."
+                            placeholder="https://soundcloud.com/usuario/audio"
                           />
                         </div>
 
@@ -532,7 +723,7 @@
               </div>
             </section>
 
-            <section class="lesson-section-card quiz-card">
+            <section v-if="isAssessmentType" class="lesson-section-card quiz-card">
               <div class="section-head section-head-split quiz-head-pro">
                 <div>
                   <h3>Quiz</h3>
@@ -682,9 +873,63 @@
               </div>
 
               <div class="lesson-preview-shell">
+                <template v-if="isNoticeType">
+                  <article class="notice-preview-card">
+                    <img
+                      v-if="form.coverImage"
+                      :src="form.coverImage"
+                      :alt="form.title"
+                      class="notice-preview-image"
+                    />
+                    <div class="notice-preview-body">
+                      <span class="notice-preview-kicker">Aviso</span>
+                      <h2>{{ form.title || "Título del aviso" }}</h2>
+                      <p v-if="form.noticeText">{{ form.noticeText }}</p>
+                      <p v-else class="notice-preview-muted">
+                        El texto corto del aviso aparecerá aquí.
+                      </p>
+
+                      <div
+                        v-if="form.noticeVideoUrl || form.noticeExternalUrl"
+                        class="notice-preview-actions"
+                      >
+                        <a
+                          v-if="form.noticeVideoUrl"
+                          :href="form.noticeVideoUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Ver video
+                        </a>
+                        <a
+                          v-if="form.noticeExternalUrl"
+                          :href="form.noticeExternalUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ form.noticeExternalLabel || "Abrir enlace" }}
+                        </a>
+                      </div>
+
+                      <div
+                        v-if="form.availableFrom || form.dueAt"
+                        class="notice-preview-dates"
+                      >
+                        <span v-if="form.availableFrom">
+                          Desde {{ formatTimestamp(form.availableFrom) }}
+                        </span>
+                        <span v-if="form.dueAt">
+                          Hasta {{ formatTimestamp(form.dueAt) }}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                </template>
+
+                <template v-else>
                 <div class="lesson-preview-header">
                   <h2>{{ form.title || "Untitled lesson" }}</h2>
-                  <span>{{ form.estimatedMinutes || 0 }} min</span>
+                  <span>{{ lessonTypeLabel }}</span>
                 </div>
 
                 <div v-if="!previewPages.length" class="preview-empty">
@@ -732,9 +977,11 @@
                       >
                         <template v-if="block.type === 'text'">
                           <h4 v-if="block.title">{{ block.title }}</h4>
-                          <p v-if="block.content" class="preview-text">
-                            {{ block.content }}
-                          </p>
+                          <p
+                            v-if="block.content"
+                            class="preview-text"
+                            v-html="renderTextContent(block.content)"
+                          />
                           <div v-else class="preview-empty-inline">
                             Bloque de texto vacío
                           </div>
@@ -760,7 +1007,7 @@
                           <h4 v-if="block.title">{{ block.title }}</h4>
 
                           <div
-                            v-if="isSoundCloudEmbed(block.embedUrl)"
+                            v-if="isSoundCloudUrl(block.embedUrl)"
                             class="preview-audio-frame"
                           >
                             <iframe
@@ -1033,6 +1280,7 @@
                     </div>
                   </section>
                 </div>
+                </template>
               </div>
             </div>
 
@@ -1042,11 +1290,6 @@
               <div class="sidebar-stat">
                 <span>Title</span>
                 <strong>{{ form.title || "Untitled" }}</strong>
-              </div>
-
-              <div class="sidebar-stat">
-                <span>Duration</span>
-                <strong>{{ form.estimatedMinutes || 0 }} min</strong>
               </div>
 
               <div class="sidebar-stat">
@@ -1407,6 +1650,48 @@
       </div>
     </Dialog>
 
+    <Dialog
+      v-model:visible="linkDialogVisible"
+      modal
+      header="Agregar enlace"
+      class="link-editor-dialog"
+      :style="{ width: '28rem', maxWidth: 'calc(100vw - 2rem)' }"
+    >
+      <div class="link-editor-form">
+        <div class="dialog-field">
+          <label>Texto visible</label>
+          <InputText
+            v-model="linkForm.text"
+            placeholder="Texto que vera el estudiante"
+            autofocus
+          />
+        </div>
+
+        <div class="dialog-field">
+          <label>URL</label>
+          <InputText
+            v-model="linkForm.url"
+            placeholder="https://ejemplo.com"
+            @keyup.enter="confirmTextLink"
+          />
+          <small class="muted">Acepta http(s), mailto, tel, /ruta o #ancla.</small>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button
+          label="Cancelar"
+          class="p-button-text"
+          @click="closeLinkDialog"
+        />
+        <Button
+          label="Insertar enlace"
+          icon="pi pi-link"
+          @click="confirmTextLink"
+        />
+      </template>
+    </Dialog>
+
     <input
       ref="imageInputRef"
       type="file"
@@ -1447,7 +1732,6 @@ import { useRoute, useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import Textarea from "primevue/textarea";
 import DOMPurify from "dompurify";
-import { uploadLessonAsset } from "../lib/storageAssets";
 
 import {
   getLesson,
@@ -1462,7 +1746,7 @@ import {
   updateQuizOption,
   deleteQuizOption,
   listAssets,
-  registerAsset,
+  uploadAssetFile,
 } from "../api/cms";
 
 const route = useRoute();
@@ -1480,10 +1764,19 @@ const activePreviewPage = ref(0);
 
 const form = ref({
   coverImage: "",
+  contentType: "activity",
   title: "",
+  noticeText: "",
+  noticeVideoUrl: "",
+  noticeExternalLabel: "",
+  noticeExternalUrl: "",
   contentHtml: "",
   contentMarkdown: "",
-  estimatedMinutes: 0,
+  availableFrom: null,
+  dueAt: null,
+  allowLateSubmission: false,
+  lateUntil: null,
+  requiresSubmission: false,
   contentJson: {
     pages: [
       {
@@ -1496,6 +1789,48 @@ const form = ref({
 });
 
 const initialLessonSnapshot = ref(null);
+
+const lessonTypeOptions = [
+  { label: "Aviso", value: "banner" },
+  { label: "Actividad", value: "activity" },
+  { label: "Evaluacion", value: "assessment" },
+];
+
+const normalizeEditorLessonType = (value) => {
+  const type = String(value || "activity").toLowerCase();
+  if (type === "banner" || type === "notice" || type === "aviso") return "banner";
+  if (type === "assessment" || type === "evaluation") return "assessment";
+  return "activity";
+};
+
+const isNoticeType = computed(() => form.value.contentType === "banner");
+const isActivityType = computed(() => form.value.contentType === "activity");
+const isAssessmentType = computed(() => form.value.contentType === "assessment");
+const lessonTypeLabel = computed(() => {
+  if (isNoticeType.value) return "Aviso";
+  if (isAssessmentType.value) return "Evaluacion";
+  return "Actividad";
+});
+const availabilitySectionTitle = computed(() => {
+  if (isNoticeType.value) return "Programacion";
+  if (isAssessmentType.value) return "Apertura de evaluacion";
+  return "Disponibilidad y entrega";
+});
+const availabilitySectionHint = computed(() => {
+  if (isNoticeType.value) return "Controla cuando se muestra y cuando desaparece para estudiantes.";
+  if (isAssessmentType.value) return "Controla cuando se abre y cierra la evaluacion.";
+  return "Controla cuando se abre, vence o cierra esta actividad.";
+});
+const startDateLabel = computed(() => {
+  if (isNoticeType.value) return "Mostrar desde";
+  if (isAssessmentType.value) return "Apertura";
+  return "Disponible desde";
+});
+const endDateLabel = computed(() => {
+  if (isNoticeType.value) return "Mostrar hasta";
+  if (isAssessmentType.value) return "Cierre";
+  return "Fecha limite";
+});
 
 const mediaLibraryVisible = ref(false);
 const assetsLoaded = ref(false);
@@ -1512,6 +1847,99 @@ const audioInputRef = ref(null);
 const videoInputRef = ref(null);
 const fileInputRef = ref(null);
 const pendingBlockTarget = ref(null);
+const linkDialogVisible = ref(false);
+const pendingLinkTarget = ref(null);
+const linkForm = ref({
+  text: "",
+  url: "",
+});
+
+const toDateOrNull = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toIsoOrNull = (value) => {
+  const date = toDateOrNull(value);
+  return date ? date.toISOString() : null;
+};
+
+const maxDate = (...values) =>
+  values
+    .map((value) => toDateOrNull(value))
+    .filter(Boolean)
+    .reduce((latest, date) => (!latest || date > latest ? date : latest), null);
+
+const calendarMinDate = computed(() => new Date());
+const endDateMinDate = computed(() =>
+  maxDate(calendarMinDate.value, form.value.availableFrom),
+);
+const lateDateMinDate = computed(() =>
+  maxDate(calendarMinDate.value, form.value.dueAt),
+);
+
+const isValidOptionalUrl = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  try {
+    const parsed = new URL(text);
+    return ["http:", "https:"].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+};
+
+watch(
+  () => form.value.allowLateSubmission,
+  (enabled) => {
+    if (!enabled) {
+      form.value.lateUntil = null;
+    }
+  },
+);
+
+watch(
+  () => form.value.availableFrom,
+  (availableFrom) => {
+    if (
+      availableFrom &&
+      form.value.dueAt &&
+      new Date(form.value.dueAt) < new Date(availableFrom)
+    ) {
+      form.value.dueAt = null;
+    }
+  },
+);
+
+watch(
+  () => form.value.dueAt,
+  (dueAt) => {
+    if (
+      dueAt &&
+      form.value.lateUntil &&
+      new Date(form.value.lateUntil) < new Date(dueAt)
+    ) {
+      form.value.lateUntil = null;
+    }
+  },
+);
+
+watch(
+  () => form.value.contentType,
+  (type) => {
+    const normalizedType = normalizeEditorLessonType(type);
+    if (normalizedType !== form.value.contentType) {
+      form.value.contentType = normalizedType;
+      return;
+    }
+    if (normalizedType !== "activity") {
+      form.value.requiresSubmission = false;
+      form.value.allowLateSubmission = false;
+      form.value.lateUntil = null;
+    }
+  },
+);
 
 const quizQuestions = ref([]);
 const quizLoading = ref(true);
@@ -1621,13 +2049,13 @@ const currentPreviewPage = computed(() => {
   return previewPages.value[activePreviewPage.value] || null;
 });
 
-const isSoundCloudEmbed = (value) => {
+const isSoundCloudUrl = (value) => {
   const url = String(value || "").trim();
-  return /w\.soundcloud\.com\/player/i.test(url);
+  return /(^https?:\/\/)?([^/]+\.)?soundcloud\.com\//i.test(url);
 };
 
 const normalizeSoundCloudEmbedUrl = (value) => {
-  return String(value || "")
+  const raw = String(value || "")
     .trim()
     .replace(/&amp;/g, "&")
     .replace(/visual=true/gi, "visual=false")
@@ -1635,6 +2063,18 @@ const normalizeSoundCloudEmbedUrl = (value) => {
     .replace(/show_user=true/gi, "show_user=false")
     .replace(/show_reposts=true/gi, "show_reposts=false")
     .replace(/show_teaser=true/gi, "show_teaser=false");
+
+  if (!raw) return "";
+
+  if (/w\.soundcloud\.com\/player/i.test(raw)) {
+    return raw;
+  }
+
+  if (!isSoundCloudUrl(raw)) {
+    return raw;
+  }
+
+  return `https://w.soundcloud.com/player/?url=${encodeURIComponent(raw)}&visual=false&show_comments=false&show_user=false&show_reposts=false&show_teaser=false`;
 };
 
 watch(
@@ -1697,7 +2137,9 @@ const resolveAssetUrl = (value) => {
     return raw;
   }
 
-  const base = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+  const base = String(
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:3000",
+  ).trim();
   if (!base) return raw;
 
   try {
@@ -2110,6 +2552,82 @@ const addBlock = (pageIndex, type = "text") => {
   page.blocks.push(baseBlock);
 };
 
+const insertTextLink = (pageIndex, blockIndex) => {
+  const block = form.value.contentJson.pages?.[pageIndex]?.blocks?.[blockIndex];
+  if (!block || block.type !== "text") return;
+
+  const selector = `[data-text-block-editor="${pageIndex}-${blockIndex}"]`;
+  const input = document.querySelector(selector);
+  const content = String(block.content || "");
+  const start = Number(input?.selectionStart ?? content.length);
+  const end = Number(input?.selectionEnd ?? start);
+  const selectedText = content.slice(start, end);
+
+  pendingLinkTarget.value = {
+    pageIndex,
+    blockIndex,
+    start,
+    end,
+  };
+  linkForm.value = {
+    text: selectedText || "enlace",
+    url: "",
+  };
+  linkDialogVisible.value = true;
+};
+
+const closeLinkDialog = () => {
+  linkDialogVisible.value = false;
+  pendingLinkTarget.value = null;
+  linkForm.value = {
+    text: "",
+    url: "",
+  };
+};
+
+const confirmTextLink = () => {
+  const target = pendingLinkTarget.value;
+  if (!target) return;
+
+  const block =
+    form.value.contentJson.pages?.[target.pageIndex]?.blocks?.[target.blockIndex];
+  if (!block || block.type !== "text") {
+    closeLinkDialog();
+    return;
+  }
+
+  const cleanText = String(linkForm.value.text || "").trim() || "enlace";
+  const cleanUrl = String(linkForm.value.url || "").trim();
+
+  if (!isSafeLinkUrl(cleanUrl)) {
+    toast.add({
+      severity: "warn",
+      summary: "Enlace no valido",
+      detail: "Usa una URL http(s), mailto, tel, /ruta o #ancla.",
+      life: 3000,
+    });
+    return;
+  }
+
+  const content = String(block.content || "");
+  const linkText = `[${cleanText}](${cleanUrl})`;
+
+  block.content = `${content.slice(0, target.start)}${linkText}${content.slice(
+    target.end,
+  )}`;
+
+  closeLinkDialog();
+
+  requestAnimationFrame(() => {
+    const selector = `[data-text-block-editor="${target.pageIndex}-${target.blockIndex}"]`;
+    const nextInput = document.querySelector(selector);
+    if (!nextInput) return;
+    const cursorPosition = target.start + linkText.length;
+    nextInput.focus();
+    nextInput.setSelectionRange(cursorPosition, cursorPosition);
+  });
+};
+
 const removeBlock = (pageIndex, blockIndex) => {
   const page = form.value.contentJson.pages[pageIndex];
   if (!page) return;
@@ -2415,6 +2933,25 @@ const escapeHtmlText = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const isSafeLinkUrl = (value = "") => {
+  const url = String(value || "").trim();
+  if (!url) return false;
+  if (/^(https?:|mailto:|tel:)/i.test(url)) return true;
+  return url.startsWith("/") || url.startsWith("#");
+};
+
+const renderTextMarkdownLinks = (value = "") =>
+  escapeHtmlText(value).replace(
+    /\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (fullMatch, label, url) => {
+      if (!isSafeLinkUrl(url)) return fullMatch;
+      return `<a href="${escapeHtmlText(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    },
+  );
+
+const renderTextContent = (value = "") =>
+  DOMPurify.sanitize(renderTextMarkdownLinks(value).replace(/\n/g, "<br>"), sanitizerConfig);
+
 const buildEmbedSnippetFromUrl = (rawUrl) => {
   const url = String(rawUrl || "").trim();
   if (!url) return "";
@@ -2461,13 +2998,7 @@ const buildEmbedSnippetFromUrl = (rawUrl) => {
   }
 
   if (/soundcloud\.com|w\.soundcloud\.com/i.test(url)) {
-    const normalizedSrc = url
-      .replace(/&amp;/g, "&")
-      .replace(/visual=true/gi, "visual=false")
-      .replace(/show_comments=true/gi, "show_comments=false")
-      .replace(/show_user=true/gi, "show_user=false")
-      .replace(/show_reposts=true/gi, "show_reposts=false")
-      .replace(/show_teaser=true/gi, "show_teaser=false");
+    const normalizedSrc = normalizeSoundCloudEmbedUrl(url);
 
     return `
       <figure class="lesson-media lesson-media-audio" style="width:100%;max-width:760px;margin:24px auto;">
@@ -2505,7 +3036,7 @@ const buildHtmlFromContentJson = (contentJson) => {
               ? `<h3>${escapeHtmlText(block.title)}</h3>`
               : "";
             const content = block.content
-              ? `<p>${escapeHtmlText(block.content).replace(/\n/g, "<br>")}</p>`
+              ? `<p>${renderTextMarkdownLinks(block.content).replace(/\n/g, "<br>")}</p>`
               : "";
             return `${title}${content}`;
           }
@@ -2535,7 +3066,7 @@ const buildHtmlFromContentJson = (contentJson) => {
               ? `<p>${escapeHtmlText(block.caption)}</p>`
               : "";
 
-            if (block.embedUrl && isSoundCloudEmbed(block.embedUrl)) {
+            if (block.embedUrl && isSoundCloudUrl(block.embedUrl)) {
               const normalizedEmbed = normalizeSoundCloudEmbedUrl(
                 block.embedUrl,
               );
@@ -2669,28 +3200,7 @@ const uploadAndRegisterAsset = async (kind, file) => {
     throw new Error("File must be 25 MB or smaller");
   }
 
-  if (!courseId) {
-    throw new Error("Course context is missing");
-  }
-
-  const uploadResult = await uploadLessonAsset({
-    courseId,
-    lessonId,
-    file,
-    kind,
-  });
-
-  const payload = {
-    storagePath: uploadResult.path,
-    publicUrl: uploadResult.publicUrl,
-    kind: uploadResult.kind,
-    mimeType: uploadResult.mimeType,
-    originalName: uploadResult.originalName,
-    sizeBytes: uploadResult.size,
-    storageProvider: "supabase",
-  };
-
-  const registered = await registerAsset(payload);
+  const registered = await uploadAssetFile(file);
 
   const entry = {
     assetId: registered.assetId,
@@ -2699,7 +3209,7 @@ const uploadAndRegisterAsset = async (kind, file) => {
     originalName: registered.originalName,
     sizeBytes: registered.sizeBytes,
     storagePath: registered.storagePath,
-    url: resolveAssetUrl(registered.url || uploadResult.publicUrl),
+    url: resolveAssetUrl(registered.url),
     createdAt: registered.createdAt || new Date().toISOString(),
   };
 
@@ -2763,10 +3273,34 @@ const loadLesson = async () => {
         lesson.value.coverImage ||
         lesson.value.image_url ||
         "",
+      contentType: normalizeEditorLessonType(
+        lesson.value.normalizedType ||
+          lesson.value.contentType ||
+          lesson.value.content_type,
+      ),
       title: lesson.value.title || "",
+      noticeText: lesson.value.contentText || lesson.value.content_text || "",
+      noticeVideoUrl: lesson.value.videoUrl || lesson.value.video_url || "",
+      noticeExternalLabel:
+        parsedContentJson?.notice?.externalLabel || "",
+      noticeExternalUrl:
+        lesson.value.contentUrl ||
+        lesson.value.content_url ||
+        lesson.value.externalUrl ||
+        "",
       contentHtml: "",
       contentMarkdown: "",
-      estimatedMinutes: lesson.value.estimated_minutes || 0,
+      availableFrom: toDateOrNull(
+        lesson.value.availableFrom || lesson.value.available_from,
+      ),
+      dueAt: toDateOrNull(lesson.value.dueAt || lesson.value.due_at),
+      allowLateSubmission: Boolean(
+        lesson.value.allowLateSubmission ?? lesson.value.allow_late_submission,
+      ),
+      lateUntil: toDateOrNull(lesson.value.lateUntil || lesson.value.late_until),
+      requiresSubmission: Boolean(
+        lesson.value.requiresSubmission ?? lesson.value.requires_submission,
+      ),
       contentJson: parsedContentJson,
     };
 
@@ -2926,6 +3460,67 @@ const saveLesson = async () => {
   saving.value = true;
 
   try {
+    const now = Date.now();
+    const selectedDates = [
+      form.value.availableFrom,
+      form.value.dueAt,
+      form.value.lateUntil,
+    ].filter(Boolean);
+
+    if (selectedDates.some((value) => new Date(value).getTime() < now)) {
+      toast.add({
+        severity: "warn",
+        summary: "Fecha invalida",
+        detail: "No puedes guardar fechas anteriores al momento actual",
+        life: 3000,
+      });
+      return;
+    }
+
+    if (
+      form.value.availableFrom &&
+      form.value.dueAt &&
+      new Date(form.value.dueAt) < new Date(form.value.availableFrom)
+    ) {
+      toast.add({
+        severity: "warn",
+        summary: "Fechas inválidas",
+        detail: "La fecha límite no puede ser anterior a la fecha de inicio",
+        life: 3000,
+      });
+      return;
+    }
+
+    if (
+      form.value.allowLateSubmission &&
+      form.value.dueAt &&
+      form.value.lateUntil &&
+      new Date(form.value.lateUntil) < new Date(form.value.dueAt)
+    ) {
+      toast.add({
+        severity: "warn",
+        summary: "Fechas inválidas",
+        detail: "La fecha máxima tardía no puede ser anterior a la fecha límite",
+        life: 3000,
+      });
+      return;
+    }
+
+    if (
+      isNoticeType.value &&
+      (!isValidOptionalUrl(form.value.coverImage) ||
+        !isValidOptionalUrl(form.value.noticeVideoUrl) ||
+        !isValidOptionalUrl(form.value.noticeExternalUrl))
+    ) {
+      toast.add({
+        severity: "warn",
+        summary: "URL invalida",
+        detail: "Revisa que las URLs del aviso empiecen por http:// o https://",
+        life: 3000,
+      });
+      return;
+    }
+
     const generatedHtmlFromPages = buildHtmlFromContentJson(
       form.value.contentJson,
     );
@@ -2937,11 +3532,36 @@ const saveLesson = async () => {
 
     const payload = {
       title: form.value.title,
-      contentText: "",
-      contentMarkdown: "",
-      contentHtml: sanitizedHtml,
-      contentJson: form.value.contentJson,
-      estimatedMinutes: form.value.estimatedMinutes,
+      contentType: form.value.contentType,
+      contentText: isNoticeType.value ? form.value.noticeText : "",
+      contentMarkdown: isNoticeType.value ? form.value.noticeText : "",
+      contentHtml: isNoticeType.value ? "" : sanitizedHtml,
+      contentJson: isNoticeType.value
+        ? {
+            notice: {
+              externalLabel: form.value.noticeExternalLabel || "",
+            },
+          }
+        : form.value.contentJson,
+      videoUrl: isNoticeType.value
+        ? form.value.noticeVideoUrl?.trim() || null
+        : null,
+      contentUrl: isNoticeType.value
+        ? form.value.noticeExternalUrl?.trim() || null
+        : null,
+      externalUrl: isNoticeType.value
+        ? form.value.noticeExternalUrl?.trim() || null
+        : null,
+      availableFrom: toIsoOrNull(form.value.availableFrom),
+      dueAt: toIsoOrNull(form.value.dueAt),
+      allowLateSubmission:
+        isActivityType.value && Boolean(form.value.allowLateSubmission),
+      lateUntil:
+        isActivityType.value && form.value.allowLateSubmission && form.value.lateUntil
+          ? toIsoOrNull(form.value.lateUntil)
+          : null,
+      requiresSubmission:
+        isActivityType.value && Boolean(form.value.requiresSubmission),
       coverImage: form.value.coverImage,
       cover_image_url: form.value.coverImage,
       image_url: form.value.coverImage,
@@ -2952,10 +3572,18 @@ const saveLesson = async () => {
 
     const hasChanges =
       !prevSnapshot ||
+      nextSnapshot.contentType !== prevSnapshot.contentType ||
       nextSnapshot.title !== prevSnapshot.title ||
+      nextSnapshot.contentText !== prevSnapshot.contentText ||
       nextSnapshot.contentHtml !== prevSnapshot.contentHtml ||
       nextSnapshot.contentJson !== prevSnapshot.contentJson ||
-      nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes ||
+      nextSnapshot.videoUrl !== prevSnapshot.videoUrl ||
+      nextSnapshot.contentUrl !== prevSnapshot.contentUrl ||
+      nextSnapshot.availableFrom !== prevSnapshot.availableFrom ||
+      nextSnapshot.dueAt !== prevSnapshot.dueAt ||
+      nextSnapshot.allowLateSubmission !== prevSnapshot.allowLateSubmission ||
+      nextSnapshot.lateUntil !== prevSnapshot.lateUntil ||
+      nextSnapshot.requiresSubmission !== prevSnapshot.requiresSubmission ||
       form.value.coverImage !==
         (lesson.value?.cover_image_url ||
           lesson.value?.coverImage ||
@@ -2978,8 +3606,20 @@ const saveLesson = async () => {
       image_url: form.value.coverImage,
     };
 
+    if (!prevSnapshot || nextSnapshot.contentType !== prevSnapshot.contentType) {
+      patchPayload.contentType = nextSnapshot.contentType;
+    }
+
     if (!prevSnapshot || nextSnapshot.title !== prevSnapshot.title) {
       patchPayload.title = nextSnapshot.title;
+    }
+
+    if (
+      !prevSnapshot ||
+      nextSnapshot.contentText !== prevSnapshot.contentText
+    ) {
+      patchPayload.contentText = nextSnapshot.contentText;
+      patchPayload.contentMarkdown = nextSnapshot.contentText;
     }
 
     if (
@@ -2993,14 +3633,42 @@ const saveLesson = async () => {
       !prevSnapshot ||
       nextSnapshot.contentJson !== prevSnapshot.contentJson
     ) {
-      patchPayload.contentJson = form.value.contentJson;
+      patchPayload.contentJson = payload.contentJson;
+    }
+
+    if (!prevSnapshot || nextSnapshot.videoUrl !== prevSnapshot.videoUrl) {
+      patchPayload.videoUrl = nextSnapshot.videoUrl;
+    }
+
+    if (!prevSnapshot || nextSnapshot.contentUrl !== prevSnapshot.contentUrl) {
+      patchPayload.contentUrl = nextSnapshot.contentUrl;
+      patchPayload.externalUrl = nextSnapshot.contentUrl;
+    }
+
+    if (!prevSnapshot || nextSnapshot.availableFrom !== prevSnapshot.availableFrom) {
+      patchPayload.availableFrom = nextSnapshot.availableFrom;
+    }
+
+    if (!prevSnapshot || nextSnapshot.dueAt !== prevSnapshot.dueAt) {
+      patchPayload.dueAt = nextSnapshot.dueAt;
     }
 
     if (
       !prevSnapshot ||
-      nextSnapshot.estimatedMinutes !== prevSnapshot.estimatedMinutes
+      nextSnapshot.allowLateSubmission !== prevSnapshot.allowLateSubmission
     ) {
-      patchPayload.estimatedMinutes = nextSnapshot.estimatedMinutes;
+      patchPayload.allowLateSubmission = nextSnapshot.allowLateSubmission;
+    }
+
+    if (!prevSnapshot || nextSnapshot.lateUntil !== prevSnapshot.lateUntil) {
+      patchPayload.lateUntil = nextSnapshot.lateUntil;
+    }
+
+    if (
+      !prevSnapshot ||
+      nextSnapshot.requiresSubmission !== prevSnapshot.requiresSubmission
+    ) {
+      patchPayload.requiresSubmission = nextSnapshot.requiresSubmission;
     }
 
     await updateLesson(lessonId, patchPayload);
@@ -3131,10 +3799,34 @@ const sanitizerConfig = {
 };
 
 const normalizeLessonSnapshot = (value) => ({
+  contentType: normalizeEditorLessonType(value?.contentType),
   title: String(value?.title || "").trim(),
+  contentText: String(value?.contentText ?? value?.noticeText ?? ""),
   contentHtml: String(value?.contentHtml || ""),
-  contentJson: JSON.stringify(value?.contentJson || createDefaultContentJson()),
-  estimatedMinutes: Number(value?.estimatedMinutes || 0),
+  contentJson: JSON.stringify(
+    normalizeEditorLessonType(value?.contentType) === "banner"
+      ? {
+          notice: {
+            externalLabel:
+              value?.noticeExternalLabel ||
+              value?.contentJson?.notice?.externalLabel ||
+              "",
+          },
+        }
+      : value?.contentJson || createDefaultContentJson(),
+  ),
+  videoUrl: String(value?.videoUrl ?? value?.noticeVideoUrl ?? ""),
+  contentUrl: String(
+    value?.contentUrl ?? value?.externalUrl ?? value?.noticeExternalUrl ?? "",
+  ),
+  availableFrom: toIsoOrNull(value?.availableFrom),
+  dueAt: toIsoOrNull(value?.dueAt),
+  allowLateSubmission: Boolean(value?.allowLateSubmission),
+  lateUntil:
+    value?.allowLateSubmission && value?.lateUntil
+      ? toIsoOrNull(value?.lateUntil)
+      : null,
+  requiresSubmission: Boolean(value?.requiresSubmission),
 });
 
 const togglePublish = async () => {
@@ -3170,6 +3862,31 @@ const togglePublish = async () => {
 
 const goBack = () => {
   router.push(`/cms/courses/${courseId || ""}`);
+};
+
+const openStudentPreview = () => {
+  if (!courseId || !lessonId) {
+    toast.add({
+      severity: "warn",
+      summary: "No se puede abrir la vista previa",
+      detail: "Falta el curso o la leccion en la URL del editor.",
+      life: 3000,
+    });
+    return;
+  }
+
+  const routeData = router.resolve({
+    name: "lesson",
+    params: {
+      courseId,
+      lessonId,
+    },
+    query: {
+      preview: "1",
+    },
+  });
+
+  window.open(routeData.href, "_blank", "noopener,noreferrer");
 };
 
 const openQuestionDialog = (question) => {
@@ -3602,6 +4319,8 @@ onMounted(async () => {
 
 .lesson-page-pro {
   width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .lesson-topbar {
@@ -3654,7 +4373,9 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .lesson-loading {
@@ -3759,6 +4480,41 @@ onMounted(async () => {
   gap: 1rem;
 }
 
+.notice-editor-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.notice-media-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 1rem;
+}
+
+.lesson-info-grid :deep(.p-calendar) {
+  width: 100%;
+}
+
+.lesson-switch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.35rem 0 1rem;
+}
+
+.lesson-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+}
+
 .pages-topbar {
   display: flex;
   justify-content: space-between;
@@ -3772,12 +4528,15 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  min-width: 0;
+  flex: 1 1 260px;
 }
 
 .pages-topbar-actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .quiz-card {
@@ -3926,6 +4685,83 @@ onMounted(async () => {
   overflow: auto;
 }
 
+.notice-preview-card {
+  overflow: hidden;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.94), rgba(14, 165, 233, 0.9)),
+    #2563eb;
+  color: #ffffff;
+  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.18);
+}
+
+.notice-preview-image {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+.notice-preview-body {
+  padding: 1rem;
+}
+
+.notice-preview-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 0.55rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.notice-preview-body h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.notice-preview-body p {
+  margin: 0.55rem 0 0;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.45;
+}
+
+.notice-preview-muted {
+  opacity: 0.78;
+}
+
+.notice-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.notice-preview-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.notice-preview-dates {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.82rem;
+}
+
 .lesson-preview-header {
   position: sticky;
   top: 0;
@@ -4014,6 +4850,29 @@ onMounted(async () => {
   white-space: pre-line;
 }
 
+.preview-text :deep(a) {
+  color: #2563eb;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.text-editor-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.link-editor-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.link-editor-dialog :deep(.p-dialog-content) {
+  padding-top: 0.25rem;
+}
+
 .preview-image {
   display: block;
   width: 100%;
@@ -4085,6 +4944,7 @@ onMounted(async () => {
   gap: 0.85rem;
   padding: 0.85rem 0;
   border-top: 1px solid #e5e7eb;
+  min-width: 0;
 }
 
 .asset-info {
@@ -4139,6 +4999,7 @@ onMounted(async () => {
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .assets-loading {
@@ -4173,12 +5034,14 @@ onMounted(async () => {
   justify-content: space-between;
   width: 100%;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .media-library-header div {
   display: flex;
   justify-content: space-between;
   width: 100%;
+  min-width: 0;
 }
 
 .media-library-content {
@@ -4322,6 +5185,7 @@ onMounted(async () => {
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .page-builder-head-fields {
@@ -4329,6 +5193,7 @@ onMounted(async () => {
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: 1rem;
   flex: 1;
+  min-width: 0;
 }
 
 .blocks-toolbar {
@@ -4355,7 +5220,9 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
+  min-width: 0;
 }
 
 .block-asset-toolbar {
@@ -4443,6 +5310,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .preview-audio-frame {
@@ -4560,24 +5428,140 @@ onMounted(async () => {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .lesson-page-pro {
+    padding-inline: 0.65rem;
+  }
+
   .lesson-shell :deep(.p-card-body) {
-    padding: 1rem;
+    padding: 0.85rem;
+  }
+
+  .lesson-topbar,
+  .section-head,
+  .page-builder-head,
+  .block-editor-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lesson-topbar-left {
+    width: 100%;
+  }
+
+  .lesson-topbar-actions,
+  .pages-topbar-actions,
+  .block-asset-toolbar,
+  .dialog-actions,
+  .asset-actions,
+  .media-library-upload {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .lesson-topbar-actions :deep(.p-button),
+  .pages-topbar-actions :deep(.p-button),
+  .block-asset-toolbar :deep(.p-button),
+  .dialog-actions :deep(.p-button),
+  .media-library-upload :deep(.p-button) {
+    flex: 1 1 100%;
+    justify-content: center;
   }
 
   .lesson-topbar-copy h1 {
     font-size: 1.3rem;
   }
 
+  .lesson-layout {
+    gap: 1rem;
+  }
+
   .lesson-section-card,
   .lesson-hero-card,
   .sidebar-card {
-    padding: 1rem;
-    border-radius: 18px;
+    padding: 0.9rem;
+    border-radius: 16px;
+  }
+
+  .lesson-info-grid,
+  .notice-media-grid,
+  .lesson-switch-grid,
+  .page-builder-head-fields,
+  .quiz-overview,
+  .option-row {
+    grid-template-columns: 1fr;
+  }
+
+  .page-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .lesson-preview-blocks.is-two-columns,
+  .lesson-preview-blocks.is-hero-left {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-row {
+    align-items: flex-start;
+  }
+
+  .asset-actions {
+    flex: 0 0 auto;
+  }
+
+  .media-library-toolbar {
+    padding: 0.85rem;
+  }
+
+  .media-library-list {
+    padding-inline: 0.85rem;
+  }
+
+  .media-library-header div {
+    flex-direction: column;
+    gap: 0.25rem;
   }
 
   .question-actions {
     gap: 0.15rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .lesson-page-pro {
+    padding-inline: 0.5rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .lesson-topbar-left {
+    gap: 0.5rem;
+  }
+
+  .lesson-meta {
+    gap: 0.45rem;
+    font-size: 0.82rem;
+  }
+
+  .lesson-chip {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .asset-row {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .asset-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .asset-actions :deep(.p-button) {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 }
 </style>

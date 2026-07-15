@@ -2,27 +2,27 @@
   <div class="shell">
     <!-- MOBILE TOPBAR -->
     <header v-if="showSidebar" class="mobile-topbar">
+      <div class="mobile-brand">
+        <Avatar label="AC" shape="circle" class="mobile-brand-avatar" />
+        <div class="mobile-brand-copy">
+          <strong>{{ t('common.brandTitle') }}</strong>
+          <small>{{ t('common.brandSubtitle') }}</small>
+        </div>
+      </div>
+
       <Button
         icon="pi pi-bars"
         class="p-button-rounded p-button-text mobile-menu-btn"
         :aria-label="t('sidebar.toggle')"
         @click="mobileSidebarOpen = true"
       />
-
-      <div class="mobile-brand">
-  <Avatar label="AC" shape="circle" class="mobile-brand-avatar" />
-  <div class="mobile-brand-copy">
-    <strong>{{ t('common.brandTitle') }}</strong>
-    <small>{{ t('common.brandSubtitle') }}</small>
-  </div>
-</div>
     </header>
 
     <!-- DESKTOP SIDEBAR -->
     <aside
-  v-if="showSidebar"
-  :class="['sidebar', 'desktop-sidebar', { collapsed }]"
->
+      v-if="showSidebar"
+      :class="['sidebar', 'desktop-sidebar', { collapsed }]"
+    >
       <div class="sidebar-inner">
         <div class="sidebar-header">
           <div class="brand-block">
@@ -121,7 +121,7 @@
     <!-- MOBILE DRAWER -->
     <Sidebar
       v-model:visible="mobileSidebarOpen"
-      position="left"
+      position="right"
       class="mobile-drawer"
       :dismissable="true"
       :blockScroll="true"
@@ -490,6 +490,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .shell {
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
   display: flex;
   font-family: 'Poppins', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background:
@@ -515,11 +517,15 @@ onBeforeUnmount(() => {
   padding: 16px 10px;
   transition: all 0.25s ease;
   display: flex;
-  height: 100vh;
-  position: sticky;
+  height: 100dvh;
+  min-height: 100dvh;
+  position: fixed;
   top: 0;
+  left: 0;
+  bottom: 0;
   box-shadow: 8px 0 24px rgba(15, 23, 42, 0.10);
   z-index: 20;
+  overflow: hidden;
 }
 
 .sidebar.collapsed {
@@ -550,6 +556,7 @@ onBeforeUnmount(() => {
 
 .drawer-sidebar {
   min-height: 100%;
+  width: 100%;
   padding: 16px 10px;
   overflow-y: auto;
   scrollbar-width: none;
@@ -560,12 +567,6 @@ onBeforeUnmount(() => {
   width: 0;
   height: 0;
   display: none;
-}
-
-.drawer-sidebar {
-  min-height: 100%;
-  padding: 16px 10px;
-  overflow-y: auto;
 }
 
 .sidebar-header,
@@ -596,6 +597,7 @@ onBeforeUnmount(() => {
 .brand-copy {
   display: grid;
   min-width: 0;
+  overflow: hidden;
 }
 
 .brand-copy strong {
@@ -608,6 +610,9 @@ onBeforeUnmount(() => {
 .brand-copy small {
   color: #94a3b8;
   font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .collapse-btn {
@@ -691,6 +696,7 @@ onBeforeUnmount(() => {
 
 .nav-item {
   width: 100%;
+  min-width: 0;
   justify-content: flex-start;
   border-radius: 14px !important;
   font-weight: 600;
@@ -847,6 +853,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.5rem;
   justify-content: space-between;
+  flex-wrap: wrap;
 }
 
 .logout-btn {
@@ -870,23 +877,41 @@ onBeforeUnmount(() => {
 .shell-content {
   flex: 1;
   background: transparent;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
+  margin-left: 280px;
+  overflow-x: hidden;
+  transition: margin-left 0.25s ease;
 }
 
+.sidebar.collapsed + .shell-content {
+  margin-left: 82px;
+}
+
+:deep(.mobile-drawer.p-sidebar),
 .mobile-drawer :deep(.p-sidebar) {
-  width: min(320px, 86vw);
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
+  width: min(340px, 92vw);
+  padding: 0 !important;
+  background: #0f172a !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden;
 }
 
+:deep(.mobile-drawer.p-sidebar .p-sidebar-header),
 .mobile-drawer :deep(.p-sidebar-header) {
   display: none;
 }
 
+:deep(.mobile-drawer.p-sidebar .p-sidebar-content),
 .mobile-drawer :deep(.p-sidebar-content) {
-  padding: 0;
+  width: 100%;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  min-height: 100vh;
+  background: #0f172a !important;
 }
 
 @media (max-width: 1024px) {
@@ -899,6 +924,14 @@ onBeforeUnmount(() => {
     width: 74px;
     min-width: 74px;
   }
+
+  .shell-content {
+    margin-left: 240px;
+  }
+
+  .sidebar.collapsed + .shell-content {
+    margin-left: 74px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -908,6 +941,11 @@ onBeforeUnmount(() => {
 
   .desktop-sidebar {
     display: none !important;
+  }
+
+  .shell-content,
+  .sidebar.collapsed + .shell-content {
+    margin-left: 0;
   }
 
   .mobile-topbar {
@@ -921,64 +959,119 @@ onBeforeUnmount(() => {
     background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+    width: 100%;
+    min-width: 0;
   }
 
   .mobile-menu-btn {
-    color: #0f172a !important;
+    width: 2.65rem;
+    height: 2.65rem;
+    min-width: 2.65rem;
+    border-radius: 14px !important;
+    color: #ffffff !important;
+    background: #0f4778 !important;
+    border: 1px solid rgba(15, 71, 120, 0.16) !important;
+    box-shadow: 0 8px 18px rgba(15, 71, 120, 0.18);
   }
 
- .mobile-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-  flex: 1;
+  .mobile-menu-btn:hover,
+  .mobile-menu-btn:focus {
+    background: #123f68 !important;
+    color: #ffffff !important;
+  }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .mobile-brand-avatar {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .mobile-brand-copy {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .mobile-brand-copy strong {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-brand-copy small {
+    color: #64748b;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drawer-sidebar {
+    min-height: 100vh;
+    padding: 1.15rem 1rem;
+    background: linear-gradient(180deg, #0f172a 0%, #172033 100%);
+  }
+
+  .drawer-sidebar .nav-list {
+    gap: 0.42rem;
+  }
+
+  .drawer-sidebar .nav-item {
+    min-height: 48px;
+    border-radius: 14px !important;
+    padding-inline: 0.9rem !important;
+    font-size: 0.98rem;
+    justify-content: flex-start;
+  }
+
+  .drawer-sidebar .nav-item :deep(.p-button-label) {
+    text-align: left;
+    flex: 1;
+  }
+
+  .drawer-sidebar .language-switch {
+    padding: 0.35rem 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .drawer-sidebar .user-card {
+    border-radius: 16px;
+  }
+
 }
 
-.mobile-brand-avatar {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: #fff;
-  flex-shrink: 0;
-}
+@media (max-width: 420px) {
+  :deep(.mobile-drawer.p-sidebar),
+  .mobile-drawer :deep(.p-sidebar) {
+    width: min(320px, 88vw);
+  }
 
-.mobile-brand-copy {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  overflow: hidden;
-}
+  .mobile-topbar {
+    padding: 0.75rem 0.8rem;
+    gap: 0.65rem;
+  }
 
-.mobile-brand-copy strong {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+  .mobile-brand-copy strong {
+    font-size: 0.94rem;
+  }
 
-.mobile-brand-copy small {
-  color: #64748b;
-  font-size: 0.72rem;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.mobile-topbar {
-  display: flex !important;
-  align-items: center;
-  gap: 0.85rem;
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  padding: 0.85rem 1rem;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-}
-
+  .mobile-brand-copy small {
+    font-size: 0.68rem;
+  }
 }
 </style>

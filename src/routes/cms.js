@@ -39,6 +39,8 @@ const {
 } = require("../utils/validators");
 const { canEditCourse } = require("../utils/cmsPermissions");
 const { ensureCourseExists } = require("../utils/roleService");
+const { decorateLessonAvailability } = require("../utils/lessonAvailability");
+const { normalizeLessonType, toStoredLessonType } = require("../utils/lessonTypes");
 
 const CMS_GLOBAL_ROLES = [
   "admin",
@@ -77,6 +79,98 @@ const sanitizeAssetKind = (kind) =>
   ASSET_KIND_VALUES.has(kind) ? kind : "file";
 
 const router = express.Router();
+
+const tableExists = async (client, tableName) => {
+  const { rows } = await client.query("SELECT to_regclass($1) AS table_name", [
+    tableName,
+  ]);
+  return Boolean(rows[0]?.table_name);
+};
+
+const deleteLessonCascade = async (client, lessonId) => {
+  if (await tableExists(client, "quiz_attempt_answers")) {
+    await client.query(
+      `
+        DELETE FROM quiz_attempt_answers
+        WHERE attempt_id IN (
+          SELECT id FROM quiz_attempts WHERE lesson_id = $1
+        )
+        OR question_id IN (
+          SELECT id FROM quiz_questions WHERE lesson_id = $1
+        )
+      `,
+      [lessonId],
+    );
+  }
+
+  if (await tableExists(client, "quiz_attempts")) {
+    await client.query("DELETE FROM quiz_attempts WHERE lesson_id = $1", [
+      lessonId,
+    ]);
+  }
+
+  if (await tableExists(client, "quiz_options")) {
+    await client.query(
+      `
+        DELETE FROM quiz_options
+        WHERE question_id IN (
+          SELECT id FROM quiz_questions WHERE lesson_id = $1
+        )
+      `,
+      [lessonId],
+    );
+  }
+
+  if (await tableExists(client, "quiz_questions")) {
+    await client.query("DELETE FROM quiz_questions WHERE lesson_id = $1", [
+      lessonId,
+    ]);
+  }
+
+  if (await tableExists(client, "quizzes")) {
+    await client.query("DELETE FROM quizzes WHERE lesson_id = $1", [lessonId]);
+  }
+
+  if (await tableExists(client, "lesson_submission_files")) {
+    await client.query(
+      `
+        DELETE FROM lesson_submission_files
+        WHERE submission_id IN (
+          SELECT id FROM lesson_submissions WHERE lesson_id = $1
+        )
+      `,
+      [lessonId],
+    );
+  }
+
+  if (await tableExists(client, "lesson_submissions")) {
+    await client.query("DELETE FROM lesson_submissions WHERE lesson_id = $1", [
+      lessonId,
+    ]);
+  }
+
+  if (await tableExists(client, "lesson_assets")) {
+    await client.query("DELETE FROM lesson_assets WHERE lesson_id = $1", [
+      lessonId,
+    ]);
+  }
+
+  if (await tableExists(client, "lesson_progress")) {
+    await client.query("DELETE FROM lesson_progress WHERE lesson_id = $1", [
+      lessonId,
+    ]);
+  }
+
+  const { rows } = await client.query(
+    `
+      DELETE FROM lessons
+      WHERE id = $1
+      RETURNING id
+    `,
+    [lessonId],
+  );
+  return rows[0] || null;
+};
 
 const uploadStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -1823,6 +1917,50 @@ router.post(
   (req, res) => toggleModulePublish(req, res, false),
 );
 
+router.delete(
+  "/modules/:id",
+  requireCourseContentRole(resolveCourseIdFromModuleParam("id")),
+  async (req, res) => {
+    const moduleId = req.params.id;
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const moduleRes = await client.query(
+        "SELECT id FROM modules WHERE id = $1 LIMIT 1",
+        [moduleId],
+      );
+      if (!moduleRes.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Module not found" });
+      }
+
+      const lessonRes = await client.query(
+        "SELECT id FROM lessons WHERE module_id = $1",
+        [moduleId],
+      );
+      for (const lesson of lessonRes.rows) {
+        await deleteLessonCascade(client, lesson.id);
+      }
+
+      await client.query("DELETE FROM modules WHERE id = $1", [moduleId]);
+      await client.query("COMMIT");
+
+      return res.json({ ok: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("Failed to delete module", err);
+      return res.status(500).json({
+        error: "Failed to delete module",
+        detail: err.message,
+      });
+    } finally {
+      client.release();
+    }
+  },
+);
+
 router.get(
   "/modules/:moduleId/lessons",
   requireCourseContentRole(resolveCourseIdFromModuleParam("moduleId")),
@@ -1831,14 +1969,34 @@ router.get(
     try {
       const { rows } = await pool.query(
         `
-        SELECT id, module_id, title, content_text, content_markdown, content_html, video_url, cover_image_url, estimated_minutes, order_index, is_published, published_at, created_at, updated_at
+        SELECT
+          id,
+          module_id,
+          title,
+          content_type,
+          content_text,
+          content_markdown,
+          content_html,
+          video_url,
+          cover_image_url,
+          estimated_minutes,
+          order_index,
+          is_published,
+          published_at,
+          available_from,
+          due_at,
+          allow_late_submission,
+          late_until,
+          requires_submission,
+          created_at,
+          updated_at
         FROM lessons
         WHERE module_id = $1
         ORDER BY order_index ASC
       `,
         [moduleId],
       );
-      return res.json(rows);
+      return res.json(rows.map((lesson) => decorateLessonAvailability(lesson)));
     } catch (err) {
       console.error("Failed to list lessons", err);
       return res.status(500).json({ error: "Failed to list lessons" });
@@ -1862,6 +2020,18 @@ router.post(
       });
     }
 
+    const scheduledDates = [
+      parsed.data.availableFrom,
+      parsed.data.dueAt,
+      parsed.data.lateUntil,
+    ].filter(Boolean);
+    const now = Date.now();
+    if (scheduledDates.some((value) => new Date(value).getTime() < now)) {
+      return res.status(400).json({
+        error: "Scheduled lesson dates cannot be in the past",
+      });
+    }
+
     try {
       let orderIndex = parsed.data.orderIndex;
       if (!orderIndex) {
@@ -1882,48 +2052,84 @@ router.post(
         parsed.data.contentJson !== undefined
           ? JSON.stringify(parsed.data.contentJson)
           : null;
+      const coverImage =
+        parsed.data.coverImage ??
+        parsed.data.cover_image_url ??
+        parsed.data.image_url ??
+        null;
+      const contentUrl =
+        parsed.data.contentUrl ??
+        parsed.data.content_url ??
+        parsed.data.externalUrl ??
+        null;
 
       const { rows } = await pool.query(
         `
           INSERT INTO lessons (
             module_id,
             title,
+            content_type,
             content_text,
             content_markdown,
             content_html,
             content_json,
             video_url,
+            cover_image_url,
+            content_url,
             estimated_minutes,
+            available_from,
+            due_at,
+            allow_late_submission,
+            late_until,
+            requires_submission,
             position,
             order_index,
             is_published
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, false)
           RETURNING
             id,
             module_id,
             title,
+            content_type,
             content_text,
             content_markdown,
             content_html,
             content_json,
             video_url,
+            cover_image_url,
+            content_url,
             estimated_minutes,
             order_index,
             is_published,
             published_at,
+            available_from,
+            due_at,
+            allow_late_submission,
+            late_until,
+            requires_submission,
             created_at,
             updated_at
         `,
         [
           moduleId,
           parsed.data.title,
+          toStoredLessonType(parsed.data.contentType),
           parsed.data.contentText || null,
           parsed.data.contentMarkdown || parsed.data.contentText || null,
           htmlContent,
           contentJsonValue,
           parsed.data.videoUrl || null,
+          coverImage,
+          contentUrl,
           parsed.data.estimatedMinutes || null,
+          parsed.data.availableFrom ? new Date(parsed.data.availableFrom) : null,
+          parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
+          Boolean(parsed.data.allowLateSubmission),
+          parsed.data.allowLateSubmission && parsed.data.lateUntil
+            ? new Date(parsed.data.lateUntil)
+            : null,
+          Boolean(parsed.data.requiresSubmission),
           orderIndex,
           orderIndex,
         ],
@@ -1932,7 +2138,7 @@ router.post(
       const lesson = rows[0];
 
       return res.status(201).json({
-        ...lesson,
+        ...decorateLessonAvailability(lesson),
         content_json: lesson.content_json
           ? typeof lesson.content_json === "string"
             ? JSON.parse(lesson.content_json)
@@ -1967,6 +2173,18 @@ router.patch(
       });
     }
 
+    const submittedDates = [
+      parsed.data.availableFrom,
+      parsed.data.dueAt,
+      parsed.data.lateUntil,
+    ].filter(Boolean);
+    const now = Date.now();
+    if (submittedDates.some((value) => new Date(value).getTime() < now)) {
+      return res.status(400).json({
+        error: "Scheduled lesson dates cannot be in the past",
+      });
+    }
+
     try {
       const updates = [];
       const values = [];
@@ -1974,6 +2192,11 @@ router.patch(
       if (parsed.data.title !== undefined) {
         values.push(parsed.data.title);
         updates.push(`title = $${values.length}`);
+      }
+
+      if (parsed.data.contentType !== undefined) {
+        values.push(toStoredLessonType(parsed.data.contentType));
+        updates.push(`content_type = $${values.length}`);
       }
 
       if (parsed.data.contentText !== undefined) {
@@ -2020,6 +2243,21 @@ router.patch(
         updates.push(`cover_image_url = $${values.length}`);
       }
 
+      if (
+        parsed.data.contentUrl !== undefined ||
+        parsed.data.content_url !== undefined ||
+        parsed.data.externalUrl !== undefined
+      ) {
+        const contentUrl =
+          parsed.data.contentUrl ??
+          parsed.data.content_url ??
+          parsed.data.externalUrl ??
+          null;
+
+        values.push(contentUrl);
+        updates.push(`content_url = $${values.length}`);
+      }
+
       if (parsed.data.estimatedMinutes !== undefined) {
         values.push(parsed.data.estimatedMinutes ?? null);
         updates.push(`estimated_minutes = $${values.length}`);
@@ -2030,11 +2268,108 @@ router.patch(
         updates.push(`order_index = $${values.length}`);
       }
 
+      if (parsed.data.availableFrom !== undefined) {
+        values.push(
+          parsed.data.availableFrom ? new Date(parsed.data.availableFrom) : null,
+        );
+        updates.push(`available_from = $${values.length}`);
+      }
+
+      if (parsed.data.dueAt !== undefined) {
+        values.push(parsed.data.dueAt ? new Date(parsed.data.dueAt) : null);
+        updates.push(`due_at = $${values.length}`);
+      }
+
+      if (parsed.data.allowLateSubmission !== undefined) {
+        values.push(Boolean(parsed.data.allowLateSubmission));
+        updates.push(`allow_late_submission = $${values.length}`);
+
+        if (!parsed.data.allowLateSubmission) {
+          updates.push("late_until = NULL");
+        }
+      }
+
+      if (
+        parsed.data.lateUntil !== undefined &&
+        parsed.data.allowLateSubmission !== false
+      ) {
+        values.push(
+          parsed.data.lateUntil ? new Date(parsed.data.lateUntil) : null,
+        );
+        updates.push(`late_until = $${values.length}`);
+      }
+
+      if (parsed.data.requiresSubmission !== undefined) {
+        values.push(Boolean(parsed.data.requiresSubmission));
+        updates.push(`requires_submission = $${values.length}`);
+      }
+
       if (!updates.length) {
         return res.status(400).json({
           error: "No updates provided",
           receivedBody: req.body,
           parsedData: parsed.data,
+        });
+      }
+
+      const currentLessonRes = await pool.query(
+        `
+          SELECT available_from, due_at, allow_late_submission, late_until
+          FROM lessons
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [lessonId],
+      );
+
+      if (!currentLessonRes.rows.length) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+
+      const currentLesson = currentLessonRes.rows[0];
+      const nextAvailableFrom =
+        parsed.data.availableFrom !== undefined
+          ? parsed.data.availableFrom
+          : currentLesson.available_from;
+      const nextDueAt =
+        parsed.data.dueAt !== undefined
+          ? parsed.data.dueAt
+          : currentLesson.due_at;
+      const nextAllowLateSubmission =
+        parsed.data.allowLateSubmission !== undefined
+          ? Boolean(parsed.data.allowLateSubmission)
+          : Boolean(currentLesson.allow_late_submission);
+      const nextLateUntil = nextAllowLateSubmission
+        ? parsed.data.lateUntil !== undefined
+          ? parsed.data.lateUntil
+          : currentLesson.late_until
+        : null;
+      const nextAvailableFromDate = nextAvailableFrom
+        ? new Date(nextAvailableFrom)
+        : null;
+      const nextDueAtDate = nextDueAt ? new Date(nextDueAt) : null;
+      const nextLateUntilDate = nextLateUntil
+        ? new Date(nextLateUntil)
+        : null;
+
+      if (
+        nextAvailableFromDate &&
+        nextDueAtDate &&
+        nextDueAtDate < nextAvailableFromDate
+      ) {
+        return res.status(400).json({
+          error: "dueAt cannot be earlier than availableFrom",
+        });
+      }
+
+      if (
+        nextAllowLateSubmission &&
+        nextDueAtDate &&
+        nextLateUntilDate &&
+        nextLateUntilDate < nextDueAtDate
+      ) {
+        return res.status(400).json({
+          error: "lateUntil cannot be earlier than dueAt",
         });
       }
 
@@ -2046,16 +2381,23 @@ router.patch(
           id,
           module_id,
           title,
+          content_type,
           content_text,
           content_markdown,
           content_html,
           content_json,
           video_url,
           cover_image_url,
+          content_url,
           estimated_minutes,
           order_index,
           is_published,
           published_at,
+          available_from,
+          due_at,
+          allow_late_submission,
+          late_until,
+          requires_submission,
           created_at,
           updated_at
       `;
@@ -2074,7 +2416,7 @@ router.patch(
       const lesson = rows[0];
 
       return res.json({
-        ...lesson,
+        ...decorateLessonAvailability(lesson),
         content_json: lesson.content_json
           ? typeof lesson.content_json === "string"
             ? JSON.parse(lesson.content_json)
@@ -2104,16 +2446,23 @@ router.get(
             id,
             module_id,
             title,
+            content_type,
             content_text,
             content_markdown,
             content_html,
             content_json,
             video_url,
             cover_image_url,
+            content_url,
             estimated_minutes,
             order_index,
             is_published,
             published_at,
+            available_from,
+            due_at,
+            allow_late_submission,
+            late_until,
+            requires_submission,
             created_at,
             updated_at
           FROM lessons
@@ -2171,7 +2520,7 @@ router.get(
       }
 
       return res.json({
-        ...lesson,
+        ...decorateLessonAvailability(lesson),
         content_json: parsedContentJson,
       });
     } catch (err) {
@@ -2224,22 +2573,28 @@ router.delete(
   requireCourseContentRole(resolveCourseIdFromLessonParam("id")),
   async (req, res) => {
     const lessonId = req.params.id;
+    const client = await pool.connect();
+
     try {
-      const { rows } = await pool.query(
-        `
-          DELETE FROM lessons
-          WHERE id = $1
-          RETURNING id
-        `,
-        [lessonId],
-      );
-      if (!rows.length) {
+      await client.query("BEGIN");
+
+      const deletedLesson = await deleteLessonCascade(client, lessonId);
+      if (!deletedLesson) {
+        await client.query("ROLLBACK");
         return res.status(404).json({ error: "Lesson not found" });
       }
+
+      await client.query("COMMIT");
       return res.json({ ok: true });
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error("Failed to delete lesson", err);
-      return res.status(500).json({ error: "Failed to delete lesson" });
+      return res.status(500).json({
+        error: "Failed to delete lesson",
+        detail: err.message,
+      });
+    } finally {
+      client.release();
     }
   },
 );
@@ -2250,6 +2605,17 @@ router.get(
   async (req, res) => {
     const lessonId = req.params.lessonId;
     try {
+      const lessonTypeRes = await pool.query(
+        "SELECT content_type FROM lessons WHERE id = $1 LIMIT 1",
+        [lessonId],
+      );
+      if (!lessonTypeRes.rows.length) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      if (normalizeLessonType(lessonTypeRes.rows[0].content_type) === "notice") {
+        return res.json({ lessonId, questions: [] });
+      }
+
       const quizWithOptionsSelect = await getQuizWithOptionsSelect();
       const { rows } = await pool.query(
         `
@@ -2286,6 +2652,14 @@ router.post("/lessons/:lessonId/quiz/questions", async (req, res) => {
     const allowed = await canEditCourse(courseId, req.user);
     if (!allowed) {
       return res.status(403).json({ error: "You cannot edit this course" });
+    }
+
+    const lessonTypeRes = await pool.query(
+      "SELECT content_type FROM lessons WHERE id = $1 LIMIT 1",
+      [lessonId],
+    );
+    if (normalizeLessonType(lessonTypeRes.rows[0]?.content_type) === "notice") {
+      return res.status(400).json({ error: "Avisos cannot have quizzes" });
     }
 
     let orderIndex = parsed.data.orderIndex;
@@ -3565,6 +3939,12 @@ router.post("/assets/upload", async (req, res) => {
   try {
     await runUploadFile(req, res);
   } catch (err) {
+    console.log("[TEMP CMS ASSET UPLOAD] multer error", {
+      code: err?.code,
+      message: err?.message,
+      body: req.body,
+    });
+
     if (err instanceof multer.MulterError) {
       const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
       return res
@@ -3575,17 +3955,42 @@ router.post("/assets/upload", async (req, res) => {
   }
 
   if (!req.file) {
+    console.log("[TEMP CMS ASSET UPLOAD] missing file", {
+      body: req.body,
+    });
     return res.status(400).json({ error: "File is required" });
   }
 
+  console.log("[TEMP CMS ASSET UPLOAD] received", {
+    body: req.body,
+    file: {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      filename: req.file.filename,
+      path: req.file.path,
+    },
+  });
+
   const kind = getAssetKind(req.file.mimetype);
   if (!kind) {
+    console.log("[TEMP CMS ASSET UPLOAD] unsupported mime type", {
+      mimetype: req.file.mimetype,
+      originalname: req.file.originalname,
+    });
     return res.status(400).json({ error: "Unsupported file type" });
   }
 
   const filename = req.file.filename;
   const storagePath = path.posix.join("uploads", filename);
   const publicUrl = `/uploads/${filename}`;
+
+  console.log("[TEMP CMS ASSET UPLOAD] generated url", {
+    storagePath,
+    publicUrl,
+    kind,
+  });
 
   try {
     const insertRes = await pool.query(
@@ -3615,14 +4020,20 @@ router.post("/assets/upload", async (req, res) => {
       ],
     );
     const asset = insertRes.rows[0];
-    return res.status(201).json({
+    const responsePayload = {
       assetId: asset.id,
+      storagePath,
       kind,
       mimeType: req.file.mimetype,
       originalName: req.file.originalname,
       sizeBytes: req.file.size,
       url: publicUrl,
-    });
+      createdAt: new Date().toISOString(),
+    };
+
+    console.log("[TEMP CMS ASSET UPLOAD] response", responsePayload);
+
+    return res.status(201).json(responsePayload);
   } catch (err) {
     console.error("Failed to save asset metadata", err);
     return res.status(500).json({ error: "Failed to save asset metadata" });

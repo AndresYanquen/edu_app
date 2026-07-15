@@ -93,6 +93,79 @@
         </tbody>
       </table>
     </div>
+
+    <div class="attendance-mobile-list">
+      <article
+        v-for="student in students"
+        :key="`mobile-${student.userId}`"
+        class="attendance-student-card"
+        :class="{ 'is-focused': focusUserId && focusUserId === student.userId }"
+        :data-attendance-student-id="student.userId"
+      >
+        <div class="attendance-student-card__head">
+          <span class="student-avatar">{{ initials(student.fullName) }}</span>
+          <div>
+            <strong>{{ student.fullName || student.email }}</strong>
+            <small>{{ student.email }}</small>
+          </div>
+        </div>
+
+        <div class="attendance-day-cards">
+          <section
+            v-for="day in displayDays"
+            :key="`mobile-day-${student.userId}-${day.date}`"
+            class="attendance-day-card"
+          >
+            <header class="attendance-day-card__head">
+              <strong>{{ day.shortLabel }}</strong>
+              <small>{{ day.dateLabel }}</small>
+            </header>
+
+            <div v-if="!day.sessions.length" class="attendance-session-card is-empty">
+              Sin sesiones
+            </div>
+
+            <div
+              v-for="(session, sessionIndex) in day.sessions"
+              :key="`mobile-session-${student.userId}-${session.sessionId}`"
+              class="attendance-session-card"
+            >
+              <div class="attendance-session-card__meta">
+                <span>Sesion {{ sessionIndex + 1 }}</span>
+                <small>{{ session.timeLabel }}</small>
+                <em v-if="!session.isTaken" class="session-state-pill">Pend.</em>
+              </div>
+
+              <div class="attendance-inline-options" role="radiogroup" aria-label="Estado de asistencia">
+                <label
+                  v-for="opt in statusOptions"
+                  :key="`mobile-${student.userId}-${session.sessionId}-${opt.value}`"
+                  class="attendance-inline-option"
+                  :class="[
+                    statusClass(opt.value),
+                    {
+                      'is-selected': cellSelection(student, session) === opt.value,
+                      'is-disabled': saving,
+                    },
+                  ]"
+                >
+                  <input
+                    type="radio"
+                    class="attendance-inline-option__input"
+                    :name="`mobile-att-${student.userId}-${session.sessionId}`"
+                    :value="opt.value"
+                    :checked="cellSelection(student, session) === opt.value"
+                    :disabled="saving"
+                    @change="selectStatus(student, session, opt.value)"
+                  />
+                  <span class="attendance-inline-option__label">{{ opt.code }}</span>
+                </label>
+              </div>
+            </div>
+          </section>
+        </div>
+      </article>
+    </div>
   </div>
 </template>
 
@@ -164,6 +237,9 @@ const selectStatus = async (student, session, status) => {
 
 <style scoped>
 .attendance-grid-wrap { display: grid; gap: 0.5rem; }
+.attendance-mobile-list {
+  display: none;
+}
 .attendance-grid-scroll {
   overflow: auto;
   border: 1px solid #e5e7eb;
@@ -285,5 +361,121 @@ const selectStatus = async (student, session, status) => {
   margin-top: 0.35rem;
   font-size: 0.68rem;
   color: #92400e;
+}
+
+@media (max-width: 768px) {
+  .attendance-grid-scroll {
+    display: none;
+  }
+
+  .attendance-mobile-list {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .attendance-student-card {
+    display: grid;
+    gap: 0.8rem;
+    padding: 0.9rem;
+    border: 1px solid #dbe6f4;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .attendance-student-card.is-focused {
+    border-color: #93c5fd;
+    background: #eff6ff;
+  }
+
+  .attendance-student-card__head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.65rem;
+    align-items: center;
+  }
+
+  .attendance-student-card__head strong,
+  .attendance-student-card__head small {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .attendance-student-card__head small {
+    color: #64748b;
+    font-size: 0.78rem;
+  }
+
+  .attendance-day-cards {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .attendance-day-card {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #f8fafc;
+  }
+
+  .attendance-day-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .attendance-day-card__head small {
+    color: #64748b;
+  }
+
+  .attendance-session-card {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.7rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+  }
+
+  .attendance-session-card.is-empty {
+    color: #64748b;
+    text-align: center;
+  }
+
+  .attendance-session-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    color: #334155;
+    font-weight: 700;
+  }
+
+  .attendance-session-card__meta small {
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .attendance-inline-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .attendance-inline-option {
+    min-height: 2.35rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .attendance-student-card {
+    padding: 0.75rem;
+  }
+
+  .attendance-day-card {
+    padding: 0.65rem;
+  }
 }
 </style>

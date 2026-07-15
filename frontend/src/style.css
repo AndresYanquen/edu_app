@@ -67,6 +67,57 @@ a {
   width: min(98vw, 1100px);
 }
 
+/* PrimeVue teleports Sidebar to <body>, so these mobile drawer rules must be global. */
+body .p-sidebar.mobile-drawer,
+body .p-sidebar.p-component.mobile-drawer {
+  width: min(340px, 92vw) !important;
+  max-width: 92vw !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+  box-shadow: -18px 0 34px rgba(15, 23, 42, 0.22) !important;
+  overflow: hidden !important;
+}
+
+body .p-sidebar.mobile-drawer .p-sidebar-header {
+  display: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: #0f172a !important;
+}
+
+body .p-sidebar.mobile-drawer .p-sidebar-content {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100vh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: #0f172a !important;
+  overflow: hidden !important;
+}
+
+body .p-sidebar.mobile-drawer .drawer-sidebar {
+  width: 100% !important;
+  min-height: 100vh !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: linear-gradient(180deg, #0f172a 0%, #172033 100%) !important;
+}
+
+@media (max-width: 420px) {
+  body .p-sidebar.mobile-drawer,
+  body .p-sidebar.p-component.mobile-drawer {
+    width: min(320px, 88vw) !important;
+    max-width: 88vw !important;
+  }
+}
+
 
 
 

@@ -63,9 +63,26 @@
             :value="`${lesson.estimatedMinutes} min`"
             severity="secondary"
           />
+          <Tag
+            v-if="
+              lesson?.availabilityStatus &&
+              lesson.availabilityStatus !== 'always_available'
+            "
+            :value="lessonAvailabilityLabel"
+            :severity="lessonAvailabilitySeverity"
+          />
           <span v-if="lesson?.durationSeconds">{{
             formatDuration(lesson.durationSeconds)
           }}</span>
+        </div>
+
+        <div
+          v-if="lessonAvailabilityMessage"
+          class="lesson-availability-alert"
+          :class="`status-${lesson?.availabilityStatus}`"
+        >
+          <i class="pi pi-calendar-clock"></i>
+          <span>{{ lessonAvailabilityMessage }}</span>
         </div>
 
         <Divider />
@@ -231,6 +248,89 @@
           </ul>
         </div>
 
+        <Card v-if="isSubmissionActivity" class="lesson-card activity-submission-card">
+          <template #title>Entrega de actividad</template>
+          <template #content>
+            <div v-if="submissionLoading" class="submission-state">
+              <Skeleton height="2rem" class="mb-2" />
+              <Skeleton height="5rem" />
+            </div>
+
+            <div v-else>
+              <div class="submission-status-row">
+                <Tag
+                  :value="submissionStatusLabel"
+                  :severity="submissionStatusSeverity"
+                />
+                <span v-if="submission?.submittedAt" class="submission-date">
+                  Enviada: {{ formatLessonDateTime(submission.submittedAt) }}
+                </span>
+              </div>
+
+              <div v-if="submission?.feedback || submission?.grade !== null" class="submission-feedback">
+                <strong>Retroalimentación</strong>
+                <p v-if="submission.feedback">{{ submission.feedback }}</p>
+                <small v-if="submission.grade !== null">Calificación: {{ submission.grade }}</small>
+              </div>
+
+              <template v-if="hasSubmittedActivity">
+                <div v-if="submission.contentText" class="submitted-answer">
+                  <strong>Respuesta enviada</strong>
+                  <p>{{ submission.contentText }}</p>
+                </div>
+                <ul v-if="submission.files?.length" class="submission-files">
+                  <li v-for="file in submission.files" :key="file.assetId || file.id">
+                    <a :href="file.url" target="_blank" rel="noopener">
+                      {{ file.originalName || file.storagePath || file.assetId }}
+                    </a>
+                  </li>
+                </ul>
+              </template>
+
+              <template v-else>
+                <div
+                  v-if="submission?.availabilityStatus === 'late_available'"
+                  class="submission-warning"
+                >
+                  Esta actividad está vencida, pero aún acepta entrega tardía.
+                </div>
+                <div v-if="!submission?.canSubmit" class="submission-warning">
+                  Esta actividad no está abierta para entregas.
+                </div>
+
+                <div class="dialog-field">
+                  <label>Respuesta</label>
+                  <Textarea
+                    v-model="submissionForm.contentText"
+                    rows="5"
+                    autoResize
+                    :disabled="!submission?.canSubmit || submittingActivity"
+                    placeholder="Escribe tu entrega..."
+                  />
+                </div>
+
+                <div class="dialog-field">
+                  <label>Asset IDs existentes (opcional)</label>
+                  <InputText
+                    v-model="submissionForm.assetIdsText"
+                    :disabled="!submission?.canSubmit || submittingActivity"
+                    placeholder="uuid-1, uuid-2"
+                  />
+                  <small class="muted">Usa archivos ya cargados como assets. No sube archivos nuevos.</small>
+                </div>
+
+                <Button
+                  label="Enviar entrega"
+                  icon="pi pi-send"
+                  :loading="submittingActivity"
+                  :disabled="!submission?.canSubmit || !canSubmitActivityForm"
+                  @click="submitActivity"
+                />
+              </template>
+            </div>
+          </template>
+        </Card>
+
         <Divider />
 
         <div v-if="!isPreview" class="lesson-streak-summary">
@@ -246,12 +346,14 @@
             :label="t('lesson.actions.markInProgress')"
             icon="pi pi-play"
             class="p-button-outlined"
+            :disabled="!canContinueLesson"
             :loading="updating === 'progress'"
             @click="updateStatus('in_progress', 35, 'progress')"
           />
           <Button
             :label="t('lesson.actions.markDone')"
             icon="pi pi-check"
+            :disabled="!canContinueLesson"
             :loading="updating === 'done'"
             @click="updateStatus('done', 100, 'done')"
           />
@@ -345,6 +447,13 @@ const gamificationSummary = ref(null);
 // Quiz score state
 const quizScore = ref(null);
 const loadingQuizScore = ref(false);
+const submission = ref(null);
+const submissionLoading = ref(false);
+const submittingActivity = ref(false);
+const submissionForm = ref({
+  contentText: "",
+  assetIdsText: "",
+});
 
 const courseId = computed(() => route.params.courseId);
 const lessonId = computed(() => route.params.lessonId);
@@ -565,6 +674,13 @@ const locateLesson = (courseData, targetLessonId) => {
   return null;
 };
 
+const normalizeVisibleLessonType = (value) => {
+  const type = String(value || "activity").toLowerCase();
+  if (type === "banner" || type === "notice" || type === "aviso") return "notice";
+  if (type === "assessment" || type === "evaluation") return "assessment";
+  return "activity";
+};
+
 const normalizeLesson = (rawLesson) => ({
   id: rawLesson.id,
   title: rawLesson.title,
@@ -574,6 +690,12 @@ const normalizeLesson = (rawLesson) => ({
     rawLesson.image_url ??
     null,
   contentType: rawLesson.contentType ?? rawLesson.content_type ?? null,
+  normalizedType: normalizeVisibleLessonType(
+    rawLesson.normalizedType ??
+      rawLesson.normalized_type ??
+      rawLesson.contentType ??
+      rawLesson.content_type,
+  ),
   contentMarkdown:
     rawLesson.contentMarkdown ?? rawLesson.content_markdown ?? null,
   contentHtml: rawLesson.contentHtml ?? rawLesson.content_html ?? null,
@@ -584,8 +706,209 @@ const normalizeLesson = (rawLesson) => ({
     rawLesson.estimatedMinutes ?? rawLesson.estimated_minutes ?? null,
   durationSeconds:
     rawLesson.durationSeconds ?? rawLesson.duration_seconds ?? null,
+  availableFrom: rawLesson.availableFrom ?? rawLesson.available_from ?? null,
+  dueAt: rawLesson.dueAt ?? rawLesson.due_at ?? null,
+  allowLateSubmission: Boolean(
+    rawLesson.allowLateSubmission ?? rawLesson.allow_late_submission ?? false,
+  ),
+  lateUntil: rawLesson.lateUntil ?? rawLesson.late_until ?? null,
+  requiresSubmission: Boolean(
+    rawLesson.requiresSubmission ?? rawLesson.requires_submission ?? false,
+  ),
+  availabilityStatus:
+    rawLesson.availabilityStatus ?? rawLesson.availability_status ?? "always_available",
+  isAvailable: rawLesson.isAvailable ?? rawLesson.is_available ?? true,
+  isOverdue: Boolean(rawLesson.isOverdue ?? rawLesson.is_overdue ?? false),
+  isClosed: Boolean(rawLesson.isClosed ?? rawLesson.is_closed ?? false),
+  acceptsLateSubmission: Boolean(
+    rawLesson.acceptsLateSubmission ??
+      rawLesson.accepts_late_submission ??
+      false,
+  ),
   assets: rawLesson.assets ?? rawLesson.lesson_assets ?? [],
 });
+
+const formatLessonDateTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("es", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+};
+
+const canContinueLesson = computed(
+  () => lesson.value?.isAvailable !== false && !lesson.value?.isClosed,
+);
+
+const isSubmissionActivity = computed(
+  () =>
+    !isPreview.value &&
+    lesson.value?.normalizedType === "activity" &&
+    lesson.value?.requiresSubmission,
+);
+
+const hasSubmittedActivity = computed(() =>
+  ["submitted", "submitted_late", "reviewed"].includes(submission.value?.status),
+);
+
+const submissionStatusLabel = computed(() => {
+  switch (submission.value?.status) {
+    case "submitted":
+      return "Entregada";
+    case "submitted_late":
+      return "Entregada tarde";
+    case "reviewed":
+      return "Revisada";
+    case "returned":
+      return "Devuelta";
+    default:
+      return "Pendiente";
+  }
+});
+
+const submissionStatusSeverity = computed(() => {
+  switch (submission.value?.status) {
+    case "submitted":
+      return "success";
+    case "submitted_late":
+      return "warning";
+    case "reviewed":
+      return "info";
+    case "returned":
+      return "danger";
+    default:
+      return "secondary";
+  }
+});
+
+const parsedSubmissionAssetIds = computed(() =>
+  submissionForm.value.assetIdsText
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+);
+
+const canSubmitActivityForm = computed(
+  () =>
+    Boolean(submissionForm.value.contentText.trim()) ||
+    parsedSubmissionAssetIds.value.length > 0,
+);
+
+const lessonAvailabilityLabel = computed(() => {
+  switch (lesson.value?.availabilityStatus) {
+    case "upcoming":
+      return "Próxima";
+    case "available":
+      return "Disponible";
+    case "late_available":
+      return "Entrega tardía";
+    case "overdue":
+      return "Vencida";
+    case "closed":
+      return "Cerrada";
+    default:
+      return "";
+  }
+});
+
+const lessonAvailabilitySeverity = computed(() => {
+  switch (lesson.value?.availabilityStatus) {
+    case "upcoming":
+      return "info";
+    case "late_available":
+      return "warning";
+    case "closed":
+      return "danger";
+    default:
+      return "success";
+  }
+});
+
+const lessonAvailabilityMessage = computed(() => {
+  switch (lesson.value?.availabilityStatus) {
+    case "upcoming":
+      return lesson.value.availableFrom
+        ? `Disponible desde ${formatLessonDateTime(lesson.value.availableFrom)}`
+        : "Esta lección todavía no está disponible.";
+    case "available":
+      return lesson.value.dueAt
+        ? `Fecha límite: ${formatLessonDateTime(lesson.value.dueAt)}`
+        : "";
+    case "late_available":
+      return lesson.value.lateUntil
+        ? `Vencida, acepta entrega tardía hasta ${formatLessonDateTime(lesson.value.lateUntil)}`
+        : "Vencida, acepta entrega tardía.";
+    case "closed":
+      return "Esta tarea ya está cerrada.";
+    default:
+      return "";
+  }
+});
+
+const loadActivitySubmission = async () => {
+  if (!isSubmissionActivity.value) {
+    submission.value = null;
+    submissionForm.value = { contentText: "", assetIdsText: "" };
+    return;
+  }
+
+  submissionLoading.value = true;
+  try {
+    const { data } = await api.get(`/lessons/${lessonId.value}/submission/me`);
+    submission.value = data;
+    submissionForm.value = {
+      contentText: data?.status === "returned" ? data?.contentText || "" : "",
+      assetIdsText: "",
+    };
+  } catch (err) {
+    submission.value = {
+      status: "pending",
+      canSubmit: false,
+      feedback: "",
+      grade: null,
+      files: [],
+    };
+    toast.add({
+      severity: "error",
+      summary: t("common.notifications.error"),
+      detail: err?.response?.data?.error || "No fue posible cargar la entrega",
+      life: 3000,
+    });
+  } finally {
+    submissionLoading.value = false;
+  }
+};
+
+const submitActivity = async () => {
+  if (!submission.value?.canSubmit || !canSubmitActivityForm.value) return;
+
+  submittingActivity.value = true;
+  try {
+    const { data } = await api.post(`/lessons/${lessonId.value}/submission`, {
+      contentText: submissionForm.value.contentText,
+      assetIds: parsedSubmissionAssetIds.value,
+    });
+    submission.value = data;
+    submissionForm.value = { contentText: "", assetIdsText: "" };
+    toast.add({
+      severity: "success",
+      summary: "Entrega enviada",
+      detail: "Tu actividad fue enviada correctamente",
+      life: 2500,
+    });
+  } catch (err) {
+    toast.add({
+      severity: "error",
+      summary: t("common.notifications.error"),
+      detail: err?.response?.data?.error || "No fue posible enviar la entrega",
+      life: 3500,
+    });
+  } finally {
+    submittingActivity.value = false;
+  }
+};
 
 const loadLesson = async () => {
   loading.value = true;
@@ -615,6 +938,7 @@ const loadLesson = async () => {
     currentPage.value = 0;
     presentationMode.value = false;
 
+    await loadActivitySubmission();
     await fetchQuizScore();
     await loadQuiz();
   } catch (err) {
@@ -636,6 +960,18 @@ const goBack = () => {
 };
 
 const updateStatus = async (status, progressPercent, key) => {
+  if (!canContinueLesson.value) {
+    toast.add({
+      severity: "info",
+      summary: "Lección no disponible",
+      detail:
+        lessonAvailabilityMessage.value ||
+        "Esta lección no permite actualizar progreso ahora.",
+      life: 3000,
+    });
+    return;
+  }
+
   if (isPreview.value) {
     toast.add({
       severity: "info",
@@ -999,6 +1335,94 @@ onBeforeUnmount(() => {
 
 .lesson-card {
   margin-bottom: 0.5rem;
+}
+
+.lesson-availability-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.lesson-availability-alert.status-late_available,
+.lesson-availability-alert.status-overdue {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.lesson-availability-alert.status-closed {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.activity-submission-card :deep(.p-card-body) {
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.submission-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.submission-date {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.submission-feedback,
+.submitted-answer,
+.submission-warning {
+  margin-bottom: 1rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.submission-feedback p,
+.submitted-answer p {
+  margin: 0.35rem 0 0;
+  color: #334155;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.submission-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  font-weight: 650;
+}
+
+.submission-files {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.dialog-field :deep(.p-inputtext),
+.dialog-field :deep(textarea) {
+  width: 100%;
 }
 
 .lesson-book-card :deep(.p-card-body) {
@@ -1469,6 +1893,15 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
+  .page {
+    gap: 0.75rem;
+    padding-inline: 0.65rem;
+  }
+
+  .lesson-shell :deep(.p-card-body) {
+    padding: 0.85rem;
+  }
+
   .lesson-book-card :deep(.p-card-body) {
     padding: 0.75rem;
   }
@@ -1476,13 +1909,23 @@ onBeforeUnmount(() => {
   .lesson-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .lesson-header-main h2,
+  .lesson-header h2 {
+    font-size: 1.28rem;
+  }
+
+  .meta {
+    gap: 0.4rem;
   }
 
   /* ===== TOOLBAR ===== */
   .book-toolbar {
-    gap: 0.85rem;
-    padding: 0.95rem;
-    border-radius: 18px;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    border-radius: 16px;
   }
 
   .book-toolbar-top {
@@ -1545,8 +1988,19 @@ onBeforeUnmount(() => {
     height: auto;
     min-height: auto;
     max-height: none;
-    padding: 1rem;
-    border-radius: 18px;
+    padding: 0.9rem;
+    border-radius: 16px;
+  }
+
+  .book-page :deep(.lesson-page-block) {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .book-page :deep(p),
+  .book-page :deep(li) {
+    font-size: 0.95rem;
+    line-height: 1.55;
   }
 
   .book-page :deep(iframe),
@@ -1681,6 +2135,10 @@ onBeforeUnmount(() => {
   .book-navigation {
     gap: 0.75rem;
     padding: 0.6rem 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0), #f8fafc 28%);
   }
 
   .book-dot {
@@ -1729,13 +2187,21 @@ onBeforeUnmount(() => {
     display: flex;
     justify-content: center;
     align-items: center;
+    max-width: calc(100vw - 7.5rem);
+    overflow-x: auto;
+    padding: 0.25rem;
+    scrollbar-width: none;
+  }
+
+  .book-dots::-webkit-scrollbar {
+    display: none;
   }
 }
 
 @media (max-width: 420px) {
   /* ===== TOOLBAR ===== */
   .book-toolbar {
-    padding: 0.85rem;
+    padding: 0.75rem;
     border-radius: 16px;
   }
 
@@ -1751,7 +2217,7 @@ onBeforeUnmount(() => {
 
   /* ===== PAGE ===== */
   .book-page {
-    padding: 0.75rem;
+    padding: 0.7rem;
   }
 
   .book-page :deep(.inline-quiz),
@@ -1783,9 +2249,9 @@ onBeforeUnmount(() => {
 
   /* ===== NAVIGATION ===== */
   .book-nav-btn {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
   }
 
   .book-dot {

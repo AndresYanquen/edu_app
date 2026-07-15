@@ -6,6 +6,12 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   background-color: var(--app-bg);
@@ -16,6 +22,8 @@ body {
 
 #app {
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 a {
@@ -24,10 +32,30 @@ a {
 }
 
 .page {
-  padding: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: clamp(0.85rem, 2vw, 1.5rem);
   min-height: calc(100vh - 4rem);
   background-color: var(--app-bg);
-  max-width: calc( 100% - 52px);
+  overflow-x: clip;
+}
+
+img,
+video,
+iframe,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+.p-card,
+.p-panel,
+.p-dialog,
+.p-sidebar,
+.p-datatable,
+.card-surface {
+  max-width: 100%;
 }
 
 .p-card,
@@ -53,6 +81,21 @@ textarea,
 .p-inputtext,
 .p-inputtextarea {
   color: var(--text-primary);
+  max-width: 100%;
+}
+
+.p-datatable-wrapper {
+  overflow-x: auto;
+}
+
+.p-dialog {
+  max-width: calc(100vw - 1rem);
+}
+
+.p-dialog .p-dialog-header,
+.p-dialog .p-dialog-content,
+.p-dialog .p-dialog-footer {
+  min-width: 0;
 }
 
 .section-title {
@@ -106,4 +149,27 @@ textarea,
 
 .tox .tox-promotion, .tox-promotion-link{
   visibility:hidden!important
+}
+
+@media (max-width: 768px) {
+  .page {
+    min-height: calc(100vh - 3.75rem);
+    padding: 0.75rem;
+  }
+
+  .p-card .p-card-body {
+    min-width: 0;
+  }
+
+  .p-dialog .p-dialog-header {
+    padding: 1rem 1rem 0.75rem;
+  }
+
+  .p-dialog .p-dialog-content {
+    padding-inline: 1rem;
+  }
+
+  .p-dialog .p-dialog-footer {
+    padding: 0.75rem 1rem 1rem;
+  }
 }

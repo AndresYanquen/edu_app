@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const { requireGlobalRoleAny } = require('../middleware/roles');
 const { lessonProgressSchema, formatZodError } = require('../utils/validators');
 const { recordGamificationEvent } = require('../services/gamification');
+const { shouldTrackLessonProgress } = require('../utils/lessonTypes');
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ router.post('/lessons/:id/progress', auth, requireGlobalRoleAny(['student']), as
   try {
     const lessonRes = await pool.query(
       `
-        SELECT l.id, m.course_id
+        SELECT l.id, l.content_type, m.course_id
         FROM lessons l
         JOIN modules m ON m.id = l.module_id
         WHERE l.id = $1
@@ -29,6 +30,10 @@ router.post('/lessons/:id/progress', auth, requireGlobalRoleAny(['student']), as
     const lesson = lessonRes.rows[0];
     if (!lesson) {
       return res.status(404).json({ error: 'Lesson not found' });
+    }
+
+    if (!shouldTrackLessonProgress(lesson.content_type)) {
+      return res.status(400).json({ error: 'This lesson type does not track progress' });
     }
 
     const enrollmentRes = await pool.query(

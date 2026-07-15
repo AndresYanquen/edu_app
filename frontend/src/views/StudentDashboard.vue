@@ -2085,12 +2085,16 @@ onBeforeUnmount(() => {
 
   .student-dashboard {
     width: 100%;
-    gap: 0.95rem;
+    gap: 0.85rem;
   }
 
   .student-hero {
-    padding: 0.9rem;
+    padding: 0.85rem;
     border-radius: 16px;
+  }
+
+  .student-hero__content {
+    gap: 0.85rem;
   }
 
   .student-hero__eyebrow {
@@ -2112,6 +2116,7 @@ onBeforeUnmount(() => {
 
   .student-hero-heading-row {
     align-items: flex-start;
+    gap: 0.75rem;
   }
 
   .student-hero-mascot,
@@ -2141,13 +2146,28 @@ onBeforeUnmount(() => {
 
   .student-hero__stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.6rem;
+    gap: 0.55rem;
   }
 
   .hero-stat-card {
     min-height: 84px;
-    padding: 0.72rem;
+    padding: 0.68rem;
     gap: 0.18rem;
+  }
+
+  .hero-stat-card__top {
+    gap: 0.55rem;
+  }
+
+  .hero-stat-card__icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .hero-stat-card__icon img {
+    width: 20px;
+    height: 20px;
   }
 
   .hero-stat-card__label {
@@ -2168,7 +2188,13 @@ onBeforeUnmount(() => {
   }
 
   :deep(.p-card-body) {
-    padding: 0.95rem;
+    padding: 0.85rem;
+  }
+
+  .card-title-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
   }
 
   .card-title-row h3 {
@@ -2223,6 +2249,16 @@ onBeforeUnmount(() => {
 
   .achievement-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .achievement-item {
+    padding: 0.78rem;
+    border-radius: 14px;
+  }
+
+  .achievement-item strong {
+    font-size: 1.45rem;
   }
 
   .course-mobile-card {
@@ -2232,6 +2268,8 @@ onBeforeUnmount(() => {
   }
 
   .course-mobile-card__top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.6rem;
   }
 
@@ -2269,9 +2307,10 @@ onBeforeUnmount(() => {
 ========================= */
 @media (max-width: 420px) {
   .student-hero-heading-row {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    text-align: left;
   }
 
   .student-hero-copy {
@@ -2281,18 +2320,32 @@ onBeforeUnmount(() => {
   .student-hero-mascot,
   .student-hero__mascot,
   .raven-mascot {
-    width: 82px;
-    flex-basis: 82px;
-    margin-bottom: 0.1rem;
-    order: -1;
+    width: 72px;
+    flex-basis: 72px;
+    margin-bottom: 0;
+  }
+
+  .student-hero-mascot-anchor {
+    width: 72px;
+    flex-basis: 72px;
+    min-height: 72px;
+    justify-content: flex-start;
   }
 
   .student-hero h1 {
-    font-size: 1.42rem;
+    font-size: 1.34rem;
+  }
+
+  .student-hero p {
+    font-size: 0.82rem;
+  }
+
+  .student-hero__stats {
+    grid-template-columns: 1fr;
   }
 
   .hero-stat-card strong {
-    font-size: 1.16rem;
+    font-size: 1.12rem;
   }
 
   .hero-stat-card small {
@@ -2300,6 +2353,10 @@ onBeforeUnmount(() => {
   }
 
   .course-mobile-card__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .course-mobile-card__top {
     grid-template-columns: 1fr;
   }
 

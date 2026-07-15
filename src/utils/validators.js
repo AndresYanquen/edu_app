@@ -169,6 +169,68 @@ const preprocessInt = (min = 1) =>
     return Number.isNaN(parsed) ? val : parsed;
   }, z.number().int().min(min));
 
+const nullableDateTimeString = z.preprocess((val) => {
+  if (val === undefined || val === null || val === "") {
+    return null;
+  }
+  return val;
+}, z.string().datetime().nullable());
+
+const lessonAvailabilityFields = {
+  availableFrom: nullableDateTimeString.optional(),
+  dueAt: nullableDateTimeString.optional(),
+  allowLateSubmission: z.boolean().optional(),
+  lateUntil: nullableDateTimeString.optional(),
+  requiresSubmission: z.boolean().optional(),
+};
+
+const lessonContentTypeEnum = z.enum([
+  "banner",
+  "notice",
+  "aviso",
+  "content",
+  "video",
+  "activity",
+  "assessment",
+  "evaluation",
+  "text",
+  "link",
+  "file",
+  "embed",
+]);
+
+const validateLessonAvailability = (data, ctx) => {
+  const availableFrom = data.availableFrom ? new Date(data.availableFrom) : null;
+  const dueAt = data.dueAt ? new Date(data.dueAt) : null;
+  const allowLateSubmission = Boolean(data.allowLateSubmission);
+  const lateUntil =
+    allowLateSubmission && data.lateUntil ? new Date(data.lateUntil) : null;
+
+  if (availableFrom && dueAt && dueAt < availableFrom) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["dueAt"],
+      message: "dueAt cannot be earlier than availableFrom",
+    });
+  }
+
+  if (data.allowLateSubmission === false && data.lateUntil) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lateUntil"],
+      message: "lateUntil only applies when allowLateSubmission is true",
+    });
+  }
+
+  if (allowLateSubmission && dueAt && lateUntil && lateUntil < dueAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lateUntil"],
+      message: "lateUntil cannot be earlier than dueAt",
+    });
+  }
+};
+
 const quizQuestionCreateSchema = z.object({
   questionText: z
     .string({ required_error: "questionText is required" })
@@ -288,37 +350,52 @@ const moduleUpdateSchema = z
     message: "At least one field must be provided",
   });
 
-const lessonCreateSchema = z.object({
-  title: z
-    .string({ required_error: "title is required" })
-    .trim()
-    .min(1, "title is required"),
-  contentType: z.enum(['video', 'text', 'link', 'file', 'embed']).optional(),
-  contentText: z.string().optional(),
-  contentMarkdown: z.string().optional(),
-  contentHtml: z.string().optional(),
-  contentJson: z.any().optional().nullable(),
-  videoUrl: z.string().url().optional(),
-  estimatedMinutes: preprocessInt().optional(),
-  orderIndex: preprocessInt().optional(),
-});
+const lessonCreateSchema = z
+  .object({
+    title: z
+      .string({ required_error: "title is required" })
+      .trim()
+      .min(1, "title is required"),
+    contentType: lessonContentTypeEnum.optional(),
+    contentText: z.string().optional(),
+    contentMarkdown: z.string().optional(),
+    contentHtml: z.string().optional(),
+    contentJson: z.any().optional().nullable(),
+    videoUrl: z.string().url().nullable().optional(),
+    coverImage: z.string().nullable().optional(),
+    cover_image_url: z.string().nullable().optional(),
+    image_url: z.string().nullable().optional(),
+    contentUrl: z.string().nullable().optional(),
+    content_url: z.string().nullable().optional(),
+    externalUrl: z.string().nullable().optional(),
+    estimatedMinutes: preprocessInt().optional(),
+    orderIndex: preprocessInt().optional(),
+    ...lessonAvailabilityFields,
+  })
+  .superRefine(validateLessonAvailability);
 
-const lessonUpdateSchema = z.object({
-  title: z.string().trim().min(1).optional(),
-    contentType: z.enum(['video', 'text', 'link', 'file', 'embed']).optional(),
-  contentText: z.string().optional(),
-  contentMarkdown: z.string().optional(),
-  contentHtml: z.string().optional(),
-  contentJson: z.any().optional().nullable(),
-  videoUrl: z.string().url().optional(),
+const lessonUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    contentType: lessonContentTypeEnum.optional(),
+    contentText: z.string().optional(),
+    contentMarkdown: z.string().optional(),
+    contentHtml: z.string().optional(),
+    contentJson: z.any().optional().nullable(),
+    videoUrl: z.string().url().nullable().optional(),
 
-  coverImage: z.string().nullable().optional(),
-  cover_image_url: z.string().nullable().optional(),
-  image_url: z.string().nullable().optional(),
+    coverImage: z.string().nullable().optional(),
+    cover_image_url: z.string().nullable().optional(),
+    image_url: z.string().nullable().optional(),
+    contentUrl: z.string().nullable().optional(),
+    content_url: z.string().nullable().optional(),
+    externalUrl: z.string().nullable().optional(),
 
-  estimatedMinutes: preprocessInt().optional(),
-  orderIndex: preprocessInt().optional(),
-});
+    estimatedMinutes: preprocessInt().optional(),
+    orderIndex: preprocessInt().optional(),
+    ...lessonAvailabilityFields,
+  })
+  .superRefine(validateLessonAvailability);
 
 const urlString = z.string().url();
 

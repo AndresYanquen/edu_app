@@ -246,12 +246,15 @@ const {
 } = builder;
 
 const formatLessonTypeLabel = (value) => {
-  const type = String(value || 'text').toLowerCase();
-  if (type === 'video') return 'Video';
-  if (type === 'link') return 'Link';
-  if (type === 'file') return 'File';
-  if (type === 'embed') return 'Embed';
-  return 'Text';
+  const type = String(value || 'activity').toLowerCase();
+  if (type === 'banner' || type === 'notice' || type === 'aviso') return 'Aviso';
+  if (type === 'content' || type === 'text' || type === 'link' || type === 'file' || type === 'embed') {
+    return 'Actividad';
+  }
+  if (type === 'video') return 'Actividad';
+  if (type === 'activity') return 'Actividad';
+  if (type === 'assessment') return 'Evaluación';
+  return 'Actividad';
 };
 </script>
 
@@ -268,6 +271,8 @@ const formatLessonTypeLabel = (value) => {
 
 .section-header {
   gap: 0.75rem;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .modules-accordion {
@@ -335,9 +340,12 @@ const formatLessonTypeLabel = (value) => {
 .module-tab-title {
   min-width: 0;
   gap: 0.65rem;
+  flex: 1;
+  justify-content: flex-start;
 }
 
 .module-name {
+  display: block;
   font-weight: 700;
   color: #0f172a;
   overflow-wrap: anywhere;
@@ -461,14 +469,151 @@ const formatLessonTypeLabel = (value) => {
 }
 
 @media (max-width: 768px) {
+  .build-card :deep(.p-card-body) {
+    padding: 0.9rem;
+  }
+
+  .section-header {
+    align-items: stretch;
+  }
+
+  .section-header > div {
+    min-width: 0;
+  }
+
+  .section-header :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modules-accordion {
+    gap: 0.9rem;
+  }
+
+  .modules-accordion :deep(.p-accordion-header-link) {
+    padding: 0.85rem;
+  }
+
+  .module-tab-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .module-tab-title {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: center;
+  }
+
+  .module-name-btn {
+    min-width: 0;
+  }
+
+  .module-name {
+    line-height: 1.2;
+  }
+
+  .module-tab-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .module-tab-actions :deep(.p-button),
+  .module-actions :deep(.p-button) {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.4rem;
+    padding-inline: 0 !important;
+    justify-content: center;
+  }
+
+  .module-lessons-wrap {
+    padding-left: 0;
+  }
+
+  .module-lessons-wrap::before,
+  .lesson-item--nested::before {
+    display: none;
+  }
+
+  .lessons-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .lessons-head :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .lessons-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .lessons-search,
+  .lessons-filter {
+    width: 100%;
+    min-width: 0;
+  }
+
   .lesson-item {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
     align-items: flex-start;
+    gap: 0.75rem;
+    margin-left: 0;
+    padding: 0.9rem;
+    border-radius: 16px;
   }
 
   .module-actions {
+    display: grid;
+    grid-template-columns: auto repeat(5, minmax(0, 1fr));
+    gap: 0.35rem;
     width: 100%;
-    justify-content: flex-start;
+    justify-content: stretch;
+    align-items: center;
+  }
+
+  .module-actions :deep(.p-tag) {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 430px) {
+  .build-card :deep(.p-card-body) {
+    padding: 0.75rem;
+  }
+
+  .module-tab-title {
+    grid-template-columns: 1fr;
+  }
+
+  .module-status {
+    justify-self: start;
+  }
+
+  .module-actions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .module-actions :deep(.p-tag) {
+    grid-column: 1 / -1;
+  }
+
+  .lesson-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
   }
 }
 </style>

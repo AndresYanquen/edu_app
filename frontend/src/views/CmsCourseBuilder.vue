@@ -124,32 +124,24 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="showLessonDialog" header="Lesson" modal :style="{ width: '25rem' }">
+    <Dialog v-model:visible="showLessonDialog" header="Nueva lección" modal :style="{ width: '28rem' }">
       <div class="dialog-field">
-        <label>Title</label>
-        <InputText v-model="lessonForm.title" placeholder="Lesson title" />
+        <label>Título</label>
+        <InputText v-model="lessonForm.title" placeholder="Título" />
       </div>
       <div class="dialog-field">
-        <label>Lesson type</label>
+        <label>Tipo</label>
         <Dropdown
           v-model="lessonForm.lessonType"
           :options="lessonTypeOptions"
           optionLabel="label"
           optionValue="value"
-          placeholder="Select lesson type"
+          placeholder="Selecciona el tipo"
         />
       </div>
-      <div class="dialog-field">
-        <label>Estimated minutes</label>
-        <InputNumber v-model="lessonForm.estimatedMinutes" showButtons />
-      </div>
-      <div class="dialog-field">
-        <label>Video URL (optional)</label>
-        <InputText v-model="lessonForm.videoUrl" placeholder="https://..." />
-      </div>
       <template #footer>
-        <Button label="Cancel" class="p-button-text" @click="showLessonDialog = false" />
-        <Button label="Save" :loading="savingLesson" @click="submitLesson" />
+        <Button label="Cancelar" class="p-button-text" @click="showLessonDialog = false" />
+        <Button label="Crear" :loading="savingLesson" @click="submitLesson" />
       </template>
     </Dialog>
 
@@ -683,11 +675,9 @@ const lessonStatusOptions = [
   { label: 'Draft', value: 'draft' },
 ];
 const lessonTypeOptions = [
-  { label: 'Text', value: 'text' },
-  { label: 'Video', value: 'video' },
-  { label: 'Link', value: 'link' },
-  { label: 'File', value: 'file' },
-  { label: 'Embed', value: 'embed' },
+  { label: 'Aviso', value: 'banner' },
+  { label: 'Actividad', value: 'activity' },
+  { label: 'Evaluación', value: 'assessment' },
 ];
 const loadingModules = ref(true);
 const loadingLessons = ref(false);
@@ -700,9 +690,16 @@ const savingModule = ref(false);
 const showLessonDialog = ref(false);
 const lessonForm = ref({
   title: '',
-  lessonType: 'text',
-  estimatedMinutes: 0,
+  lessonType: 'activity',
+  contentText: '',
+  coverImage: '',
   videoUrl: '',
+  externalUrl: '',
+  availableFrom: null,
+  dueAt: null,
+  allowLateSubmission: false,
+  lateUntil: null,
+  requiresSubmission: false,
 });
 const savingLesson = ref(false);
 const deletingModuleId = ref(null);
@@ -2217,9 +2214,85 @@ const reorderModule = async (module, direction) => {
 
 const openLessonDialog = () => {
   if (!selectedModuleId.value) return;
-  lessonForm.value = { title: '', lessonType: 'text', estimatedMinutes: 0, videoUrl: '' };
+  lessonForm.value = {
+    title: '',
+    lessonType: 'activity',
+    contentText: '',
+    coverImage: '',
+    videoUrl: '',
+    externalUrl: '',
+    availableFrom: null,
+    dueAt: null,
+    allowLateSubmission: false,
+    lateUntil: null,
+    requiresSubmission: false,
+  };
   showLessonDialog.value = true;
 };
+
+const lessonScheduleTitle = computed(() => {
+  switch (lessonForm.value.lessonType) {
+    case 'banner':
+      return 'Visualización del aviso';
+    case 'assessment':
+      return 'Apertura de evaluación';
+    case 'activity':
+      return 'Disponibilidad de la actividad';
+    default:
+      return 'Disponibilidad';
+  }
+});
+
+const lessonScheduleHint = computed(() => {
+  switch (lessonForm.value.lessonType) {
+    case 'banner':
+      return 'Controla cuándo se muestra y cuándo desaparece para estudiantes.';
+    case 'assessment':
+      return 'Controla cuándo se abre y cierra la evaluación.';
+    case 'activity':
+      return 'Controla fechas, entrega y entrega tardía.';
+    default:
+      return 'Opcional.';
+  }
+});
+
+const lessonStartLabel = computed(() => {
+  if (lessonForm.value.lessonType === 'banner') return 'Mostrar desde';
+  if (lessonForm.value.lessonType === 'assessment') return 'Apertura';
+  return 'Disponible desde';
+});
+
+const lessonEndLabel = computed(() => {
+  if (lessonForm.value.lessonType === 'banner') return 'Mostrar hasta';
+  if (lessonForm.value.lessonType === 'assessment') return 'Cierre';
+  return 'Fecha límite';
+});
+
+watch(
+  () => lessonForm.value.allowLateSubmission,
+  (enabled) => {
+    if (!enabled) {
+      lessonForm.value.lateUntil = null;
+    }
+  },
+);
+
+watch(
+  () => lessonForm.value.lessonType,
+  (type) => {
+    lessonForm.value.videoUrl = '';
+    if (type !== 'banner') {
+      lessonForm.value.contentText = '';
+      lessonForm.value.coverImage = '';
+      lessonForm.value.externalUrl = '';
+    }
+    if (type !== 'activity') {
+      lessonForm.value.allowLateSubmission = false;
+      lessonForm.value.lateUntil = null;
+      lessonForm.value.requiresSubmission = false;
+    }
+  },
+);
 
 const openLessonDialogForModule = (moduleId) => {
   if (!moduleId) return;
@@ -2251,15 +2324,103 @@ const submitLesson = async () => {
   }
   savingLesson.value = true;
   try {
+    const quickCreateContentType =
+      lessonForm.value.lessonType === 'activity'
+        ? 'text'
+        : lessonForm.value.lessonType;
+    const createdLesson = await createLesson(selectedModuleId.value, {
+      title: lessonForm.value.title,
+      contentType: quickCreateContentType,
+    });
+    toast.add({ severity: 'success', summary: 'Lesson created', life: 2000 });
+    showLessonDialog.value = false;
+    await loadLessons(selectedModuleId.value);
+    router.push({
+      path: `/cms/lessons/${createdLesson.id}/edit`,
+      query: { courseId, moduleId: selectedModuleId.value },
+    });
+    return;
+
+    const now = Date.now();
+    const selectedDates = [
+      lessonForm.value.availableFrom,
+      lessonForm.value.dueAt,
+      lessonForm.value.lateUntil,
+    ].filter(Boolean);
+
+    if (selectedDates.some((value) => new Date(value).getTime() < now)) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Fecha inválida',
+        detail: 'No puedes programar contenido con fechas anteriores al momento actual',
+        life: 3000,
+      });
+      return;
+    }
+
+    if (
+      lessonForm.value.availableFrom &&
+      lessonForm.value.dueAt &&
+      new Date(lessonForm.value.dueAt) < new Date(lessonForm.value.availableFrom)
+    ) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Fechas inválidas',
+        detail: 'La fecha límite no puede ser anterior a la fecha de inicio',
+        life: 3000,
+      });
+      return;
+    }
+
+    if (
+      lessonForm.value.allowLateSubmission &&
+      lessonForm.value.dueAt &&
+      lessonForm.value.lateUntil &&
+      new Date(lessonForm.value.lateUntil) < new Date(lessonForm.value.dueAt)
+    ) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Fechas inválidas',
+        detail: 'La fecha máxima tardía no puede ser anterior a la fecha límite',
+        life: 3000,
+      });
+      return;
+    }
+
     const payload = {
       title: lessonForm.value.title,
       contentType: lessonForm.value.lessonType,
-      estimatedMinutes: lessonForm.value.estimatedMinutes,
     };
-    const trimmedVideoUrl = lessonForm.value.videoUrl?.trim();
-    if (trimmedVideoUrl) {
-      payload.videoUrl = trimmedVideoUrl;
+
+    if (lessonForm.value.lessonType === 'banner') {
+      payload.contentText = lessonForm.value.contentText?.trim() || null;
+      payload.coverImage = lessonForm.value.coverImage?.trim() || null;
+      payload.videoUrl = lessonForm.value.videoUrl?.trim() || null;
+      payload.externalUrl = lessonForm.value.externalUrl?.trim() || null;
     }
+
+    if (['banner', 'activity', 'assessment'].includes(lessonForm.value.lessonType)) {
+      payload.availableFrom = lessonForm.value.availableFrom
+        ? new Date(lessonForm.value.availableFrom).toISOString()
+        : null;
+      payload.dueAt = lessonForm.value.dueAt
+        ? new Date(lessonForm.value.dueAt).toISOString()
+        : null;
+    }
+
+    if (lessonForm.value.lessonType === 'activity') {
+      payload.allowLateSubmission = Boolean(lessonForm.value.allowLateSubmission);
+      payload.lateUntil =
+        lessonForm.value.allowLateSubmission && lessonForm.value.lateUntil
+          ? new Date(lessonForm.value.lateUntil).toISOString()
+          : null;
+      payload.requiresSubmission = Boolean(lessonForm.value.requiresSubmission);
+    } else {
+      payload.allowLateSubmission = false;
+      payload.lateUntil = null;
+      payload.requiresSubmission = false;
+    }
+
     await createLesson(selectedModuleId.value, payload);
     toast.add({ severity: 'success', summary: 'Lesson created', life: 2000 });
     showLessonDialog.value = false;
@@ -2859,6 +3020,10 @@ init();
   margin-bottom: 1rem;
 }
 
+.cms-page {
+  min-width: 0;
+}
+
 .course-tabs-shell {
   position: relative;
   margin-bottom: 1rem;
@@ -2989,8 +3154,13 @@ init();
   align-items: flex-start;
 }
 
+.course-title {
+  min-width: 0;
+}
+
 .course-title h2 {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .course-title p {
@@ -3002,6 +3172,14 @@ init();
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .builder-grid {
@@ -3041,7 +3219,7 @@ init();
 }
 
 .module-tab-header {
-  width: 80%;
+  width: 100%;
 }
 
 .lessons-head {
@@ -3073,6 +3251,51 @@ init();
   flex-direction: column;
   gap: 0.35rem;
   margin-bottom: 1rem;
+}
+
+.lesson-schedule-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.9rem;
+  margin-top: 0.75rem;
+  background: #f8fafc;
+}
+
+.lesson-schedule-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.85rem;
+  color: #0f172a;
+}
+
+.lesson-schedule-title small {
+  color: #64748b;
+}
+
+.lesson-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.lesson-schedule-grid :deep(.p-calendar),
+.lesson-schedule-box :deep(.p-calendar) {
+  width: 100%;
+}
+
+.lesson-schedule-switches {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.35rem 0 0.85rem;
+}
+
+.inline-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: #334155;
+  font-weight: 650;
 }
 
 .dialog-row {
@@ -3321,6 +3544,153 @@ init();
 @media (max-width: 900px) {
   .builder-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .cms-page {
+    padding-inline: 0.65rem;
+  }
+
+  .lesson-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .course-header-card {
+    margin-bottom: 0.75rem;
+    border-radius: 18px;
+  }
+
+  .course-header-card :deep(.p-card-body) {
+    padding: 0.95rem;
+  }
+
+  .course-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
+  .course-title {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    column-gap: 0.65rem;
+    align-items: start;
+  }
+
+  .course-title :deep(.p-button) {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+  }
+
+  .course-title h2 {
+    font-size: 1.45rem;
+    line-height: 1.08;
+  }
+
+  .course-title p {
+    grid-column: 2;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .header-actions {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .header-buttons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .header-buttons :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .course-tabs-shell {
+    margin-inline: -0.65rem;
+    padding-inline: 0.65rem;
+    border-bottom: 0;
+  }
+
+  .course-tabs {
+    gap: 0.45rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .course-tab-link {
+    min-height: 44px;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid #dbe6f4;
+    border-radius: 999px;
+    background: #ffffff;
+    font-size: 0.86rem;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+  }
+
+  .course-tab-link.is-active {
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+    background: #eff6ff;
+  }
+
+  .course-tab-icon {
+    font-size: 1rem;
+  }
+
+  .tabs-scroll-btn {
+    display: none;
+  }
+
+  .course-tab-panel {
+    min-width: 0;
+  }
+
+  .dialog-row,
+  .bulk-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bulk-buttons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .picklist-search {
+    max-width: 100%;
+  }
+
+  .enroll-picklist.p-picklist {
+    flex-direction: column;
+  }
+
+  .enroll-picklist .p-picklist-buttons {
+    flex-direction: row;
+  }
+}
+
+@media (max-width: 430px) {
+  .course-title h2 {
+    font-size: 1.28rem;
+  }
+
+  .course-tab-label {
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
