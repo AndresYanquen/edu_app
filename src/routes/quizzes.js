@@ -5,6 +5,7 @@ const { requireGlobalRoleAny } = require('../middleware/roles');
 const { quizAttemptSchema, inlineQuizAttemptSchema, formatZodError } = require('../utils/validators');
 const { computeQuizScore } = require('../utils/quizScoring');
 const { recordGamificationEvent } = require('../services/gamification');
+const { decorateLessonAvailability } = require('../utils/lessonAvailability');
 
 const router = express.Router();
 
@@ -16,6 +17,11 @@ const getLessonCourse = async (lessonId) => {
       SELECT
         l.id,
         l.is_published AS lesson_published,
+        l.content_type,
+        l.available_from,
+        l.due_at,
+        l.allow_late_submission,
+        l.late_until,
         m.course_id,
         m.is_published AS module_published,
         c.is_published AS course_published
@@ -41,6 +47,18 @@ const ensureEnrollment = async (courseId, userId) => {
     [courseId, userId],
   );
   return result.rows.length > 0;
+};
+
+const ensureLessonAvailableForQuizAttempt = (lesson) => {
+  const availability = decorateLessonAvailability(lesson);
+  if (availability.isAvailable && !availability.isClosed) {
+    return null;
+  }
+
+  return {
+    error: 'This lesson is not available for quiz attempts',
+    availabilityStatus: availability.availabilityStatus,
+  };
 };
 
 router.get('/lessons/:id/quiz', requireGlobalRoleAny(['student', 'admin']), async (req, res) => {
@@ -285,6 +303,11 @@ router.post('/lessons/:id/quiz/attempt', requireGlobalRoleAny(['student']), asyn
     const enrolled = await ensureEnrollment(lesson.course_id, req.user.id);
     if (!enrolled) {
       return res.status(403).json({ error: 'You are not enrolled in this course' });
+    }
+
+    const availabilityError = ensureLessonAvailableForQuizAttempt(lesson);
+    if (availabilityError) {
+      return res.status(403).json(availabilityError);
     }
 
     const quizRes = await pool.query(
@@ -536,6 +559,11 @@ router.post('/lessons/:lessonId/quiz/questions/:questionId/attempt', requireGlob
     const enrolled = await ensureEnrollment(lesson.course_id, req.user.id);
     if (!enrolled) {
       return res.status(403).json({ error: 'You are not enrolled in this course' });
+    }
+
+    const availabilityError = ensureLessonAvailableForQuizAttempt(lesson);
+    if (availabilityError) {
+      return res.status(403).json(availabilityError);
     }
 
     const questionRes = await pool.query(

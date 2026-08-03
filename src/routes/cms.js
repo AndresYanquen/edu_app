@@ -55,6 +55,7 @@ const COURSE_STAFF_ROLES = [
   "content_editor",
   "enrollment_manager",
 ];
+const PAST_LESSON_DATE_ROLES = ["admin", "instructor", "content_editor", "teacher"];
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
@@ -395,6 +396,9 @@ const hasPostsCmsAccess = (user) =>
   hasGlobalRole(user, "admin") ||
   hasGlobalRole(user, "instructor") ||
   hasGlobalRole(user, "content_editor");
+
+const canSavePastLessonDates = (user) =>
+  PAST_LESSON_DATE_ROLES.some((role) => hasGlobalRole(user, role));
 
 let quizQuestionsHasQuizIdColumn = null;
 let quizzesTableExists = null;
@@ -2026,7 +2030,10 @@ router.post(
       parsed.data.lateUntil,
     ].filter(Boolean);
     const now = Date.now();
-    if (scheduledDates.some((value) => new Date(value).getTime() < now)) {
+    if (
+      !canSavePastLessonDates(req.user) &&
+      scheduledDates.some((value) => new Date(value).getTime() < now)
+    ) {
       return res.status(400).json({
         error: "Scheduled lesson dates cannot be in the past",
       });
@@ -2179,7 +2186,10 @@ router.patch(
       parsed.data.lateUntil,
     ].filter(Boolean);
     const now = Date.now();
-    if (submittedDates.some((value) => new Date(value).getTime() < now)) {
+    if (
+      !canSavePastLessonDates(req.user) &&
+      submittedDates.some((value) => new Date(value).getTime() < now)
+    ) {
       return res.status(400).json({
         error: "Scheduled lesson dates cannot be in the past",
       });

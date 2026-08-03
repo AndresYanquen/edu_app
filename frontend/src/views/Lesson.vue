@@ -169,10 +169,21 @@
                 >
                   <Transition :name="transitionName" mode="out-in">
                     <div class="book-page" :key="currentPage">
+                      <div
+                        v-if="isCurrentPageEmpty"
+                        class="book-empty-page"
+                      >
+                        <i class="pi pi-file"></i>
+                        <strong>Esta página está vacía</strong>
+                      </div>
                       <RichContent
+                        v-else
                         :content="currentPageContent"
+                        :preview-mode="isPreview"
                         :quiz-questions="inlineQuizQuestions"
                         :answers-by-question-id="myAnswersByQuestionId"
+                        :quiz-attempts-blocked="quizAttemptsBlocked"
+                        :quiz-attempts-blocked-message="quizAttemptsBlockedMessage"
                         @inline-quiz-attempted="handleInlineQuizAttempted"
                       />
                     </div>
@@ -346,18 +357,24 @@
             :label="t('lesson.actions.markInProgress')"
             icon="pi pi-play"
             class="p-button-outlined"
-            :disabled="!canContinueLesson"
+            :disabled="lessonDone || !canContinueLesson"
             :loading="updating === 'progress'"
             @click="updateStatus('in_progress', 35, 'progress')"
           />
           <Button
             :label="t('lesson.actions.markDone')"
             icon="pi pi-check"
-            :disabled="!canContinueLesson"
+            :disabled="lessonDone || !canMarkLessonDone"
             :loading="updating === 'done'"
             @click="updateStatus('done', 100, 'done')"
           />
         </div>
+        <small
+          v-if="visibleQuizBlocksRequireCompletion && !visibleQuizBlocksCompleted"
+          class="lesson-progress-warning"
+        >
+          Debes aprobar el quiz visible de esta lección antes de marcarla como hecha.
+        </small>
       </template>
     </Card>
 
@@ -426,6 +443,7 @@ const course = ref(null);
 const moduleInfo = ref(null);
 const lesson = ref(null);
 const assets = ref([]);
+const lessonDone = ref(false);
 
 const loading = ref(true);
 const error = ref(false);
@@ -496,10 +514,9 @@ const richContentPages = computed(() => {
 
   const parts = richContentSource.value
     .split(/<div\s+class=["']page-break["']\s*><\/div>/gi)
-    .map((part) => part.trim())
-    .filter(Boolean);
+    .map((part) => part.trim());
 
-  return parts.length ? parts : [richContentSource.value];
+  return parts.length ? parts : [richContentSource.value.trim()];
 });
 
 const hasMultiplePages = computed(() => richContentPages.value.length > 1);
@@ -508,6 +525,28 @@ const currentPageContent = computed(() => {
   if (!richContentPages.value.length) return "";
   return richContentPages.value[currentPage.value] || "";
 });
+
+const isPageContentEmpty = (content = "") => {
+  if (!content.trim()) return true;
+
+  if (typeof DOMParser === "undefined") return false;
+
+  const doc = new DOMParser().parseFromString(content, "text/html");
+  const pageBlock = doc.querySelector(".lesson-page-block");
+
+  if (pageBlock) {
+    const meaningfulNodes = pageBlock.querySelectorAll(
+      "p, img, audio, video, iframe, a, .lesson-quiz-marker, .cms-quiz",
+    );
+    return meaningfulNodes.length === 0;
+  }
+
+  return !doc.body.textContent?.trim() && !doc.body.children.length;
+};
+
+const isCurrentPageEmpty = computed(() =>
+  isPageContentEmpty(currentPageContent.value),
+);
 
 const pageProgressPercent = computed(() => {
   if (!richContentPages.value.length) return 0;
@@ -647,18 +686,43 @@ const inlineQuizQuestions = computed(() =>
   })),
 );
 
+const previewQuery = computed(() => {
+  if (!isPreview.value) return {};
+  const previewValue = route.query.preview === "true" ? "true" : "1";
+  return { preview: previewValue };
+});
+
+const studentRoute = computed(() => ({
+  path: "/student",
+  query: previewQuery.value,
+}));
+
+const courseRoute = computed(() => ({
+  path: `/student/course/${courseId.value}`,
+  query: {
+    ...previewQuery.value,
+    tab: "lessons",
+  },
+}));
+
 const breadcrumbHome = computed(() => ({
   icon: "pi pi-home",
-  to: "/student",
   label: t("lesson.breadcrumbs.home"),
+  command: (event) => {
+    event?.originalEvent?.preventDefault();
+    router.push(studentRoute.value);
+  },
 }));
 
 const breadcrumbItems = computed(() => {
-  const items = [{ label: t("lesson.breadcrumbs.home"), to: "/student" }];
+  const items = [];
   if (courseId.value) {
     items.push({
-      label: t("lesson.breadcrumbs.course"),
-      to: `/student/course/${courseId.value}`,
+      label: course.value?.title || t("lesson.breadcrumbs.course"),
+      command: (event) => {
+        event?.originalEvent?.preventDefault();
+        router.push(courseRoute.value);
+      },
     });
   }
   if (lesson.value?.title) items.push({ label: lesson.value.title });
@@ -681,6 +745,18 @@ const normalizeVisibleLessonType = (value) => {
   return "activity";
 };
 
+const normalizeContentJson = (value) => {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value;
+};
+
 const normalizeLesson = (rawLesson) => ({
   id: rawLesson.id,
   title: rawLesson.title,
@@ -699,6 +775,7 @@ const normalizeLesson = (rawLesson) => ({
   contentMarkdown:
     rawLesson.contentMarkdown ?? rawLesson.content_markdown ?? null,
   contentHtml: rawLesson.contentHtml ?? rawLesson.content_html ?? null,
+  contentJson: normalizeContentJson(rawLesson.contentJson ?? rawLesson.content_json),
   contentText: rawLesson.contentText ?? rawLesson.content_text ?? null,
   contentUrl: rawLesson.contentUrl ?? rawLesson.content_url ?? null,
   videoUrl: rawLesson.videoUrl ?? rawLesson.video_url ?? null,
@@ -741,6 +818,63 @@ const formatLessonDateTime = (value) => {
 const canContinueLesson = computed(
   () => lesson.value?.isAvailable !== false && !lesson.value?.isClosed,
 );
+
+const quizAttemptsBlocked = computed(
+  () => !isPreview.value && Boolean(lesson.value?.isClosed),
+);
+
+const quizAttemptsBlockedMessage = computed(() =>
+  quizAttemptsBlocked.value
+    ? "Esta lección está cerrada. No puedes realizar nuevos intentos de quiz."
+    : "",
+);
+
+const visibleQuizBlocks = computed(() => {
+  const contentJson = lesson.value?.contentJson;
+  const pages = Array.isArray(contentJson?.pages) ? contentJson.pages : [];
+  return pages.flatMap((page) =>
+    (Array.isArray(page?.blocks) ? page.blocks : []).filter(
+      (block) => block?.type === "quiz",
+    ),
+  );
+});
+
+const visibleQuizBlocksRequireCompletion = computed(
+  () => !isPreview.value && visibleQuizBlocks.value.length > 0,
+);
+
+const visibleQuizBlocksCompleted = computed(() => {
+  if (!visibleQuizBlocksRequireCompletion.value) return true;
+
+  return visibleQuizBlocks.value.every((block) => {
+    if (block.quizMode === "lesson_quiz") return quizPassed.value;
+    if (block.quizMode !== "single_question" || !block.questionId) return true;
+
+    const answer = myAnswersByQuestionId.value[String(block.questionId)];
+    return Boolean(answer?.isCorrect);
+  });
+});
+
+const canMarkLessonDone = computed(
+  () => canContinueLesson.value && visibleQuizBlocksCompleted.value,
+);
+
+const fetchLessonDoneState = async () => {
+  lessonDone.value = false;
+  if (isPreview.value || !courseId.value || !lessonId.value) return;
+
+  try {
+    const { data } = await api.get(`/courses/${courseId.value}/progress`);
+    const completedLessons = Array.isArray(data?.completedLessonDetails)
+      ? data.completedLessonDetails
+      : [];
+    lessonDone.value = completedLessons.some(
+      (item) => String(item.id) === String(lessonId.value),
+    );
+  } catch {
+    lessonDone.value = false;
+  }
+};
 
 const isSubmissionActivity = computed(
   () =>
@@ -941,6 +1075,7 @@ const loadLesson = async () => {
     await loadActivitySubmission();
     await fetchQuizScore();
     await loadQuiz();
+    await fetchLessonDoneState();
   } catch (err) {
     error.value = true;
     errorMessage.value = t("lesson.errors.load");
@@ -956,7 +1091,7 @@ const loadLesson = async () => {
 };
 
 const goBack = () => {
-  router.push(`/student/course/${courseId.value}`);
+  router.push(courseRoute.value);
 };
 
 const updateStatus = async (status, progressPercent, key) => {
@@ -967,6 +1102,16 @@ const updateStatus = async (status, progressPercent, key) => {
       detail:
         lessonAvailabilityMessage.value ||
         "Esta lección no permite actualizar progreso ahora.",
+      life: 3000,
+    });
+    return;
+  }
+
+  if (status === "done" && !canMarkLessonDone.value) {
+    toast.add({
+      severity: "warn",
+      summary: "Quiz pendiente",
+      detail: "Debes aprobar el quiz visible antes de marcar la lección como hecha.",
       life: 3000,
     });
     return;
@@ -989,6 +1134,7 @@ const updateStatus = async (status, progressPercent, key) => {
       progressPercent,
     });
     if (status === "done") {
+      lessonDone.value = true;
       await loadGamificationSummary();
     }
     const detail =
@@ -1161,6 +1307,7 @@ const updateSelection = (question, value, checked = undefined) => {
 };
 
 const canSubmitQuiz = computed(() => {
+  if (quizAttemptsBlocked.value) return false;
   const questions = finalQuestions.value;
   if (!questions.length) return false;
 
@@ -1175,6 +1322,16 @@ const canSubmitQuiz = computed(() => {
 
 const submitQuiz = async () => {
   if (!finalQuestions.value.length) return;
+
+  if (quizAttemptsBlocked.value) {
+    toast.add({
+      severity: "warn",
+      summary: "Lección cerrada",
+      detail: quizAttemptsBlockedMessage.value,
+      life: 3000,
+    });
+    return;
+  }
 
   quizSubmitting.value = true;
   try {
@@ -1222,7 +1379,18 @@ const submitQuiz = async () => {
   }
 };
 
-const handleInlineQuizAttempted = () => {
+const handleInlineQuizAttempted = (payload = null) => {
+  if (payload?.questionId) {
+    myAnswersByQuestionId.value = {
+      ...myAnswersByQuestionId.value,
+      [String(payload.questionId)]: {
+        ...(myAnswersByQuestionId.value[String(payload.questionId)] || {}),
+        isCorrect: Boolean(payload.isCorrect),
+        optionIds: payload.selectedOptionIds || [],
+      },
+    };
+  }
+
   if (inlineQuizScoreRefreshTimer) {
     clearTimeout(inlineQuizScoreRefreshTimer);
   }
@@ -1472,6 +1640,13 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+.lesson-progress-warning {
+  display: block;
+  margin-top: 0.65rem;
+  color: #92400e;
+  font-weight: 700;
+}
+
 .lesson-streak-summary {
   margin-bottom: 0.9rem;
   display: inline-flex;
@@ -1518,25 +1693,44 @@ onBeforeUnmount(() => {
 }
 
 .quiz-question {
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 1rem 0 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .quiz-options {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .quiz-option {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
+  min-height: 56px;
+  padding: 1rem 1.15rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.quiz-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: #4f46e5;
 }
 
 .quiz-actions {
-  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.6rem;
+  padding-top: 1.3rem;
+  border-top: 1px solid #e2e8f0;
 }
 
 .quiz-results-card {
@@ -1700,6 +1894,35 @@ onBeforeUnmount(() => {
 .book-page :deep(.lesson-media-audio) {
   width: 100%;
   max-width: 100%;
+}
+
+.book-empty-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.book-empty-page i {
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: #eef6ff;
+  color: #2563eb;
+  font-size: 1.45rem;
+}
+
+.book-empty-page strong {
+  color: #0f172a;
+  font-size: 1.1rem;
 }
 
 .book-stage {

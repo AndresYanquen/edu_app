@@ -33,6 +33,18 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  previewMode: {
+    type: Boolean,
+    default: false,
+  },
+  quizAttemptsBlocked: {
+    type: Boolean,
+    default: false,
+  },
+  quizAttemptsBlockedMessage: {
+    type: String,
+    default: '',
+  },
 });
 
 const emit = defineEmits(["inline-quiz-attempted"]);
@@ -247,6 +259,7 @@ const mountInlineQuizzes = async () => {
   markers.forEach((marker) => {
     const lessonId = marker.getAttribute("data-lesson-id");
     const questionId = marker.getAttribute("data-question-id");
+    const showFeedback = marker.getAttribute("data-show-feedback") !== "false";
     marker.innerHTML = "";
 
     if (!lessonId) {
@@ -276,6 +289,10 @@ const mountInlineQuizzes = async () => {
       questionId,
       question,
       initialAnswer,
+      previewMode: props.previewMode,
+      showFeedback,
+      attemptsBlocked: props.quizAttemptsBlocked,
+      attemptsBlockedMessage: props.quizAttemptsBlockedMessage,
       onAttempted: (payload) => {
         emit("inline-quiz-attempted", payload);
       },
@@ -296,6 +313,8 @@ watch(
     () => sanitizedContent.value,
     () => props.quizQuestions.length,
     () => JSON.stringify(props.answersByQuestionId),
+    () => props.quizAttemptsBlocked,
+    () => props.quizAttemptsBlockedMessage,
   ],
   async () => {
     await nextTick();

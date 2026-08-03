@@ -84,10 +84,46 @@
               </div>
             </section>
 
-            <section class="lesson-section-card">
+            <nav class="lesson-stepper" aria-label="Lesson editor steps">
+              <button
+                type="button"
+                class="lesson-stepper-item"
+                :class="{ active: currentStep === 1 }"
+                @click="currentStep = 1"
+              >
+                <span>1</span>
+                <strong>Información Básica</strong>
+              </button>
+              <button
+                type="button"
+                class="lesson-stepper-item"
+                :class="{ active: currentStep === 2 }"
+                @click="currentStep = 2"
+              >
+                <span>2</span>
+                <strong>Disponibilidad y entrega</strong>
+              </button>
+              <button
+                type="button"
+                class="lesson-stepper-item"
+                :class="{ active: currentStep === 3 }"
+                @click="currentStep = 3"
+              >
+                <span>3</span>
+                <strong>Constructor de Lección</strong>
+              </button>
+              <Button
+                label="Vista preview"
+                icon="pi pi-external-link"
+                class="p-button-outlined lesson-stepper-preview"
+                @click="openStudentPreview"
+              />
+            </nav>
+
+            <section v-show="currentStep === 1" class="lesson-section-card lesson-step-panel">
               <div class="section-head">
                 <div>
-                  <h3>Basic information</h3>
+                  <h3>Información de muestra</h3>
                   <div class="dialog-field">
                     <label>Imagen de portada</label>
 
@@ -142,7 +178,11 @@
               </div>
             </section>
 
-            <section v-if="isNoticeType" class="lesson-section-card notice-editor-card">
+            <section
+              v-if="isNoticeType"
+              v-show="currentStep === 2"
+              class="lesson-section-card lesson-step-panel notice-editor-card"
+            >
               <div class="section-head">
                 <div>
                   <h3>Contenido del aviso</h3>
@@ -235,7 +275,11 @@
               </div>
             </section>
 
-            <section v-else class="lesson-section-card">
+            <section
+              v-else
+              v-show="currentStep === 2"
+              class="lesson-section-card lesson-step-panel"
+            >
               <div class="section-head">
                 <div>
                   <h3>{{ availabilitySectionTitle }}</h3>
@@ -307,7 +351,11 @@
               </div>
             </section>
 
-            <section v-if="isActivityType" class="lesson-section-card">
+            <section
+              v-if="isActivityType || isAssessmentType"
+              v-show="currentStep === 3"
+              class="lesson-section-card lesson-step-panel"
+            >
               <div class="section-head">
                 <div>
                   <h3>Lesson pages</h3>
@@ -315,31 +363,101 @@
                 </div>
               </div>
 
-              <div class="pages-topbar">
-                <div class="pages-topbar-copy">
-                  <strong>Construye la lección por páginas</strong>
-                  <small class="muted">
-                    Texto, imagen, audio y video. La vista previa se actualiza
-                    mientras editas.
-                  </small>
-                </div>
+              <div class="lesson-pages-builder">
+                <aside class="lesson-pages-sidebar">
+                  <div class="lesson-pages-sidebar-head">
+                    <div>
+                      <strong>Páginas</strong>
+                      <small class="muted">
+                        Selecciona una página para editar sus bloques.
+                      </small>
+                    </div>
 
-                <div class="pages-topbar-actions">
-                  <Button
-                    icon="pi pi-images"
-                    label="Media Library"
-                    class="p-button-outlined"
-                    @click="openMediaLibrary"
-                  />
-                  <Button label="Add page" icon="pi pi-plus" @click="addPage" />
-                </div>
-              </div>
+                    <Button
+                      icon="pi pi-plus"
+                      class="p-button-sm"
+                      aria-label="Add page"
+                      @click="addPage"
+                    />
+                  </div>
 
-              <div class="pages-builder">
+                  <div class="lesson-pages-list">
+                    <div
+                      v-for="(page, pageIndex) in form.contentJson.pages"
+                      :key="pageIndex"
+                      role="button"
+                      tabindex="0"
+                      class="lesson-page-nav-item"
+                      :class="{ active: activePreviewPage === pageIndex }"
+                      @click="activePreviewPage = pageIndex"
+                      @keydown.enter="activePreviewPage = pageIndex"
+                      @keydown.space.prevent="activePreviewPage = pageIndex"
+                    >
+                      <span class="lesson-page-nav-number">{{ pageIndex + 1 }}</span>
+                      <span class="lesson-page-nav-copy">
+                        <strong>{{ getPageDisplayTitle(page, pageIndex) }}</strong>
+                        <small>{{ page.blocks.length }} bloque(s)</small>
+                      </span>
+                      <span class="lesson-page-nav-actions">
+                        <Button
+                          icon="pi pi-arrow-up"
+                          class="p-button-text p-button-sm"
+                          @click.stop="movePage(pageIndex, -1)"
+                          :disabled="pageIndex === 0"
+                        />
+                        <Button
+                          icon="pi pi-arrow-down"
+                          class="p-button-text p-button-sm"
+                          @click.stop="movePage(pageIndex, 1)"
+                          :disabled="
+                            pageIndex === form.contentJson.pages.length - 1
+                          "
+                        />
+                        <Button
+                          icon="pi pi-trash"
+                          class="p-button-text p-button-sm p-button-danger"
+                          @click.stop="removePage(pageIndex)"
+                          :disabled="form.contentJson.pages.length <= 1"
+                        />
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="lesson-pages-help">
+                    <strong>Constructor de lección</strong>
+                    <small>
+                      Organiza el contenido por páginas y agrega bloques de
+                      texto, imagen, audio, video o quiz.
+                    </small>
+                  </div>
+                </aside>
+
+                <main class="lesson-page-editor">
+                  <div class="pages-topbar">
+                    <div class="pages-topbar-copy">
+                      <strong>Construye la lección por páginas</strong>
+                      <small class="muted">
+                        Texto, imagen, audio y video. La vista previa se
+                        actualiza mientras editas.
+                      </small>
+                    </div>
+
+                    <div class="pages-topbar-actions">
+                      <Button
+                        icon="pi pi-images"
+                        label="Media Library"
+                        class="p-button-outlined"
+                        @click="openMediaLibrary"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="pages-builder">
                 <div
                   v-for="(page, pageIndex) in form.contentJson.pages"
                   :key="pageIndex"
                   class="page-builder-card"
+                  v-show="activePreviewPage === pageIndex"
                 >
                   <div class="page-builder-head">
                     <div class="page-builder-head-fields">
@@ -424,13 +542,21 @@
                   </div>
 
                   <div v-else class="blocks-list">
-                    <div
+                    <article
                       v-for="(block, blockIndex) in page.blocks"
                       :key="blockIndex"
-                      class="block-editor-card"
+                      class="block-editor-card lesson-content-card"
                     >
-                      <div class="block-editor-head">
-                        <strong>{{ block.type }}</strong>
+                      <header class="block-editor-head lesson-content-card__header">
+                        <div class="lesson-content-card__title">
+                          <span class="lesson-content-card__handle">
+                            <i class="pi pi-bars"></i>
+                          </span>
+                          <span class="lesson-content-card__badge">
+                            {{ block.type }}
+                          </span>
+                          <small>Bloque {{ blockIndex + 1 }}</small>
+                        </div>
 
                         <div class="question-actions">
                           <Button
@@ -455,275 +581,339 @@
                             @click="removeBlock(pageIndex, blockIndex)"
                           />
                         </div>
-                      </div>
+                      </header>
 
-                      <div class="dialog-field">
-                        <label>Block title</label>
-                        <InputText
-                          v-model="block.title"
-                          placeholder="Optional title"
-                        />
-                      </div>
-
-                      <div v-if="block.type === 'text'" class="dialog-field">
-                        <div class="text-editor-label-row">
-                          <label>Content</label>
-                          <Button
-                            label="Enlace"
-                            icon="pi pi-link"
-                            class="p-button-sm p-button-text"
-                            @click="insertTextLink(pageIndex, blockIndex)"
-                          />
+                      <div class="lesson-content-card__body">
+                        <div class="lesson-content-card__section lesson-content-card__section--config">
+                          <div class="dialog-field">
+                            <label>Block title</label>
+                            <InputText
+                              v-model="block.title"
+                              placeholder="Optional title"
+                            />
+                          </div>
                         </div>
-                        <Textarea
-                          v-model="block.content"
-                          autoResize
-                          rows="5"
-                          :data-text-block-editor="`${pageIndex}-${blockIndex}`"
-                          placeholder="Escribe texto. Selecciona una palabra y usa Enlace para vincularla."
-                        />
-                      </div>
+
+                        <div v-if="block.type === 'text'" class="lesson-content-card__section">
+                          <div class="dialog-field">
+                            <div class="text-editor-label-row">
+                              <label>Content</label>
+                              <Button
+                                label="Enlace"
+                                icon="pi pi-link"
+                                class="p-button-sm p-button-text"
+                                @click="insertTextLink(pageIndex, blockIndex)"
+                              />
+                            </div>
+                            <Textarea
+                              v-model="block.content"
+                              autoResize
+                              rows="5"
+                              :data-text-block-editor="`${pageIndex}-${blockIndex}`"
+                              placeholder="Escribe texto. Selecciona una palabra y usa Enlace para vincularla."
+                            />
+                          </div>
+                        </div>
 
                       <template
                         v-else-if="
                           block.type === 'image' || block.type === 'audio'
                         "
                       >
-                        <div class="block-asset-toolbar">
-                          <Button
-                            :label="
-                              block.type === 'image'
-                                ? 'Subir imagen'
-                                : 'Subir audio'
-                            "
-                            :icon="
-                              block.type === 'image'
-                                ? 'pi pi-upload'
-                                : 'pi pi-volume-up'
-                            "
-                            class="p-button-sm"
-                            @click="
-                              triggerBlockUpload(
-                                pageIndex,
-                                blockIndex,
-                                block.type,
-                              )
-                            "
-                          />
-                          <Button
-                            label="Elegir de Media Library"
-                            icon="pi pi-images"
-                            class="p-button-sm p-button-outlined"
-                            @click="
-                              openMediaLibraryForBlock(
-                                pageIndex,
-                                blockIndex,
-                                block.type,
-                              )
-                            "
-                          />
-                          <Button
-                            label="Quitar"
-                            icon="pi pi-times"
-                            class="p-button-sm p-button-text p-button-danger"
-                            @click="clearBlockAsset(pageIndex, blockIndex)"
-                            :disabled="!block.src && !block.embedUrl"
-                          />
-                        </div>
-
-                        <div
-                          class="block-file-preview"
-                          :class="{ empty: !block.src && !block.embedUrl }"
-                        >
-                          <template v-if="block.src || block.embedUrl">
-                            <img
-                              v-if="block.type === 'image' && block.src"
-                              :src="block.src"
-                              alt=""
-                              class="block-preview-image"
+                        <div class="lesson-content-card__section lesson-content-card__section--actions">
+                          <div class="block-asset-toolbar">
+                            <Button
+                              :label="
+                                block.type === 'image'
+                                  ? 'Subir imagen'
+                                  : 'Subir audio'
+                              "
+                              :icon="
+                                block.type === 'image'
+                                  ? 'pi pi-upload'
+                                  : 'pi pi-volume-up'
+                              "
+                              class="p-button-sm"
+                              @click="
+                                triggerBlockUpload(
+                                  pageIndex,
+                                  blockIndex,
+                                  block.type,
+                                )
+                              "
                             />
-
-                            <audio
-                              v-else-if="block.type === 'audio' && block.src"
-                              :src="block.src"
-                              controls
-                              class="block-preview-audio"
-                            ></audio>
-
-                            <div class="block-preview-meta">
-                              <strong>{{ getBlockPreviewLabel(block) }}</strong>
-                              <small class="muted block-url">
-                                {{ block.embedUrl || block.src }}
-                              </small>
-                            </div>
-                          </template>
-
-                          <template v-else>
-                            <div class="block-preview-meta">
-                              <strong>No file selected yet</strong>
-                              <small class="muted">
-                                Usa subir archivo o Media Library para asignar
-                                este bloque.
-                              </small>
-                            </div>
-                          </template>
+                            <Button
+                              label="Elegir de Media Library"
+                              icon="pi pi-images"
+                              class="p-button-sm p-button-outlined"
+                              @click="
+                                openMediaLibraryForBlock(
+                                  pageIndex,
+                                  blockIndex,
+                                  block.type,
+                                )
+                              "
+                            />
+                            <Button
+                              label="Quitar"
+                              icon="pi pi-times"
+                              class="p-button-sm p-button-text p-button-danger"
+                              @click="clearBlockAsset(pageIndex, blockIndex)"
+                              :disabled="!block.src && !block.embedUrl"
+                            />
+                          </div>
                         </div>
 
-                        <div v-if="block.type === 'audio'" class="dialog-field">
-                          <label>SoundCloud URL</label>
-                          <InputText
-                            v-model="block.embedUrl"
-                            placeholder="https://soundcloud.com/usuario/audio"
-                          />
+                        <div class="lesson-content-card__section lesson-content-card__section--asset">
+                          <div
+                            class="block-file-preview"
+                            :class="{ empty: !block.src && !block.embedUrl }"
+                          >
+                            <template v-if="block.src || block.embedUrl">
+                              <img
+                                v-if="block.type === 'image' && block.src"
+                                :src="block.src"
+                                alt=""
+                                class="block-preview-image"
+                              />
+
+                              <audio
+                                v-else-if="block.type === 'audio' && block.src"
+                                :src="block.src"
+                                controls
+                                class="block-preview-audio"
+                              ></audio>
+
+                              <div class="block-preview-meta">
+                                <strong>{{ getBlockPreviewLabel(block) }}</strong>
+                                <small class="muted block-url">
+                                  {{ block.embedUrl || block.src }}
+                                </small>
+                              </div>
+                            </template>
+
+                            <template v-else>
+                              <div class="block-preview-meta">
+                                <strong>No file selected yet</strong>
+                                <small class="muted">
+                                  Usa subir archivo o Media Library para asignar
+                                  este bloque.
+                                </small>
+                              </div>
+                            </template>
+                          </div>
                         </div>
 
-                        <div class="dialog-field">
-                          <label>Caption</label>
-                          <InputText
-                            v-model="block.caption"
-                            placeholder="Optional caption"
-                          />
+                        <div class="lesson-content-card__section lesson-content-card__section--config">
+                          <div v-if="block.type === 'audio'" class="dialog-field">
+                            <label>SoundCloud URL</label>
+                            <InputText
+                              v-model="block.embedUrl"
+                              placeholder="https://soundcloud.com/usuario/audio"
+                            />
+                          </div>
+
+                          <div class="dialog-field">
+                            <label>Caption</label>
+                            <InputText
+                              v-model="block.caption"
+                              placeholder="Optional caption"
+                            />
+                          </div>
                         </div>
                       </template>
 
                       <template v-else-if="block.type === 'video'">
-                        <div class="block-asset-toolbar">
-                          <Button
-                            label="Subir video"
-                            icon="pi pi-upload"
-                            class="p-button-sm"
-                            @click="
-                              triggerBlockUpload(pageIndex, blockIndex, 'video')
-                            "
-                          />
-                          <Button
-                            label="Quitar"
-                            icon="pi pi-times"
-                            class="p-button-sm p-button-text p-button-danger"
-                            @click="clearBlockAsset(pageIndex, blockIndex)"
-                            :disabled="!block.src"
-                          />
-                        </div>
-
-                        <div class="dialog-field">
-                          <label>Video URL (opcional)</label>
-                          <InputText
-                            v-model="block.src"
-                            placeholder="https://... o se llenará al subir video"
-                          />
-                        </div>
-
-                        <div
-                          class="block-file-preview"
-                          :class="{ empty: !block.src }"
-                        >
-                          <div class="block-preview-meta">
-                            <strong>{{ getBlockPreviewLabel(block) }}</strong>
-                            <small class="muted block-url">
-                              {{
-                                block.src || "Sube un video o pega un enlace."
-                              }}
-                            </small>
+                        <div class="lesson-content-card__section lesson-content-card__section--actions">
+                          <div class="block-asset-toolbar">
+                            <Button
+                              label="Subir video"
+                              icon="pi pi-upload"
+                              class="p-button-sm"
+                              @click="
+                                triggerBlockUpload(pageIndex, blockIndex, 'video')
+                              "
+                            />
+                            <Button
+                              label="Quitar"
+                              icon="pi pi-times"
+                              class="p-button-sm p-button-text p-button-danger"
+                              @click="clearBlockAsset(pageIndex, blockIndex)"
+                              :disabled="!block.src"
+                            />
                           </div>
                         </div>
 
-                        <div class="dialog-field">
-                          <label>Caption</label>
-                          <InputText
-                            v-model="block.caption"
-                            placeholder="Optional caption"
-                          />
+                        <div class="lesson-content-card__section lesson-content-card__section--config">
+                          <div class="dialog-field">
+                            <label>Video URL (opcional)</label>
+                            <InputText
+                              v-model="block.src"
+                              placeholder="https://... o se llenará al subir video"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="lesson-content-card__section lesson-content-card__section--asset">
+                          <div
+                            class="block-file-preview"
+                            :class="{ empty: !block.src }"
+                          >
+                            <div class="block-preview-meta">
+                              <strong>{{ getBlockPreviewLabel(block) }}</strong>
+                              <small class="muted block-url">
+                                {{
+                                  block.src || "Sube un video o pega un enlace."
+                                }}
+                              </small>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="lesson-content-card__section lesson-content-card__section--config">
+                          <div class="dialog-field">
+                            <label>Caption</label>
+                            <InputText
+                              v-model="block.caption"
+                              placeholder="Optional caption"
+                            />
+                          </div>
                         </div>
                       </template>
 
                       <template v-else-if="block.type === 'quiz'">
-                        <div class="dialog-field">
-                          <label>Quiz block mode</label>
-                          <Dropdown
-                            v-model="block.quizMode"
-                            :options="[
-                              {
-                                label: 'Pregunta individual',
-                                value: 'single_question',
-                              },
-                              {
-                                label: 'Quiz completo de la lección',
-                                value: 'lesson_quiz',
-                              },
-                            ]"
-                            optionLabel="label"
-                            optionValue="value"
-                            class="w-full"
-                          />
-                        </div>
+                        <div class="lesson-content-card__section lesson-content-card__section--config">
+                          <div class="dialog-field">
+                            <label>Quiz block mode</label>
+                            <Dropdown
+                              v-model="block.quizMode"
+                              :options="[
+                                {
+                                  label: 'Pregunta individual',
+                                  value: 'single_question',
+                                },
+                                {
+                                  label: 'Quiz completo de la lección',
+                                  value: 'lesson_quiz',
+                                },
+                              ]"
+                              optionLabel="label"
+                              optionValue="value"
+                              class="w-full"
+                            />
+                          </div>
 
-                        <div
-                          v-if="block.quizMode === 'single_question'"
-                          class="dialog-field"
-                        >
-                          <label>Seleccionar pregunta</label>
-                          <Dropdown
-                            v-model="block.questionId"
-                            :options="quizQuestionSelectOptions"
-                            optionLabel="label"
-                            optionValue="value"
-                            placeholder="Selecciona una pregunta ya creada"
-                            class="w-full"
-                          />
-
-                          <small class="muted">
-                            Aquí eliges una pregunta del quiz que ya está creada
-                            abajo.
-                          </small>
-                        </div>
-
-                        <div class="dialog-field">
-                          <label>Mostrar feedback</label>
-                          <Dropdown
-                            v-model="block.showFeedback"
-                            :options="[
-                              { label: 'Sí', value: true },
-                              { label: 'No', value: false },
-                            ]"
-                            optionLabel="label"
-                            optionValue="value"
-                            class="w-full"
-                          />
-                        </div>
-
-                        <div class="block-file-preview">
-                          <div class="block-preview-meta">
-                            <strong>
-                              {{
-                                block.quizMode === "lesson_quiz"
-                                  ? "Quiz completo de la lección"
-                                  : "Pregunta individual"
-                              }}
-                            </strong>
+                          <div
+                            v-if="block.quizMode === 'single_question'"
+                            class="dialog-field"
+                          >
+                            <label>Seleccionar pregunta</label>
+                            <Dropdown
+                              v-model="block.questionId"
+                              :options="quizQuestionSelectOptions"
+                              optionLabel="label"
+                              optionValue="value"
+                              placeholder="Selecciona una pregunta ya creada"
+                              class="w-full"
+                            />
 
                             <small class="muted">
-                              {{
-                                block.quizMode === "lesson_quiz"
-                                  ? `${quizQuestions.length} preguntas disponibles`
-                                  : block.questionId
-                                    ? quizQuestions.find(
-                                        (q) =>
-                                          String(q.id) ===
-                                          String(block.questionId),
-                                      )?.questionText || "Pregunta seleccionada"
-                                    : "No has seleccionado una pregunta"
-                              }}
+                              Aquí eliges una pregunta del quiz que ya está creada
+                              abajo.
                             </small>
+                          </div>
+
+                          <div class="dialog-field">
+                            <label>Mostrar feedback</label>
+                            <Dropdown
+                              v-model="block.showFeedback"
+                              :options="[
+                                { label: 'Sí', value: true },
+                                { label: 'No', value: false },
+                              ]"
+                              optionLabel="label"
+                              optionValue="value"
+                              class="w-full"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="lesson-content-card__section lesson-content-card__section--asset">
+                          <div class="block-file-preview">
+                            <div class="block-preview-meta">
+                              <strong>
+                                {{
+                                  block.quizMode === "lesson_quiz"
+                                    ? "Quiz completo de la lección"
+                                    : "Pregunta individual"
+                                }}
+                              </strong>
+
+                              <small class="muted">
+                                {{
+                                  block.quizMode === "lesson_quiz"
+                                    ? `${quizQuestions.length} preguntas disponibles`
+                                    : block.questionId
+                                      ? quizQuestions.find(
+                                          (q) =>
+                                            String(q.id) ===
+                                            String(block.questionId),
+                                        )?.questionText || "Pregunta seleccionada"
+                                      : "No has seleccionado una pregunta"
+                                }}
+                              </small>
+                            </div>
                           </div>
                         </div>
                       </template>
-                    </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="blocks-toolbar blocks-toolbar-bottom">
+                    <span>Agregar bloque</span>
+                    <Button
+                      label="Texto"
+                      icon="pi pi-align-left"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'text')"
+                    />
+                    <Button
+                      label="Imagen"
+                      icon="pi pi-image"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'image')"
+                    />
+                    <Button
+                      label="Audio"
+                      icon="pi pi-volume-up"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'audio')"
+                    />
+                    <Button
+                      label="Video"
+                      icon="pi pi-video"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'video')"
+                    />
+                    <Button
+                      label="Quiz"
+                      icon="pi pi-question-circle"
+                      class="p-button-text"
+                      @click="addBlock(pageIndex, 'quiz')"
+                    />
                   </div>
                 </div>
               </div>
+                </main>
+              </div>
             </section>
 
-            <section v-if="isAssessmentType" class="lesson-section-card quiz-card">
+            <section
+              v-if="isActivityType || isAssessmentType"
+              v-show="currentStep === 3"
+              class="lesson-section-card lesson-step-panel quiz-card"
+            >
               <div class="section-head section-head-split quiz-head-pro">
                 <div>
                   <h3>Quiz</h3>
@@ -861,7 +1051,7 @@
             </section>
           </main>
 
-          <aside class="lesson-sidebar">
+          <aside v-if="false" class="lesson-sidebar">
             <div class="sidebar-card preview-card">
               <div class="preview-card-head">
                 <div>
@@ -1732,6 +1922,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
 import Textarea from "primevue/textarea";
 import DOMPurify from "dompurify";
+import { useAuthStore } from "../stores/auth";
 
 import {
   getLesson,
@@ -1752,6 +1943,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const auth = useAuthStore();
 
 const lessonId = route.params.id;
 const moduleId = route.query.moduleId;
@@ -1761,6 +1953,7 @@ const lesson = ref(null);
 const loading = ref(true);
 const saving = ref(false);
 const activePreviewPage = ref(0);
+const currentStep = ref(1);
 
 const form = ref({
   coverImage: "",
@@ -1806,6 +1999,9 @@ const normalizeEditorLessonType = (value) => {
 const isNoticeType = computed(() => form.value.contentType === "banner");
 const isActivityType = computed(() => form.value.contentType === "activity");
 const isAssessmentType = computed(() => form.value.contentType === "assessment");
+const canSavePastLessonDates = computed(() =>
+  auth.hasAnyRole(["admin", "content_editor", "instructor", "teacher"]),
+);
 const lessonTypeLabel = computed(() => {
   if (isNoticeType.value) return "Aviso";
   if (isAssessmentType.value) return "Evaluacion";
@@ -3467,7 +3663,10 @@ const saveLesson = async () => {
       form.value.lateUntil,
     ].filter(Boolean);
 
-    if (selectedDates.some((value) => new Date(value).getTime() < now)) {
+    if (
+      !canSavePastLessonDates.value &&
+      selectedDates.some((value) => new Date(value).getTime() < now)
+    ) {
       toast.add({
         severity: "warn",
         summary: "Fecha invalida",
@@ -4386,7 +4585,7 @@ onMounted(async () => {
 
 .lesson-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
   margin-top: 1rem;
@@ -4446,6 +4645,87 @@ onMounted(async () => {
   color: #1e293b;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.lesson-stepper {
+  display: flex;
+  align-items: center;
+  gap: clamp(1.2rem, 4vw, 4rem);
+  padding: 0.35rem 0 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: transparent;
+}
+
+.lesson-stepper-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  transition:
+    color 0.18s ease;
+}
+
+.lesson-stepper-item span {
+  align-items: center;
+  background: #eef2f7;
+  border-radius: 999px;
+  color: #64748b;
+  display: inline-flex;
+  flex: 0 0 36px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.lesson-stepper-item strong {
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lesson-stepper-item:hover {
+  color: #2563eb;
+}
+
+.lesson-stepper-item.active {
+  color: #0f172a;
+}
+
+.lesson-stepper-item.active span {
+  background: #0f477a;
+  color: #ffffff;
+}
+
+.lesson-stepper-preview {
+  flex: 0 0 auto;
+  margin-left: -2.75rem;
+  white-space: nowrap;
+  background: #0f477a;
+  border-color: #0f477a;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 71, 122, 0.22);
+}
+
+.lesson-stepper-preview:hover {
+  background: #0b3a64;
+  border-color: #0b3a64;
+  color: #ffffff;
+}
+
+.lesson-step-panel {
+  min-height: 360px;
 }
 
 .lesson-section-card {
@@ -4537,6 +4817,145 @@ onMounted(async () => {
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.lesson-pages-builder {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.lesson-pages-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.lesson-pages-sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lesson-pages-sidebar-head div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.lesson-pages-sidebar-head strong,
+.lesson-pages-help strong {
+  color: #0f172a;
+}
+
+.lesson-pages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.lesson-page-nav-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #334155;
+  cursor: pointer;
+  background: transparent;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.lesson-page-nav-item:hover,
+.lesson-page-nav-item.active {
+  background: #ffffff;
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+}
+
+.lesson-page-nav-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.lesson-page-nav-item.active .lesson-page-nav-number {
+  background: #0f477a;
+  color: #ffffff;
+}
+
+.lesson-page-nav-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.lesson-page-nav-copy strong,
+.lesson-page-nav-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-page-nav-copy strong {
+  color: #0f172a;
+  font-size: 0.94rem;
+}
+
+.lesson-page-nav-copy small,
+.lesson-pages-help small {
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.lesson-page-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.lesson-page-nav-item:hover .lesson-page-nav-actions,
+.lesson-page-nav-item.active .lesson-page-nav-actions {
+  opacity: 1;
+}
+
+.lesson-pages-help {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem;
+  border: 1px dashed #bfdbfe;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.lesson-page-editor {
+  min-width: 0;
 }
 
 .quiz-card {
@@ -5169,14 +5588,14 @@ onMounted(async () => {
 .pages-builder {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0;
 }
 
 .page-builder-card {
   border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  padding: 1rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 16px;
+  padding: 1.15rem;
+  background: #ffffff;
 }
 
 .page-builder-head {
@@ -5203,17 +5622,31 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 
+.blocks-toolbar-bottom {
+  align-items: center;
+  margin: 1rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.blocks-toolbar-bottom span {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-right: 0.25rem;
+}
+
 .blocks-list {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 1rem;
 }
 
 .block-editor-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  padding: 0.9rem;
-  background: #fff;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .block-editor-head {
@@ -5221,34 +5654,123 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
   min-width: 0;
+}
+
+.lesson-content-card {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.lesson-content-card__header {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #eef2f7;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.lesson-content-card__title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.lesson-content-card__handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: #eef2f7;
+  color: #64748b;
+  flex: 0 0 auto;
+}
+
+.lesson-content-card__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0f477a;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.lesson-content-card__title small {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.lesson-content-card__body {
+  display: grid;
+  gap: 0;
+}
+
+.lesson-content-card__section {
+  padding: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.lesson-content-card__section:first-child {
+  border-top: 0;
+}
+
+.lesson-content-card__section--config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.lesson-content-card__section--config > .dialog-field:only-child {
+  grid-column: 1 / -1;
+}
+
+.lesson-content-card__section--actions {
+  padding-block: 0.75rem;
+  background: #fbfdff;
+}
+
+.lesson-content-card__section--asset {
+  background: #f8fafc;
+}
+
+.lesson-content-card__section--asset .block-file-preview {
+  margin-bottom: 0;
 }
 
 .block-asset-toolbar {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin-bottom: 0.9rem;
+  margin-bottom: 0;
 }
 
 .block-file-preview {
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 0.9rem;
-  background: #f8fafc;
+  background: #ffffff;
   margin-bottom: 0.9rem;
 }
 
 .block-file-preview.empty {
   border-style: dashed;
+  background: #f8fafc;
 }
 
 .block-preview-image {
   display: block;
   width: 100%;
-  max-width: 320px;
-  border-radius: 12px;
+  max-width: 360px;
+  border-radius: 10px;
   margin-bottom: 0.75rem;
 }
 
@@ -5474,6 +5996,47 @@ onMounted(async () => {
 
   .lesson-layout {
     gap: 1rem;
+  }
+
+  .lesson-stepper {
+    gap: 1.25rem;
+    overflow-x: auto;
+    padding-bottom: 0.85rem;
+    scrollbar-width: thin;
+  }
+
+  .lesson-stepper-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .lesson-step-panel {
+    min-height: 0;
+  }
+
+  .lesson-pages-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-pages-sidebar {
+    position: static;
+  }
+
+  .lesson-page-nav-actions {
+    opacity: 1;
+  }
+
+  .lesson-content-card__header,
+  .lesson-content-card__title {
+    align-items: flex-start;
+  }
+
+  .lesson-content-card__header {
+    flex-direction: column;
+  }
+
+  .lesson-content-card__section--config {
+    grid-template-columns: 1fr;
   }
 
   .lesson-section-card,

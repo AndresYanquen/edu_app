@@ -42,6 +42,7 @@ const mapCoursePostRow = (row) => ({
   createdAt: row.created_at,
 });
 
+
 const isValidWeekStartString = (value) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
@@ -64,6 +65,21 @@ const parseWeekStart = (input) => {
 
 const isUtcMonday = (date) => date instanceof Date && date.getUTCDay() === 1;
 
+const parseMonthAnchor = (input) => {
+  const value = String(input || "").trim();
+  const normalized = /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : value;
+  if (!isValidWeekStartString(normalized)) {
+    return null;
+  }
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  parsed.setUTCDate(1);
+  parsed.setUTCHours(0, 0, 0, 0);
+  return parsed;
+};
+
 const buildAttendanceDays = (weekStartDate) => {
   const start = new Date(weekStartDate.getTime());
   start.setUTCHours(0, 0, 0, 0);
@@ -71,6 +87,22 @@ const buildAttendanceDays = (weekStartDate) => {
   for (let i = 0; i < 7; i += 1) {
     const current = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
     days.push({ date: toUtcIsoDate(current), sessions: [] });
+  }
+  return days;
+};
+
+const buildMonthAttendanceDays = (monthStartDate) => {
+  const start = new Date(monthStartDate.getTime());
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  const days = [];
+  const cursor = new Date(start.getTime());
+  while (cursor < end) {
+    const day = cursor.getUTCDay();
+    if (day >= 1 && day <= 5) {
+      days.push({ date: toUtcIsoDate(cursor), sessions: [] });
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return days;
 };
@@ -189,6 +221,223 @@ const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
     values,
   );
 };
+
+router.get("/:courseId/attendance/month", async (req, res) => {
+  const parsedCourseId = uuidSchema.safeParse(req.params.courseId);
+  if (!parsedCourseId.success) {
+    return res
+      .status(400)
+      .json({ error: formatZodError(parsedCourseId.error) });
+  }
+
+  const courseId = parsedCourseId.data;
+  const monthStartDate = parseMonthAnchor(req.query.month || req.query.monthStart);
+  if (!monthStartDate) {
+    return res
+      .status(400)
+      .json({ error: "month is required and must be YYYY-MM or YYYY-MM-DD" });
+  }
+  const monthStart = toUtcIsoDate(monthStartDate);
+  const monthEndDate = new Date(Date.UTC(monthStartDate.getUTCFullYear(), monthStartDate.getUTCMonth() + 1, 1));
+
+  try {
+    const groupResolution = await resolveAttendanceGroupForCourse(
+      courseId,
+      req.query.groupId ? String(req.query.groupId) : null,
+    );
+    if (groupResolution.error) {
+      return res
+        .status(groupResolution.status || 400)
+        .json({ error: groupResolution.error });
+    }
+    const group = groupResolution.group;
+
+    const access = await ensureCourseAttendanceAccess(
+      req,
+      courseId,
+      group?.id || null,
+    );
+    if (!access.allowed) {
+      return res
+        .status(access.status || 403)
+        .json({ error: access.error || "Forbidden" });
+    }
+
+    const days = buildMonthAttendanceDays(monthStartDate);
+    if (!group?.id) {
+      return res.json({
+        courseId,
+        groupId: null,
+        periodMode: "month",
+        periodAnchor: monthStart,
+        weekStart: monthStart,
+        days,
+        students: [],
+        stats: {
+          totalStudents: 0,
+          totalSessions: 0,
+          takenSessions: 0,
+          presentPct: null,
+          atRiskCount: 0,
+          hasAttendanceRecords: false,
+        },
+      });
+    }
+
+    const rosterRes = await pool.query(
+      `
+        SELECT u.id AS user_id, u.full_name, u.email
+        FROM group_students gs
+        JOIN users u ON u.id = gs.user_id
+        WHERE gs.group_id = $1
+          AND gs.status = 'active'
+        ORDER BY u.full_name ASC
+      `,
+      [group.id],
+    );
+
+    const sessionsRes = await pool.query(
+      `
+        SELECT
+          ls.id AS session_id,
+          ls.starts_at,
+          s.title
+        FROM live_sessions ls
+        JOIN groups g ON g.id = ls.group_id
+        LEFT JOIN live_session_series s ON s.id = ls.series_id
+        WHERE g.course_id = $1
+          AND ls.group_id = $2
+          AND ls.starts_at >= $3::date
+          AND ls.starts_at < $4::date
+        ORDER BY ls.starts_at ASC
+      `,
+      [courseId, group.id, monthStart, toUtcIsoDate(monthEndDate)],
+    );
+
+    const sessionIds = sessionsRes.rows.map((row) => row.session_id);
+    let attendanceRows = [];
+    if (sessionIds.length) {
+      const attendanceRes = await pool.query(
+        `
+          SELECT live_session_id, user_id, status, note
+          FROM live_session_attendance
+          WHERE live_session_id = ANY($1::uuid[])
+        `,
+        [sessionIds],
+      );
+      attendanceRows = attendanceRes.rows;
+    }
+
+    let attendanceRunRows = [];
+    if (sessionIds.length) {
+      const attendanceRunRes = await pool.query(
+        `
+          SELECT live_session_id, taken_at, taken_by, status
+          FROM live_session_attendance_runs
+          WHERE live_session_id = ANY($1::uuid[])
+        `,
+        [sessionIds],
+      );
+      attendanceRunRows = attendanceRunRes.rows;
+    }
+
+    const attendanceRunBySessionId = new Map(
+      attendanceRunRows.map((row) => [
+        row.live_session_id,
+        {
+          isTaken: row.status === "finalized",
+          takenAt: row.taken_at ? row.taken_at.toISOString() : null,
+          takenBy: row.taken_by || null,
+        },
+      ]),
+    );
+
+    const dayIndex = new Map(days.map((day, idx) => [day.date, idx]));
+    sessionsRes.rows.forEach((row) => {
+      const key = toUtcIsoDate(row.starts_at);
+      const idx = dayIndex.get(key);
+      if (idx === undefined) return;
+      const runMeta = attendanceRunBySessionId.get(row.session_id) || {
+        isTaken: false,
+        takenAt: null,
+        takenBy: null,
+      };
+      days[idx].sessions.push({
+        sessionId: row.session_id,
+        startsAt: row.starts_at ? row.starts_at.toISOString() : null,
+        title: row.title || null,
+        isTaken: runMeta.isTaken,
+        attendanceTakenAt: runMeta.takenAt,
+        attendanceTakenBy: runMeta.takenBy,
+      });
+    });
+
+    const attendanceByUser = new Map();
+    for (const row of attendanceRows) {
+      if (!attendanceByUser.has(row.user_id)) {
+        attendanceByUser.set(row.user_id, {});
+      }
+      attendanceByUser.get(row.user_id)[row.live_session_id] = {
+        status: row.status,
+        ...(row.note ? { note: row.note } : {}),
+      };
+    }
+
+    const takenSessionIds = sessionIds.filter(
+      (sessionId) => attendanceRunBySessionId.get(sessionId)?.isTaken,
+    );
+    let atRiskCount = 0;
+    let presentCount = 0;
+
+    const students = rosterRes.rows.map((row) => {
+      const bySession = attendanceByUser.get(row.user_id) || {};
+      let absences = 0;
+      takenSessionIds.forEach((sessionId) => {
+        const cell = bySession[sessionId];
+        if (!cell || cell.status === "present") {
+          presentCount += 1;
+        }
+        if (cell?.status === "absent") {
+          absences += 1;
+        }
+      });
+      if (absences >= 3) {
+        atRiskCount += 1;
+      }
+      return {
+        userId: row.user_id,
+        fullName: row.full_name,
+        email: row.email,
+        bySession,
+      };
+    });
+
+    const denominator = students.length * takenSessionIds.length;
+    const presentPct =
+      denominator > 0 ? (presentCount / denominator) * 100 : null;
+
+    return res.json({
+      courseId,
+      groupId: group.id,
+      periodMode: "month",
+      periodAnchor: monthStart,
+      weekStart: monthStart,
+      days,
+      students,
+      stats: {
+        totalStudents: students.length,
+        totalSessions: sessionIds.length,
+        takenSessions: takenSessionIds.length,
+        presentPct,
+        atRiskCount,
+        hasAttendanceRecords: takenSessionIds.length > 0,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to load course attendance month", err);
+    return res.status(500).json({ error: "Failed to load course attendance month" });
+  }
+});
 
 router.get("/:courseId/attendance", async (req, res) => {
   const parsedCourseId = uuidSchema.safeParse(req.params.courseId);

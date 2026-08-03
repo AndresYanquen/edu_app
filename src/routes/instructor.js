@@ -285,6 +285,153 @@ router.get(
 );
 
 router.get(
+  '/groups/:id/students/:studentId/progress',
+  requireGroupTeacherOrAdmin((req) => req.params.id),
+  async (req, res) => {
+    const groupId = req.params.id;
+    const studentId = req.params.studentId;
+
+    try {
+      const groupRes = await pool.query('SELECT id, course_id FROM groups WHERE id = $1 LIMIT 1', [
+        groupId,
+      ]);
+      const group = groupRes.rows[0];
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      const studentRes = await pool.query(
+        `
+          SELECT
+            u.id,
+            u.full_name,
+            u.email
+          FROM group_students gs
+          JOIN users u ON u.id = gs.user_id
+          WHERE gs.group_id = $1
+            AND gs.user_id = $2
+            AND EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name = 'student'
+            )
+          LIMIT 1
+        `,
+        [groupId, studentId],
+      );
+      const student = studentRes.rows[0];
+      if (!student) {
+        return res.status(404).json({ error: 'Student not found in group' });
+      }
+
+      const lessonsRes = await pool.query(
+        `
+          WITH latest_quiz AS (
+            SELECT DISTINCT ON (qa.lesson_id)
+              qa.lesson_id,
+              qa.score_percent::int AS score_percent,
+              qa.passed,
+              qa.submitted_at,
+              qa.created_at
+            FROM quiz_attempts qa
+            WHERE qa.user_id = $2
+              AND qa.status = 'submitted'
+            ORDER BY qa.lesson_id, COALESCE(qa.submitted_at, qa.created_at) DESC
+          ),
+          best_quiz AS (
+            SELECT
+              qa.lesson_id,
+              MAX(qa.score_percent)::int AS score_percent
+            FROM quiz_attempts qa
+            WHERE qa.user_id = $2
+              AND qa.status = 'submitted'
+            GROUP BY qa.lesson_id
+          )
+          SELECT
+            m.id AS module_id,
+            m.title AS module_title,
+            m.position AS module_position,
+            l.id AS lesson_id,
+            l.title AS lesson_title,
+            l.position AS lesson_position,
+            l.content_type,
+            COALESCE(lp.status, 'not_started') AS progress_status,
+            COALESCE(lp.progress_percent, 0)::int AS progress_percent,
+            lp.last_seen_at,
+            bq.score_percent AS best_quiz_score,
+            lq.score_percent AS last_quiz_score,
+            lq.passed AS last_quiz_passed,
+            COALESCE(lq.submitted_at, lq.created_at) AS last_quiz_at
+          FROM modules m
+          JOIN lessons l ON l.module_id = m.id
+          LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id AND lp.user_id = $2
+          LEFT JOIN best_quiz bq ON bq.lesson_id = l.id
+          LEFT JOIN latest_quiz lq ON lq.lesson_id = l.id
+          WHERE m.course_id = $1
+          ORDER BY m.position ASC, l.position ASC
+        `,
+        [group.course_id, studentId],
+      );
+
+      const modulesMap = new Map();
+      let totalLessons = 0;
+      let completedLessons = 0;
+
+      for (const row of lessonsRes.rows) {
+        if (!modulesMap.has(row.module_id)) {
+          modulesMap.set(row.module_id, {
+            id: row.module_id,
+            title: row.module_title,
+            position: row.module_position,
+            lessons: [],
+          });
+        }
+
+        totalLessons += 1;
+        if (row.progress_status === 'done') {
+          completedLessons += 1;
+        }
+
+        modulesMap.get(row.module_id).lessons.push({
+          id: row.lesson_id,
+          title: row.lesson_title,
+          position: row.lesson_position,
+          contentType: row.content_type,
+          status: row.progress_status,
+          progressPercent: row.progress_percent,
+          lastSeenAt: row.last_seen_at,
+          bestQuizScore: row.best_quiz_score ?? null,
+          lastQuizScore: row.last_quiz_score ?? null,
+          lastQuizPassed: row.last_quiz_passed ?? null,
+          lastQuizAt: row.last_quiz_at,
+        });
+      }
+
+      const percent = totalLessons === 0 ? 0 : Math.round((completedLessons * 100) / totalLessons);
+
+      return res.json({
+        groupId,
+        courseId: group.course_id,
+        student: {
+          id: student.id,
+          fullName: student.full_name,
+          email: student.email,
+        },
+        totalLessons,
+        completedLessons,
+        percent,
+        modules: Array.from(modulesMap.values()),
+      });
+    } catch (err) {
+      console.error('Failed to load student group progress detail', err);
+      return res.status(500).json({ error: 'Failed to load student progress detail' });
+    }
+  },
+);
+
+router.get(
   '/instructor/courses/:courseId/analytics',
   requireInstructorCourseRole(resolveCourseIdFromParam('courseId')),
   async (req, res) => {

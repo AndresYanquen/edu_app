@@ -6,6 +6,9 @@ const unwrap = (promise) => promise.then((res) => res.data);
 export const getCourseWeekAttendance = (courseId, params = {}) =>
   unwrap(api.get(`/courses/${courseId}/attendance`, { params }));
 
+export const getCourseMonthAttendance = (courseId, params = {}) =>
+  unwrap(api.get(`/courses/${courseId}/attendance/month`, { params }));
+
 export const saveCourseWeekAttendance = (courseId, payload = {}) =>
   unwrap(api.put(`/courses/${courseId}/attendance/week`, payload));
 
@@ -20,6 +23,7 @@ export const saveAttendanceCellFallback = async ({ sessionId, userId, status, no
 
 export default {
   getCourseWeekAttendance,
+  getCourseMonthAttendance,
   saveCourseWeekAttendance,
   saveAttendanceCellFallback,
 };

@@ -278,27 +278,6 @@
                             @click="openLesson(lesson)"
                           />
 
-                          <Button
-                            :label="
-                              isLessonDone(lesson)
-                                ? 'Completada'
-                                : 'Marcar hecha'
-                            "
-                            class="btn-done"
-                            icon="pi pi-check"
-                            :disabled="
-                              isLessonDone(lesson) ||
-                              isPreview ||
-                              !canOpenLesson(lesson)
-                            "
-                            :loading="
-                              !isLessonDone(lesson) &&
-                              updatingLesson === lesson.id
-                            "
-                            @click="
-                              !isLessonDone(lesson) && markDone(lesson.id)
-                            "
-                          />
                         </div>
                       </div>
                     </article>
@@ -1091,6 +1070,27 @@ const TAB_INDEX = {
   calendar: 3,
   forum: 4,
 };
+const TAB_QUERY_BY_INDEX = {
+  [TAB_INDEX.posts]: "posts",
+  [TAB_INDEX.lessons]: "lessons",
+  [TAB_INDEX.live]: "live",
+  [TAB_INDEX.calendar]: "calendar",
+  [TAB_INDEX.forum]: "forum",
+};
+const TAB_INDEX_BY_QUERY = Object.entries(TAB_QUERY_BY_INDEX).reduce(
+  (acc, [index, key]) => {
+    acc[key] = Number(index);
+    return acc;
+  },
+  {},
+);
+
+const getCourseTabFromRoute = () => {
+  const tab = Array.isArray(route.query.tab)
+    ? route.query.tab[0]
+    : route.query.tab;
+  return TAB_INDEX_BY_QUERY[tab] ?? TAB_INDEX.posts;
+};
 
 const isLiveTabActive = computed(() => activeTabIndex.value === TAB_INDEX.live);
 
@@ -1715,6 +1715,7 @@ const formatSessionDateTime = (iso) => {
 };
 
 onMounted(() => {
+  activeTabIndex.value = getCourseTabFromRoute();
   selectedCalendarDateKey.value = toLocalDateKey(new Date());
   fetchData(route.params.id);
   startCountdownTimer();
@@ -1733,6 +1734,20 @@ watch([() => route.params.id, () => route.query.preview], ([newId]) => {
 });
 
 watch(activeTabIndex, (idx) => {
+  const nextTab = TAB_QUERY_BY_INDEX[idx] || TAB_QUERY_BY_INDEX[TAB_INDEX.posts];
+  const currentTab = Array.isArray(route.query.tab)
+    ? route.query.tab[0]
+    : route.query.tab;
+  if (currentTab !== nextTab) {
+    router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        tab: nextTab,
+      },
+    });
+  }
+
   if (idx !== TAB_INDEX.calendar) return;
   requestAnimationFrame(() => {
     const api = courseCalendarRef.value?.getApi?.();
@@ -1741,6 +1756,16 @@ watch(activeTabIndex, (idx) => {
     api.updateSize();
   });
 });
+
+watch(
+  () => route.query.tab,
+  () => {
+    const nextIndex = getCourseTabFromRoute();
+    if (activeTabIndex.value !== nextIndex) {
+      activeTabIndex.value = nextIndex;
+    }
+  },
+);
 
 watch(courseModules, (modules) => {
   if (!modules.length) {
@@ -1760,6 +1785,7 @@ const previewQuery = computed(() => {
 
 const breadcrumbHome = computed(() => ({
   label: t("course.breadcrumbHome"),
+  icon: "pi pi-home",
   command: (event) => {
     event?.originalEvent?.preventDefault();
     const query = previewQuery.value;

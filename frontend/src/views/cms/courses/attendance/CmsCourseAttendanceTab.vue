@@ -5,6 +5,11 @@
       :week-label="weekLabel"
       :week-sub-label="weekSubLabel"
       :week-progress-label="weekProgressLabel"
+      :period-mode="periodMode"
+      :period-options="periodOptions"
+      :show-period-selector="true"
+      :average-metric-label="periodMode === 'month' ? 'Asistencia mensual' : 'Asistencia promedio'"
+      :risk-metric-label="periodMode === 'month' ? 'En riesgo (mes)' : 'En riesgo (semana)'"
       :stats="computedStats"
       :group-options="groupOptions"
       :selected-group-id="selectedGroupId"
@@ -14,6 +19,7 @@
       @prev-month="goPreviousMonth"
       @next-month="goNextMonth"
       @jump-week="handleJumpWeek"
+      @update:periodMode="handlePeriodModeChange"
       @update:groupId="handleGroupChange"
       @export="handleExport"
     />
@@ -33,7 +39,85 @@
         </div>
         <div v-else-if="!hasAnySessions" class="attendance-empty-state">
           <i class="pi pi-calendar-times" />
-          <p>No hay sesiones en esta semana.</p>
+          <p>{{ periodMode === 'month' ? 'No hay sesiones en este mes.' : 'No hay sesiones en esta semana.' }}</p>
+        </div>
+        <div v-else-if="periodMode === 'month'" class="monthly-attendance-list">
+          <article
+            v-for="student in monthlyStudentRows"
+            :key="student.userId"
+            class="monthly-student-card"
+            :class="{ 'is-focused': focusedUserId && focusedUserId === student.userId }"
+            :data-attendance-student-id="student.userId"
+          >
+            <aside class="monthly-student-summary">
+              <div class="monthly-student-profile">
+                <span class="monthly-avatar">{{ initials(student.fullName || student.email) }}</span>
+                <div>
+                  <strong>{{ student.fullName || student.email }}</strong>
+                  <small>{{ student.email }}</small>
+                  <Tag value="Estudiante" severity="info" />
+                </div>
+              </div>
+
+              <div class="monthly-progress">
+                <small>Asistencia mensual</small>
+                <strong>{{ student.presentPctLabel }}</strong>
+                <div class="monthly-progress-track">
+                  <span :style="{ width: `${student.presentPct || 0}%` }"></span>
+                </div>
+              </div>
+
+              <div class="monthly-student-metrics">
+                <div>
+                  <small>Clases asistidas</small>
+                  <strong>{{ student.attendedCount }} / {{ student.takenCount }}</strong>
+                </div>
+                <div>
+                  <small>Faltas</small>
+                  <strong>{{ student.counts.absent }}</strong>
+                </div>
+              </div>
+            </aside>
+
+            <main class="monthly-calendar-panel">
+              <div class="monthly-calendar-scroll">
+                <div class="monthly-calendar-grid" :style="{ '--day-count': monthlyDays.length }">
+                  <div
+                    v-for="day in monthlyDays"
+                    :key="`head-${student.userId}-${day.date}`"
+                    class="monthly-day-head"
+                  >
+                    <span>{{ day.shortLabel }}</span>
+                    <strong>{{ day.dayNumber }}</strong>
+                  </div>
+                  <div
+                    v-for="cell in student.cells"
+                    :key="`${student.userId}-${cell.date}-${cell.sessionId || 'empty'}`"
+                    class="monthly-status-cell"
+                    :class="`is-${cell.status}`"
+                    :title="cell.tooltip"
+                  >
+                    {{ cell.code }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="monthly-observations">
+                <strong>Observaciones del mes</strong>
+                <p>{{ student.observations || 'Sin observaciones registradas.' }}</p>
+              </div>
+            </main>
+
+            <aside class="monthly-counts">
+              <strong>Resumen del mes</strong>
+              <div><span>Presentes</span><b>{{ student.counts.present }}</b></div>
+              <div><span>Ausentes</span><b>{{ student.counts.absent }}</b></div>
+              <div><span>Tardías</span><b>{{ student.counts.late }}</b></div>
+              <div><span>Justificadas</span><b>{{ student.counts.excused }}</b></div>
+              <div><span>Sin registrar</span><b>{{ student.counts.pending }}</b></div>
+              <div><span>Sin clase</span><b>{{ student.counts.noClass }}</b></div>
+            </aside>
+          </article>
         </div>
         <AttendanceWeekGrid
           v-else
@@ -76,6 +160,7 @@ const resolvedCourseId = computed(() => props.courseId || String(route.params.id
 const selectedGroupId = ref(null);
 const weekStart = ref('');
 const weekData = ref(null);
+const periodMode = ref('week');
 const localError = ref('');
 const focusedUserId = ref('');
 
@@ -89,6 +174,11 @@ const groupOptions = computed(() =>
     value: group.id,
   })),
 );
+
+const periodOptions = [
+  { label: 'Semana', value: 'week', disabled: false },
+  { label: 'Mes', value: 'month', disabled: false },
+];
 
 const isoDate = (value) => {
   const date = new Date(value);
@@ -121,7 +211,15 @@ const shiftMonth = (iso, months) => {
     return isoDate(mondayOf(new Date()));
   }
   base.setMonth(base.getMonth() + months);
-  return isoDate(mondayOf(base));
+  return isoDate(periodMode.value === 'month' ? monthStartOf(base) : mondayOf(base));
+};
+
+const monthStartOf = (input = new Date()) => {
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return new Date();
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date;
 };
 
 const getIsoWeekNumber = (iso) => {
@@ -142,13 +240,28 @@ const formatWeekLabel = (iso) => {
   return `Semana del ${start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
 };
 
-const weekLabel = computed(() => formatWeekLabel(weekStart.value));
+const weekLabel = computed(() =>
+  periodMode.value === 'month' ? monthLabel.value : formatWeekLabel(weekStart.value),
+);
 const weekSubLabel = computed(() => {
   if (!weekStart.value) return '';
+  if (periodMode.value === 'month') {
+    const start = new Date(`${weekStart.value}T00:00:00`);
+    if (Number.isNaN(start.getTime())) return '';
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+  }
   const start = new Date(`${weekStart.value}T00:00:00`);
   const end = new Date(start);
   end.setDate(end.getDate() + 4);
   return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+});
+
+const monthLabel = computed(() => {
+  if (!weekStart.value) return 'Mes';
+  const start = new Date(`${weekStart.value}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return 'Mes';
+  return start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 });
 
 const selectedGroup = computed(() => {
@@ -162,6 +275,7 @@ const selectedGroup = computed(() => {
 
 const weekProgressLabel = computed(() => {
   if (!weekStart.value) return '';
+  if (periodMode.value === 'month') return '';
   const group = selectedGroup.value;
   const currentWeekDate = mondayOf(new Date(`${weekStart.value}T00:00:00`));
   const startRaw = group?.startDate || group?.start_date || null;
@@ -266,16 +380,120 @@ const computedStats = computed(() => {
   };
 });
 
+const statusConfig = {
+  present: { code: 'P', label: 'Presente' },
+  absent: { code: 'A', label: 'Ausente' },
+  late: { code: 'T', label: 'Tardía' },
+  excused: { code: 'J', label: 'Justificada' },
+  pending: { code: '-', label: 'Sin registrar' },
+  noClass: { code: '-', label: 'Sin clase' },
+};
+
+const initials = (name = '') =>
+  String(name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'ST';
+
+const monthlyDays = computed(() =>
+  displayDays.value.map((day) => {
+    const date = new Date(`${day.date}T00:00:00`);
+    return {
+      ...day,
+      dayNumber: Number.isNaN(date.getTime()) ? '' : String(date.getDate()),
+    };
+  }),
+);
+
+const statusForMonthlyCell = (student, day) => {
+  const sessions = Array.isArray(day.sessions) ? day.sessions : [];
+  if (!sessions.length) {
+    return {
+      date: day.date,
+      sessionId: null,
+      status: 'noClass',
+      code: statusConfig.noClass.code,
+      tooltip: `${day.dateLabel}: sin clase`,
+      note: '',
+    };
+  }
+
+  const session = sessions[0];
+  const sessionId = session.sessionId || session.id || session.session_id;
+  if (!sessionId || !session.isTaken) {
+    return {
+      date: day.date,
+      sessionId,
+      status: 'pending',
+      code: statusConfig.pending.code,
+      tooltip: `${day.dateLabel}: asistencia sin registrar`,
+      note: '',
+    };
+  }
+
+  const cell = student.bySession?.[sessionId] || {};
+  const status = cell.status || 'present';
+  const config = statusConfig[status] || statusConfig.pending;
+  return {
+    date: day.date,
+    sessionId,
+    status,
+    code: config.code,
+    tooltip: `${day.dateLabel}: ${config.label}${session.timeLabel ? ` (${session.timeLabel})` : ''}`,
+    note: cell.note || '',
+  };
+};
+
+const monthlyStudentRows = computed(() =>
+  students.value.map((student) => {
+    const cells = monthlyDays.value.map((day) => statusForMonthlyCell(student, day));
+    const counts = cells.reduce(
+      (acc, cell) => {
+        acc[cell.status] = (acc[cell.status] || 0) + 1;
+        return acc;
+      },
+      { present: 0, absent: 0, late: 0, excused: 0, pending: 0, noClass: 0 },
+    );
+    const takenCount = counts.present + counts.absent + counts.late + counts.excused;
+    const attendedCount = counts.present + counts.late + counts.excused;
+    const presentPct = takenCount ? Math.round((attendedCount * 100) / takenCount) : 0;
+    const notes = cells
+      .filter((cell) => cell.note)
+      .map((cell) => `${cell.date}: ${cell.note}`);
+
+    return {
+      ...student,
+      cells,
+      counts,
+      takenCount,
+      attendedCount,
+      presentPct,
+      presentPctLabel: takenCount ? `${presentPct}%` : '—',
+      observations: notes.join(' · '),
+    };
+  }),
+);
+
 const loadWeek = async () => {
   if (!resolvedCourseId.value || !weekStart.value) return;
   if (Array.isArray(props.groups) && props.groups.length > 0 && !selectedGroupId.value) return;
   localError.value = '';
   try {
-    const payload = await attendanceStore.fetchCourseWeekAttendance(
-      resolvedCourseId.value,
-      selectedGroupId.value,
-      weekStart.value,
-    );
+    const payload =
+      periodMode.value === 'month'
+        ? await attendanceStore.fetchCourseAttendanceSummary(
+            resolvedCourseId.value,
+            selectedGroupId.value,
+            'month',
+            weekStart.value,
+          )
+        : await attendanceStore.fetchCourseWeekAttendance(
+            resolvedCourseId.value,
+            selectedGroupId.value,
+            weekStart.value,
+          );
     weekData.value = payload || null;
     await nextTick();
     focusStudentRow();
@@ -366,36 +584,62 @@ const handleSaveCell = async ({ sessionId, userId, status, note }) => {
 };
 
 const goPreviousWeek = async () => {
-  weekStart.value = shiftWeek(weekStart.value, -7);
+  weekStart.value =
+    periodMode.value === 'month'
+      ? shiftMonth(weekStart.value, -1)
+      : shiftWeek(weekStart.value, -7);
   await loadWeek();
 };
 const goNextWeek = async () => {
-  weekStart.value = shiftWeek(weekStart.value, 7);
+  weekStart.value =
+    periodMode.value === 'month'
+      ? shiftMonth(weekStart.value, 1)
+      : shiftWeek(weekStart.value, 7);
   await loadWeek();
 };
 const goCurrentWeek = async () => {
-  weekStart.value = isoDate(mondayOf(new Date()));
+  weekStart.value =
+    periodMode.value === 'month'
+      ? isoDate(monthStartOf(new Date()))
+      : isoDate(mondayOf(new Date()));
   await loadWeek();
 };
 const goPreviousMonth = async () => {
-  weekStart.value = shiftMonth(weekStart.value, -1);
+  weekStart.value = shiftMonth(weekStart.value, periodMode.value === 'month' ? -12 : -1);
   await loadWeek();
 };
 const goNextMonth = async () => {
-  weekStart.value = shiftMonth(weekStart.value, 1);
+  weekStart.value = shiftMonth(weekStart.value, periodMode.value === 'month' ? 12 : 1);
   await loadWeek();
 };
 
 const handleJumpWeek = async (value) => {
   if (!value) return;
-  const nextWeek = isoDate(mondayOf(value));
+  const nextWeek =
+    periodMode.value === 'month'
+      ? isoDate(monthStartOf(value))
+      : isoDate(mondayOf(value));
   if (!nextWeek) return;
   weekStart.value = nextWeek;
   await loadWeek();
 };
 
+const handlePeriodModeChange = async (value) => {
+  const nextMode = value === 'month' ? 'month' : 'week';
+  if (periodMode.value === nextMode) return;
+  periodMode.value = nextMode;
+  const current = weekStart.value ? new Date(`${weekStart.value}T00:00:00`) : new Date();
+  weekStart.value =
+    nextMode === 'month'
+      ? isoDate(monthStartOf(current))
+      : isoDate(mondayOf(current));
+  weekData.value = null;
+  await loadWeek();
+};
+
 const handleGroupChange = async (groupId) => {
   selectedGroupId.value = groupId || null;
+  weekData.value = null;
   await loadWeek();
 };
 
@@ -447,8 +691,13 @@ watch(
 
 onMounted(async () => {
   const queryWeekStart = typeof route.query.weekStart === 'string' ? route.query.weekStart : '';
-  const initialWeek = queryWeekStart ? isoDate(mondayOf(queryWeekStart)) : '';
-  weekStart.value = initialWeek || isoDate(mondayOf(new Date()));
+  const queryView = typeof route.query.view === 'string' ? route.query.view : '';
+  periodMode.value = queryView === 'month' ? 'month' : 'week';
+  const initialAnchor = queryWeekStart ? new Date(`${queryWeekStart}T00:00:00`) : new Date();
+  weekStart.value =
+    periodMode.value === 'month'
+      ? isoDate(monthStartOf(initialAnchor))
+      : isoDate(mondayOf(initialAnchor));
   if (selectedGroupId.value) {
     await loadWeek();
   }
@@ -479,5 +728,246 @@ onMounted(async () => {
 .attendance-empty-state i {
   font-size: 1.6rem;
   justify-self: center;
+}
+
+.monthly-attendance-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.monthly-student-card {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 3fr) minmax(132px, 0.55fr);
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.04);
+}
+
+.monthly-student-card.is-focused {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.monthly-student-summary,
+.monthly-counts {
+  padding: 1rem;
+  background: #f8fafc;
+}
+
+.monthly-student-summary {
+  border-right: 1px solid #e2e8f0;
+}
+
+.monthly-student-profile {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.monthly-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: #e0e7ff;
+  color: #2563eb;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.monthly-student-profile strong,
+.monthly-progress strong,
+.monthly-counts strong {
+  display: block;
+  color: #0f172a;
+}
+
+.monthly-student-profile small,
+.monthly-progress small,
+.monthly-student-metrics small {
+  display: block;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.monthly-student-profile > div {
+  min-width: 0;
+}
+
+.monthly-student-profile strong,
+.monthly-student-profile small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.monthly-progress {
+  margin-bottom: 0.9rem;
+}
+
+.monthly-progress strong {
+  font-size: 1.45rem;
+  margin: 0.1rem 0 0.4rem;
+}
+
+.monthly-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.monthly-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+}
+
+.monthly-student-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+
+.monthly-student-metrics > div + div {
+  border-left: 1px solid #e2e8f0;
+  padding-left: 0.7rem;
+}
+
+.monthly-student-metrics strong {
+  color: #0f172a;
+}
+
+.monthly-calendar-panel {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.monthly-calendar-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.monthly-calendar-grid {
+  --day-count: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--day-count), minmax(34px, 1fr));
+  gap: 0.35rem;
+  min-width: max(720px, calc(var(--day-count) * 38px));
+}
+
+.monthly-day-head {
+  text-align: center;
+  color: #334155;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.monthly-day-head span,
+.monthly-day-head strong {
+  display: block;
+}
+
+.monthly-status-cell {
+  min-height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.monthly-status-cell.is-present {
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+}
+
+.monthly-status-cell.is-absent {
+  color: #dc2626;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+}
+
+.monthly-status-cell.is-late {
+  color: #a16207;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+
+.monthly-status-cell.is-excused {
+  color: #4f46e5;
+  background: #e0e7ff;
+  border: 1px solid #c7d2fe;
+}
+
+.monthly-status-cell.is-pending,
+.monthly-status-cell.is-noClass {
+  color: #94a3b8;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.monthly-observations {
+  margin-top: 1rem;
+}
+
+.monthly-observations strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.monthly-observations p {
+  margin: 0;
+  padding: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.monthly-counts {
+  border-left: 1px solid #e2e8f0;
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+}
+
+.monthly-counts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #475569;
+  font-size: 0.86rem;
+}
+
+.monthly-counts b {
+  color: #0f172a;
+}
+
+@media (max-width: 960px) {
+  .monthly-student-card {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-student-summary,
+  .monthly-counts {
+    border: 0;
+  }
+
+  .monthly-counts {
+    border-top: 1px solid #e2e8f0;
+  }
 }
 </style>

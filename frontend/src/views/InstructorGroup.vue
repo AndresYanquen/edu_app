@@ -96,6 +96,16 @@
                       <span>{{ formatScore(data.bestQuizScore) }}</span>
                     </template>
                   </Column>
+                  <Column :header="t('instructorGroup.table.actions')">
+                    <template #body="{ data }">
+                      <Button
+                        :label="t('instructorGroup.viewDetail')"
+                        icon="pi pi-chart-line"
+                        class="p-button-text"
+                        @click="openStudentProgressDrawer(data)"
+                      />
+                    </template>
+                  </Column>
                 </DataTable>
 
                 <div v-if="!filteredStudents.length" class="empty-state">
@@ -233,6 +243,102 @@
       :teachers="groupTeachers"
       @submit="handleSessionEditSubmit"
     />
+    <Dialog
+      v-model:visible="studentProgressDrawerVisible"
+      modal
+      position="right"
+      :draggable="false"
+      :header="t('instructorGroup.detailDrawer.title')"
+      class="student-progress-drawer"
+      :style="{ width: 'min(36rem, 100vw)' }"
+    >
+      <div v-if="selectedStudent" class="student-progress-detail">
+        <div class="student-detail-header">
+          <div>
+            <h3>{{ selectedStudent.fullName }}</h3>
+            <p>{{ selectedStudent.email }}</p>
+          </div>
+          <Tag
+            :value="presenceLabel(selectedStudent)"
+            :severity="presenceSeverity(selectedStudent)"
+            :icon="getStudentPresence(selectedStudent.id)?.isOnline ? 'pi pi-circle-fill' : undefined"
+          />
+        </div>
+
+        <div v-if="studentProgressLoading" class="student-detail-loading">
+          <Skeleton height="4rem" class="mb-2" />
+          <Skeleton height="6rem" class="mb-2" />
+          <Skeleton height="6rem" />
+        </div>
+
+        <div v-else-if="studentProgressError" class="empty-state">
+          <p>{{ t('instructorGroup.detailDrawer.loadError') }}</p>
+          <Button
+            :label="t('instructorGroup.reload')"
+            icon="pi pi-refresh"
+            class="p-button-text"
+            @click="loadStudentProgressDetail(selectedStudent)"
+          />
+        </div>
+
+        <template v-else-if="studentProgressDetail">
+          <div class="student-progress-summary">
+            <div>
+              <small>{{ t('instructorGroup.detailDrawer.completed') }}</small>
+              <strong>
+                {{ studentProgressDetail.completedLessons }} / {{ studentProgressDetail.totalLessons }}
+              </strong>
+            </div>
+            <div>
+              <small>{{ t('instructorGroup.detailDrawer.progress') }}</small>
+              <strong>{{ studentProgressDetail.percent }}%</strong>
+            </div>
+          </div>
+
+          <ProgressBar :value="studentProgressDetail.percent" class="student-detail-progressbar" />
+
+          <div v-if="studentProgressDetail.modules?.length" class="student-modules">
+            <section
+              v-for="module in studentProgressDetail.modules"
+              :key="module.id"
+              class="student-module"
+            >
+              <h4>{{ module.title }}</h4>
+              <div class="student-lessons">
+                <article
+                  v-for="lesson in module.lessons"
+                  :key="lesson.id"
+                  class="student-lesson-row"
+                >
+                  <div class="student-lesson-main">
+                    <span class="student-lesson-title">{{ lesson.title }}</span>
+                    <span class="student-lesson-meta">
+                      {{ lesson.contentType || 'lesson' }}
+                      <template v-if="lesson.lastSeenAt">
+                        - {{ formatLastActivity(lesson.lastSeenAt) }}
+                      </template>
+                    </span>
+                  </div>
+                  <div class="student-lesson-status">
+                    <Tag
+                      :value="lessonStatusLabel(lesson.status)"
+                      :severity="lessonStatusSeverity(lesson.status)"
+                    />
+                    <span v-if="lesson.bestQuizScore !== null" class="student-quiz-score">
+                      {{ t('instructorGroup.detailDrawer.quiz') }} {{ formatScore(lesson.bestQuizScore) }}
+                    </span>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <div v-else class="empty-state">
+            {{ t('instructorGroup.detailDrawer.noLessons') }}
+          </div>
+        </template>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -278,6 +384,11 @@ const permissionError = ref(false);
 const permissionMessage = ref(t('instructorGroup.permissionMessage'));
 const filter = ref('');
 const activeTab = ref(0);
+const studentProgressDrawerVisible = ref(false);
+const selectedStudent = ref(null);
+const studentProgressDetail = ref(null);
+const studentProgressLoading = ref(false);
+const studentProgressError = ref(false);
 const courseDetail = ref(null);
 const courseLoading = ref(false);
 const courseError = ref(false);
@@ -368,6 +479,8 @@ const loadData = async () => {
       fullName: row.fullName,
       email: row.email,
       percent: row.percent,
+      completedLessons: row.completedLessons,
+      totalLessons: row.totalLessons,
       lastSeenAt: row.lastSeenAt,
       bestQuizScore: row.bestQuizScore,
       lastQuizScore: row.lastQuizScore,
@@ -447,6 +560,28 @@ const openLessonPreview = (lessonId) => {
   window.open(routeData.href, '_blank', 'noopener');
 };
 
+const openStudentProgressDrawer = (student) => {
+  selectedStudent.value = student;
+  studentProgressDrawerVisible.value = true;
+  loadStudentProgressDetail(student);
+};
+
+const loadStudentProgressDetail = async (student) => {
+  if (!group.value?.id || !student?.id) return;
+  studentProgressLoading.value = true;
+  studentProgressError.value = false;
+  try {
+    const { data } = await api.get(`/groups/${group.value.id}/students/${student.id}/progress`);
+    studentProgressDetail.value = data;
+  } catch (err) {
+    console.error('Failed to load student progress detail', err);
+    studentProgressError.value = true;
+    studentProgressDetail.value = null;
+  } finally {
+    studentProgressLoading.value = false;
+  }
+};
+
 const filteredStudents = computed(() => {
   const term = filter.value.trim().toLowerCase();
   const sorted = [...students.value].sort((a, b) => (b.percent || 0) - (a.percent || 0));
@@ -478,6 +613,18 @@ const formatScore = (value) => {
     return '—';
   }
   return `${value}%`;
+};
+
+const lessonStatusLabel = (status) => {
+  if (status === 'done') return t('instructorGroup.detailDrawer.status.done');
+  if (status === 'in_progress') return t('instructorGroup.detailDrawer.status.inProgress');
+  return t('instructorGroup.detailDrawer.status.notStarted');
+};
+
+const lessonStatusSeverity = (status) => {
+  if (status === 'done') return 'success';
+  if (status === 'in_progress') return 'info';
+  return 'secondary';
 };
 
 const getStudentPresence = (studentId) => presenceByStudentId.value?.[studentId] || null;
@@ -891,6 +1038,9 @@ watch(
     if (newId && newId !== oldId) {
       resetLiveTabState();
       presenceByStudentId.value = {};
+      studentProgressDrawerVisible.value = false;
+      selectedStudent.value = null;
+      studentProgressDetail.value = null;
       loadData();
       startPresenceRefreshTimer();
     }
@@ -1012,5 +1162,140 @@ onBeforeUnmount(() => {
 
 .live-tab-skeleton > * {
   display: block;
+}
+
+:deep(.student-progress-drawer) {
+  margin: 0;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+
+:deep(.student-progress-drawer .p-dialog-content) {
+  height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.student-progress-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.student-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.student-detail-header h3 {
+  margin: 0 0 0.25rem;
+  color: #111827;
+}
+
+.student-detail-header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.student-detail-loading {
+  display: flex;
+  flex-direction: column;
+}
+
+.student-progress-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.student-progress-summary > div {
+  padding: 0.85rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #f9fafb;
+}
+
+.student-progress-summary small {
+  display: block;
+  color: #6b7280;
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.student-progress-summary strong {
+  color: #111827;
+  font-size: 1.25rem;
+}
+
+.student-detail-progressbar {
+  height: 0.65rem;
+}
+
+.student-modules,
+.student-lessons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.student-module h4 {
+  margin: 0 0 0.75rem;
+  color: #111827;
+}
+
+.student-lesson-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.student-lesson-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.student-lesson-title {
+  color: #111827;
+  font-weight: 600;
+}
+
+.student-lesson-meta,
+.student-quiz-score {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.student-lesson-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .student-detail-header,
+  .student-lesson-row {
+    flex-direction: column;
+  }
+
+  .student-progress-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .student-lesson-status {
+    align-items: flex-start;
+  }
 }
 </style>
