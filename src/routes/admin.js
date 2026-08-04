@@ -5,6 +5,10 @@ const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
 const { userCreateSchema, courseStaffAssignSchema, formatZodError } = require('../utils/validators');
 const { generateInviteToken, DEFAULT_INVITE_TTL_DAYS } = require('../utils/inviteTokens');
 const {
+  lockStudentCourseMembership,
+  assignStudentToCourseGroup,
+} = require('../utils/groupMembership');
+const {
   STAFF_ROLES,
   listCourseStaff,
   setCourseStaffRoles,
@@ -528,8 +532,22 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
 
   const defaultRoleRaw = (formData.fields.defaultRole || '').trim().toLowerCase();
   const defaultRole = defaultRoleRaw || 'student';
+  const isAdmin = hasGlobalRole(req.user, 'admin');
+  if (!isAdmin) {
+    const containsNonStudentRole =
+      defaultRole !== 'student' ||
+      rows.some((row) => {
+        const requestedRole = (row.values.role || defaultRole).trim().toLowerCase();
+        return requestedRole !== 'student';
+      });
+    if (containsNonStudentRole) {
+      return res.status(403).json({
+        error: 'Enrollment managers can only invite users as students',
+      });
+    }
+  }
   if (!ALLOWED_ROLES.includes(defaultRole)) {
-    return res.status(400).json({ error: 'defaultRole must be student or instructor' });
+    return res.status(400).json({ error: 'defaultRole must be a valid role' });
   }
 
   const defaultCourseIdRaw = (formData.fields.defaultCourseId || '').trim();
@@ -582,7 +600,6 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
     enrolled: 0,
     enrollmentFailed: 0,
   };
-  const isAdmin = hasGlobalRole(req.user, 'admin');
   const enrollmentRoleCache = new Map();
   const canManageEnrollment = async (courseId) => {
     if (!courseId || isAdmin) {
@@ -591,10 +608,24 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
     if (enrollmentRoleCache.has(courseId)) {
       return enrollmentRoleCache.get(courseId);
     }
-    const allowed = await hasCourseRole(req.user.id, courseId, ['enrollment_manager', 'instructor']);
+    const allowed = await hasCourseRole(req.user.id, courseId, ['enrollment_manager']);
     enrollmentRoleCache.set(courseId, allowed);
     return allowed;
   };
+
+  if (!isAdmin) {
+    const requestedCourseIds = new Set();
+    if (defaultCourseIdRaw) requestedCourseIds.add(defaultCourseIdRaw);
+    rows.forEach((row) => {
+      const courseId = pickValue(row.values, ['courseid', 'course_id']);
+      if (courseId && isUuid(courseId)) requestedCourseIds.add(courseId);
+    });
+    for (const courseId of requestedCourseIds) {
+      if (!(await canManageEnrollment(courseId))) {
+        return res.status(403).json({ error: 'Forbidden for course' });
+      }
+    }
+  }
 
   for (const row of rows) {
     const values = row.values;
@@ -711,11 +742,15 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
         userHasStudentRole =
           existingGlobalRoles.includes('student') || rowRole === 'student';
         const summarizedRoles = new Set(existingGlobalRoles);
-        if (rowRole) {
+        if (isAdmin && rowRole) {
           summarizedRoles.add(rowRole);
         }
         result.role = Array.from(summarizedRoles).join(', ');
-        await grantGlobalRoles(pool, userId, [rowRole]);
+        if (isAdmin) {
+          await grantGlobalRoles(pool, userId, [rowRole]);
+        } else {
+          userHasStudentRole = existingGlobalRoles.includes('student');
+        }
         pushResult('already_exists');
       } else {
         const client = await pool.connect();
@@ -793,41 +828,41 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
         }
       }
 
-      const enrollmentInsert = await pool.query(
-        `
-          INSERT INTO enrollments (course_id, user_id)
-          VALUES ($1, $2)
-          ON CONFLICT DO NOTHING
-        `,
-        [courseId, userId],
-      );
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await lockStudentCourseMembership(client, courseId, userId);
 
-      if (enrollmentInsert.rowCount > 0) {
-        result.enrollment.status = 'enrolled';
-        summary.enrolled += 1;
-      } else {
-        result.enrollment.status = 'already_enrolled';
-      }
-
-      if (groupId) {
-        await pool.query(
+        const enrollmentInsert = await client.query(
           `
-            DELETE FROM group_students gs
-            USING groups g
-            WHERE gs.group_id = g.id
-              AND g.course_id = $1
-              AND gs.user_id = $2
-          `,
-          [courseId, userId],
-        );
-        await pool.query(
-          `
-            INSERT INTO group_students (group_id, user_id)
+            INSERT INTO enrollments (course_id, user_id)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
           `,
-          [groupId, userId],
+          [courseId, userId],
         );
+
+        if (enrollmentInsert.rowCount > 0) {
+          result.enrollment.status = 'enrolled';
+          summary.enrolled += 1;
+        } else {
+          result.enrollment.status = 'already_enrolled';
+        }
+
+        if (groupId) {
+          await assignStudentToCourseGroup(client, {
+            courseId,
+            studentId: userId,
+            groupId,
+          });
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
       }
     } catch (err) {
       console.error('Bulk enrollment failed', err);

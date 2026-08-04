@@ -34,6 +34,8 @@ const {
   coursePostCreateSchema,
   coursePostUpdateSchema,
   bulkEnrollSchema,
+  bulkGroupStudentsSchema,
+  bulkMoveGroupStudentsSchema,
   formatZodError,
   uuidSchema,
 } = require("../utils/validators");
@@ -41,6 +43,11 @@ const { canEditCourse } = require("../utils/cmsPermissions");
 const { ensureCourseExists } = require("../utils/roleService");
 const { decorateLessonAvailability } = require("../utils/lessonAvailability");
 const { normalizeLessonType, toStoredLessonType } = require("../utils/lessonTypes");
+const {
+  lockStudentCourseMembership,
+  removeStudentFromCourseGroups,
+  assignStudentToCourseGroup,
+} = require("../utils/groupMembership");
 
 const CMS_GLOBAL_ROLES = [
   "admin",
@@ -56,6 +63,16 @@ const COURSE_STAFF_ROLES = [
   "enrollment_manager",
 ];
 const PAST_LESSON_DATE_ROLES = ["admin", "instructor", "content_editor", "teacher"];
+const requireCmsContentAccess = requireGlobalRoleAny([
+  "admin",
+  "instructor",
+  "content_editor",
+]);
+const isEnrollmentManagerOnly = (user) =>
+  hasGlobalRole(user, "enrollment_manager") &&
+  !hasGlobalRole(user, "admin") &&
+  !hasGlobalRole(user, "instructor") &&
+  !hasGlobalRole(user, "content_editor");
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
@@ -348,21 +365,19 @@ const fetchGroupById = async (groupId) => {
   return rows[0];
 };
 
-const removeStudentFromCourseGroups = (client, courseId, studentId) =>
-  client.query(
-    `
-      DELETE FROM group_students gs
-      USING groups g
-      WHERE gs.group_id = g.id
-        AND g.course_id = $1
-        AND gs.user_id = $2
-    `,
-    [courseId, studentId],
-  );
-
 const toDateString = (value) =>
   value ? value.toISOString().split("T")[0] : null;
 const toTimestampString = (value) => (value ? value.toISOString() : null);
+
+const sendGroupMembershipError = (res, err, fallbackMessage) => {
+  if (err.code === "GROUP_CAPACITY_REACHED") {
+    return res.status(409).json({ error: err.message });
+  }
+  if (err.code === "GROUP_NOT_IN_COURSE") {
+    return res.status(400).json({ error: err.message });
+  }
+  return res.status(500).json({ error: fallbackMessage });
+};
 
 const mapGroupRow = (row) => ({
   id: row.id,
@@ -379,6 +394,16 @@ const mapGroupRow = (row) => ({
   createdAt: toTimestampString(row.created_at),
   updatedAt: toTimestampString(row.updated_at),
   teachersCount: Number(row.teachers_count || 0),
+  teachers: Array.isArray(row.teachers) ? row.teachers : [],
+  studentsCount: Number(row.students_count || 0),
+  nextClass: row.next_session_id
+    ? {
+        id: row.next_session_id,
+        title: row.next_session_title || null,
+        startsAt: toTimestampString(row.next_session_starts_at),
+        joinUrl: row.next_session_join_url || null,
+      }
+    : null,
 });
 
 const mapCoursePostRow = (row) => ({
@@ -518,6 +543,20 @@ router.get("/courses", async (req, res) => {
           ${COURSE_LEVEL_JOIN}
           ORDER BY c.created_at DESC
         `,
+      ));
+    } else if (isEnrollmentManagerOnly(req.user)) {
+      ({ rows } = await pool.query(
+        `
+          SELECT DISTINCT ${COURSE_SELECT}
+          FROM courses c
+          ${COURSE_LEVEL_JOIN}
+          JOIN course_user_roles cur
+            ON cur.course_id = c.id AND cur.user_id = $1
+          JOIN roles r
+            ON r.id = cur.role_id AND r.name = 'enrollment_manager'
+          ORDER BY c.created_at DESC
+        `,
+        [req.user.id],
       ));
     } else {
       ({ rows } = await pool.query(
@@ -1523,7 +1562,7 @@ router.put("/posts/:id", async (req, res) => {
   }
 });
 
-router.post("/courses", async (req, res) => {
+router.post("/courses", requireCmsContentAccess, async (req, res) => {
   const parsed = courseCreateSchema.safeParse(req.body || {});
   if (!parsed.success) {
     return res.status(400).json({ error: formatZodError(parsed.error) });
@@ -3180,19 +3219,65 @@ router.get(
         `
           SELECT
             g.*,
-            (
-              SELECT COUNT(*)
-              FROM group_teachers gt
-              WHERE gt.group_id = g.id
-            ) AS teachers_count
+            COALESCE(teacher_data.teachers, '[]'::json) AS teachers,
+            COALESCE(teacher_data.teachers_count, 0) AS teachers_count,
+            COALESCE(student_data.students_count, 0) AS students_count,
+            next_session.id AS next_session_id,
+            next_session.title AS next_session_title,
+            next_session.starts_at AS next_session_starts_at,
+            next_session.join_url AS next_session_join_url
           FROM groups g
+          LEFT JOIN LATERAL (
+            SELECT
+              COUNT(*)::int AS teachers_count,
+              json_agg(
+                json_build_object(
+                  'id', u.id,
+                  'fullName', u.full_name,
+                  'email', u.email,
+                  'role', gt.role
+                )
+                ORDER BY CASE WHEN gt.role = 'lead' THEN 0 ELSE 1 END, u.full_name
+              ) AS teachers
+            FROM group_teachers gt
+            JOIN users u ON u.id = gt.user_id
+            WHERE gt.group_id = g.id
+          ) teacher_data ON true
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS students_count
+            FROM group_students gs
+            WHERE gs.group_id = g.id
+              AND gs.status = 'active'
+          ) student_data ON true
+          LEFT JOIN LATERAL (
+            SELECT
+              ls.id,
+              s.title,
+              ls.starts_at,
+              ls.join_url
+            FROM live_sessions ls
+            LEFT JOIN live_session_series s ON s.id = ls.series_id
+            WHERE ls.group_id = g.id
+              AND ls.starts_at >= now()
+              AND ls.status = 'scheduled'
+            ORDER BY ls.starts_at ASC
+            LIMIT 1
+          ) next_session ON true
           WHERE g.course_id = $1
           ORDER BY g.name ASC
         `,
         [courseId],
       );
 
-      return res.json(rows.map(mapGroupRow));
+      const groups = rows.map(mapGroupRow);
+      if (isEnrollmentManagerOnly(req.user)) {
+        groups.forEach((group) => {
+          group.teachers = group.teachers.map((teacher) => ({
+            fullName: teacher.fullName,
+          }));
+        });
+      }
+      return res.json(groups);
     } catch (err) {
       console.error("Failed to list course groups", err);
       return res.status(500).json({ error: "Failed to list groups" });
@@ -3204,7 +3289,6 @@ router.post(
   "/courses/:courseId/groups",
   requireCourseRoleOrAdmin(resolveCourseIdFromParam("courseId"), [
     "instructor",
-    "enrollment_manager",
     "admin",
   ]),
   async (req, res) => {
@@ -3343,7 +3427,6 @@ router.delete(
   "/groups/:groupId",
   requireCourseRoleOrAdmin(resolveCourseIdFromGroupParam("groupId"), [
     "instructor",
-    "enrollment_manager",
     "admin",
   ]),
   async (req, res) => {
@@ -3390,6 +3473,9 @@ router.get(
         `,
         [groupId],
       );
+      if (isEnrollmentManagerOnly(req.user)) {
+        return res.json(rows.map((row) => ({ fullName: row.full_name })));
+      }
       return res.json(rows);
     } catch (err) {
       console.error("Failed to load group teachers", err);
@@ -3398,9 +3484,503 @@ router.get(
   },
 );
 
+router.get(
+  "/groups/:groupId/students",
+  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam("groupId")),
+  async (req, res) => {
+    const groupId = req.params.groupId;
+    const courseId = req.courseContext.courseId;
+    const search = String(req.query.search || "").trim();
+    const values = [groupId, courseId];
+    let searchSql = "";
+    if (search) {
+      values.push(`%${search}%`);
+      searchSql = `AND (
+        u.full_name ILIKE $${values.length}
+        OR u.email ILIKE $${values.length}
+        OR u.id::text ILIKE $${values.length}
+      )`;
+    }
+
+    try {
+      const [groupResult, studentResult, candidateResult] = await Promise.all([
+        pool.query(
+          `
+            SELECT
+              g.*,
+              COALESCE(teacher_data.teachers, '[]'::json) AS teachers,
+              COALESCE(teacher_data.teachers_count, 0) AS teachers_count,
+              COALESCE(student_data.students_count, 0) AS students_count,
+              next_session.id AS next_session_id,
+              next_session.title AS next_session_title,
+              next_session.starts_at AS next_session_starts_at,
+              next_session.join_url AS next_session_join_url
+            FROM groups g
+            LEFT JOIN LATERAL (
+              SELECT
+                COUNT(*)::int AS teachers_count,
+                json_agg(
+                  json_build_object(
+                    'id', u.id,
+                    'fullName', u.full_name,
+                    'email', u.email,
+                    'role', gt.role
+                  )
+                  ORDER BY CASE WHEN gt.role = 'lead' THEN 0 ELSE 1 END, u.full_name
+                ) AS teachers
+              FROM group_teachers gt
+              JOIN users u ON u.id = gt.user_id
+              WHERE gt.group_id = g.id
+            ) teacher_data ON true
+            LEFT JOIN LATERAL (
+              SELECT COUNT(*)::int AS students_count
+              FROM group_students gs
+              WHERE gs.group_id = g.id
+                AND gs.status = 'active'
+            ) student_data ON true
+            LEFT JOIN LATERAL (
+              SELECT ls.id, s.title, ls.starts_at, ls.join_url
+              FROM live_sessions ls
+              LEFT JOIN live_session_series s ON s.id = ls.series_id
+              WHERE ls.group_id = g.id
+                AND ls.starts_at >= now()
+                AND ls.status = 'scheduled'
+              ORDER BY ls.starts_at ASC
+              LIMIT 1
+            ) next_session ON true
+            WHERE g.id = $1
+              AND g.course_id = $2
+            LIMIT 1
+          `,
+          [groupId, courseId],
+        ),
+        pool.query(
+        `
+          SELECT
+            u.id AS student_id,
+            u.full_name,
+            u.email,
+            e.status AS enrollment_status,
+            gs.status AS group_status,
+            gs.joined_at,
+            attendance.taken_sessions,
+            attendance.attended_sessions
+          FROM group_students gs
+          JOIN groups g ON g.id = gs.group_id
+          JOIN enrollments e
+            ON e.course_id = g.course_id
+           AND e.user_id = gs.user_id
+          JOIN users u ON u.id = gs.user_id
+          LEFT JOIN LATERAL (
+            SELECT
+              COUNT(*) FILTER (WHERE ar.status = 'finalized')::int AS taken_sessions,
+              COUNT(*) FILTER (
+                WHERE ar.status = 'finalized'
+                  AND COALESCE(lsa.status, 'present') IN ('present', 'late', 'excused')
+              )::int AS attended_sessions
+            FROM live_sessions ls
+            LEFT JOIN live_session_attendance_runs ar
+              ON ar.live_session_id = ls.id
+            LEFT JOIN live_session_attendance lsa
+              ON lsa.live_session_id = ls.id
+             AND lsa.user_id = gs.user_id
+            WHERE ls.group_id = gs.group_id
+              AND ls.starts_at >= gs.joined_at
+          ) attendance ON true
+          WHERE gs.group_id = $1
+            AND g.course_id = $2
+            AND gs.status = 'active'
+            ${searchSql}
+          ORDER BY u.full_name ASC
+        `,
+        values,
+        ),
+        pool.query(
+          `
+            SELECT
+              e.user_id AS student_id,
+              u.full_name,
+              u.email,
+              e.status AS enrollment_status,
+              c.id AS course_id,
+              c.title AS course_title,
+              assignment.group_id,
+              assignment.group_name,
+              assignment.schedule_text,
+              assignment.teacher_names
+            FROM enrollments e
+            JOIN users u ON u.id = e.user_id
+            JOIN courses c ON c.id = e.course_id
+            LEFT JOIN LATERAL (
+              SELECT
+                gs.group_id,
+                g.name AS group_name,
+                g.schedule_text,
+                (
+                  SELECT string_agg(u_teacher.full_name, ', ' ORDER BY u_teacher.full_name)
+                  FROM group_teachers gt
+                  JOIN users u_teacher ON u_teacher.id = gt.user_id
+                  WHERE gt.group_id = g.id
+                ) AS teacher_names
+              FROM group_students gs
+              JOIN groups g ON g.id = gs.group_id
+              WHERE gs.user_id = e.user_id
+                AND g.course_id = e.course_id
+                AND gs.status = 'active'
+              ORDER BY gs.joined_at DESC
+              LIMIT 1
+            ) assignment ON true
+            WHERE e.course_id = $1
+              AND e.status = 'active'
+              AND (assignment.group_id IS NULL OR assignment.group_id <> $2)
+            ORDER BY u.full_name ASC
+            LIMIT 500
+          `,
+          [courseId, groupId],
+        ),
+      ]);
+
+      if (!groupResult.rows.length) {
+        return res.status(404).json({ error: "Group not found" });
+      }
+
+      const group = mapGroupRow(groupResult.rows[0]);
+      if (isEnrollmentManagerOnly(req.user)) {
+        group.teachers = group.teachers.map((teacher) => ({
+          fullName: teacher.fullName,
+        }));
+      }
+
+      const students = studentResult.rows.map((row) => {
+          const takenSessions = Number(row.taken_sessions || 0);
+          const attendedSessions = Number(row.attended_sessions || 0);
+          return {
+            studentId: row.student_id,
+            platformId: row.student_id,
+            studentCode: null,
+            fullName: row.full_name,
+            email: row.email,
+            enrollmentStatus: row.enrollment_status,
+            groupStatus: row.group_status,
+            joinedAt: toTimestampString(row.joined_at),
+            attendancePercentage:
+              takenSessions > 0
+                ? Math.round((attendedSessions / takenSessions) * 10000) / 100
+                : null,
+          };
+        });
+      const availableStudents = candidateResult.rows.map((row) => ({
+        studentId: row.student_id,
+        platformId: row.student_id,
+        studentCode: null,
+        fullName: row.full_name,
+        email: row.email,
+        enrollmentStatus: row.enrollment_status,
+        courseId: row.course_id,
+        courseTitle: row.course_title,
+        groupId: row.group_id || null,
+        groupName: row.group_name || null,
+        currentGroupTeacher: row.teacher_names || null,
+        currentGroupSchedule: row.schedule_text || null,
+        assignmentStatus: row.group_id ? "with_group" : "without_group",
+      }));
+
+      return res.json({
+        group,
+        teacher: group.teachers[0] || null,
+        schedule: group.scheduleText,
+        studentCount: group.studentsCount,
+        students,
+        availableStudents,
+      });
+    } catch (err) {
+      console.error("Failed to list group students", err);
+      return res.status(500).json({ error: "Failed to list group students" });
+    }
+  },
+);
+
+router.get(
+  "/groups/:groupId/student-candidates",
+  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam("groupId")),
+  async (req, res) => {
+    const groupId = req.params.groupId;
+    const courseId = req.courseContext.courseId;
+    const search = String(req.query.search || "").trim();
+    const values = [courseId, groupId];
+    let searchSql = "";
+    if (search) {
+      values.push(`%${search}%`);
+      searchSql = `AND (
+        u.full_name ILIKE $${values.length}
+        OR u.email ILIKE $${values.length}
+        OR u.id::text ILIKE $${values.length}
+      )`;
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT
+            e.user_id AS student_id,
+            u.full_name,
+            u.email,
+            e.status AS enrollment_status,
+            c.id AS course_id,
+            c.title AS course_title,
+            assignment.group_id,
+            assignment.group_name,
+            assignment.schedule_text,
+            assignment.teacher_names
+          FROM enrollments e
+          JOIN users u ON u.id = e.user_id
+          JOIN courses c ON c.id = e.course_id
+          LEFT JOIN LATERAL (
+            SELECT
+              gs.group_id,
+              g.name AS group_name,
+              g.schedule_text,
+              (
+                SELECT string_agg(u_teacher.full_name, ', ' ORDER BY u_teacher.full_name)
+                FROM group_teachers gt
+                JOIN users u_teacher ON u_teacher.id = gt.user_id
+                WHERE gt.group_id = g.id
+              ) AS teacher_names
+            FROM group_students gs
+            JOIN groups g ON g.id = gs.group_id
+            WHERE gs.user_id = e.user_id
+              AND g.course_id = e.course_id
+              AND gs.status = 'active'
+            ORDER BY gs.joined_at DESC
+            LIMIT 1
+          ) assignment ON true
+          WHERE e.course_id = $1
+            AND e.status = 'active'
+            AND (assignment.group_id IS NULL OR assignment.group_id <> $2)
+            ${searchSql}
+          ORDER BY u.full_name ASC
+          LIMIT 500
+        `,
+        values,
+      );
+
+      return res.json(
+        rows.map((row) => ({
+          studentId: row.student_id,
+          platformId: row.student_id,
+          studentCode: null,
+          fullName: row.full_name,
+          email: row.email,
+          enrollmentStatus: row.enrollment_status,
+          courseId: row.course_id,
+          courseTitle: row.course_title,
+          groupId: row.group_id || null,
+          groupName: row.group_name || null,
+          currentGroupTeacher: row.teacher_names || null,
+          currentGroupSchedule: row.schedule_text || null,
+          assignmentStatus: row.group_id ? "with_group" : "without_group",
+        })),
+      );
+    } catch (err) {
+      console.error("Failed to list group student candidates", err);
+      return res.status(500).json({ error: "Failed to list student candidates" });
+    }
+  },
+);
+
+const runBulkGroupStudentOperation = async (req, res, operation) => {
+  const courseId = req.courseContext.courseId;
+  const sourceGroupId = req.params.groupId;
+  const schema = operation === "move"
+    ? bulkMoveGroupStudentsSchema
+    : bulkGroupStudentsSchema;
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const studentIds = [...new Set(parsed.data.studentIds)].sort();
+  const targetGroupId = operation === "assign"
+    ? sourceGroupId
+    : parsed.data.targetGroupId || null;
+
+  if (operation === "move" && targetGroupId === sourceGroupId) {
+    return res.status(400).json({ error: "Target group must be different" });
+  }
+
+  const summary = {
+    operation,
+    requested: studentIds.length,
+    processed: [],
+    skipped: [],
+    failed: [],
+  };
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    for (const studentId of studentIds) {
+      await lockStudentCourseMembership(client, courseId, studentId);
+    }
+
+    const groupIds = [...new Set([sourceGroupId, targetGroupId].filter(Boolean))].sort();
+    const { rows: groupRows } = await client.query(
+      `
+        SELECT id, name, capacity
+        FROM groups
+        WHERE course_id = $1
+          AND id = ANY($2::uuid[])
+        ORDER BY id
+        FOR UPDATE
+      `,
+      [courseId, groupIds],
+    );
+    const groupsById = new Map(groupRows.map((group) => [group.id, group]));
+    if (!groupsById.has(sourceGroupId) || (targetGroupId && !groupsById.has(targetGroupId))) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "All groups must belong to this course" });
+    }
+
+    const [{ rows: enrollmentRows }, { rows: membershipRows }] = await Promise.all([
+      client.query(
+        `
+          SELECT user_id, status
+          FROM enrollments
+          WHERE course_id = $1
+            AND user_id = ANY($2::uuid[])
+        `,
+        [courseId, studentIds],
+      ),
+      client.query(
+        `
+          SELECT gs.user_id, gs.group_id
+          FROM group_students gs
+          JOIN groups g ON g.id = gs.group_id
+          WHERE g.course_id = $1
+            AND gs.user_id = ANY($2::uuid[])
+            AND gs.status = 'active'
+        `,
+        [courseId, studentIds],
+      ),
+    ]);
+    const enrollments = new Map(enrollmentRows.map((row) => [row.user_id, row.status]));
+    const memberships = new Map(membershipRows.map((row) => [row.user_id, row.group_id]));
+
+    const processable = [];
+    for (const studentId of studentIds) {
+      if (!enrollments.has(studentId) || enrollments.get(studentId) !== "active") {
+        summary.failed.push({ studentId, reason: "not_enrolled" });
+        continue;
+      }
+      const currentGroupId = memberships.get(studentId) || null;
+      if ((operation === "move" || operation === "remove") && currentGroupId !== sourceGroupId) {
+        summary.skipped.push({ studentId, reason: "not_in_source_group" });
+        continue;
+      }
+      if ((operation === "assign" || operation === "move") && currentGroupId === targetGroupId) {
+        summary.skipped.push({ studentId, reason: "already_in_target_group" });
+        continue;
+      }
+      processable.push(studentId);
+    }
+
+    if (targetGroupId && processable.length) {
+      const targetGroup = groupsById.get(targetGroupId);
+      if (targetGroup.capacity != null) {
+        const { rows: countRows } = await client.query(
+          `
+            SELECT COUNT(*)::int AS students_count
+            FROM group_students
+            WHERE group_id = $1
+              AND status = 'active'
+          `,
+          [targetGroupId],
+        );
+        const currentCount = Number(countRows[0]?.students_count || 0);
+        const available = Math.max(0, Number(targetGroup.capacity) - currentCount);
+        if (processable.length > available) {
+          summary.failed.push(...processable.map((studentId) => ({
+            studentId,
+            reason: "capacity_exceeded",
+          })));
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            ...summary,
+            capacity: Number(targetGroup.capacity),
+            availableSlots: available,
+          });
+        }
+      }
+    }
+
+    if (processable.length) {
+      if (operation === "remove") {
+        await client.query(
+          `
+            DELETE FROM group_students
+            WHERE group_id = $1
+              AND user_id = ANY($2::uuid[])
+          `,
+          [sourceGroupId, processable],
+        );
+      } else {
+        await client.query(
+          `
+            DELETE FROM group_students gs
+            USING groups g
+            WHERE gs.group_id = g.id
+              AND g.course_id = $1
+              AND gs.user_id = ANY($2::uuid[])
+          `,
+          [courseId, processable],
+        );
+        await client.query(
+          `
+            INSERT INTO group_students (group_id, user_id, status, joined_at)
+            SELECT $1, student_id, 'active', now()
+            FROM unnest($2::uuid[]) AS student_id
+            ON CONFLICT (group_id, user_id)
+            DO UPDATE SET status = 'active', joined_at = now()
+          `,
+          [targetGroupId, processable],
+        );
+      }
+      summary.processed = processable;
+    }
+
+    await client.query("COMMIT");
+    return res.json(summary);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(`Failed to ${operation} group students in bulk`, err);
+    return res.status(500).json({ error: "Failed to update group students" });
+  } finally {
+    client.release();
+  }
+};
+
+router.post(
+  "/courses/:courseId/groups/:groupId/students/bulk-assign",
+  requireCourseEnrollmentRole(resolveCourseIdFromParam("courseId")),
+  (req, res) => runBulkGroupStudentOperation(req, res, "assign"),
+);
+
+router.post(
+  "/courses/:courseId/groups/:groupId/students/bulk-move",
+  requireCourseEnrollmentRole(resolveCourseIdFromParam("courseId")),
+  (req, res) => runBulkGroupStudentOperation(req, res, "move"),
+);
+
+router.post(
+  "/courses/:courseId/groups/:groupId/students/bulk-remove",
+  requireCourseEnrollmentRole(resolveCourseIdFromParam("courseId")),
+  (req, res) => runBulkGroupStudentOperation(req, res, "remove"),
+);
+
 router.post(
   "/groups/:groupId/teachers",
-  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam("groupId")),
+  requireCourseRoleAny(resolveCourseIdFromGroupParam("groupId"), ["instructor"]),
   async (req, res) => {
     const groupId = req.params.groupId;
     const parsed = groupTeacherAssignSchema.safeParse(req.body || {});
@@ -3452,7 +4032,7 @@ router.post(
 
 router.delete(
   "/groups/:groupId/teachers/:userId",
-  requireCourseEnrollmentRole(resolveCourseIdFromGroupParam("groupId")),
+  requireCourseRoleAny(resolveCourseIdFromGroupParam("groupId"), ["instructor"]),
   async (req, res) => {
     const groupId = req.params.groupId;
     const { userId } = req.params;
@@ -3662,6 +4242,11 @@ router.post(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await lockStudentCourseMembership(
+        client,
+        courseId,
+        parsed.data.studentId,
+      );
 
       const studentRes = await client.query(
         `
@@ -3717,19 +4302,11 @@ router.post(
             .json({ error: "Group must belong to this course" });
         }
 
-        await removeStudentFromCourseGroups(
-          client,
+        await assignStudentToCourseGroup(client, {
           courseId,
-          parsed.data.studentId,
-        );
-        await client.query(
-          `
-          INSERT INTO group_students (group_id, user_id)
-          VALUES ($1, $2)
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `,
-          [parsed.data.groupId, parsed.data.studentId],
-        );
+          studentId: parsed.data.studentId,
+          groupId: parsed.data.groupId,
+        });
       }
 
       await client.query("COMMIT");
@@ -3737,7 +4314,7 @@ router.post(
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("Failed to enroll student", err);
-      return res.status(500).json({ error: "Failed to enroll student" });
+      return sendGroupMembershipError(res, err, "Failed to enroll student");
     } finally {
       client.release();
     }
@@ -3754,6 +4331,7 @@ router.delete(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await lockStudentCourseMembership(client, courseId, studentId);
 
       const deleted = await client.query(
         `
@@ -3797,6 +4375,7 @@ router.post(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await lockStudentCourseMembership(client, courseId, studentId);
 
       const enrolled = await client.query(
         `
@@ -3824,27 +4403,22 @@ router.post(
         }
       }
 
-      await removeStudentFromCourseGroups(client, courseId, studentId);
-
-      if (parsed.data.groupId) {
-        await client.query(
-          `
-          INSERT INTO group_students (group_id, user_id)
-          VALUES ($1, $2)
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `,
-          [parsed.data.groupId, studentId],
-        );
-      }
+      await assignStudentToCourseGroup(client, {
+        courseId,
+        studentId,
+        groupId: parsed.data.groupId || null,
+      });
 
       await client.query("COMMIT");
       return res.json({ success: true });
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("Failed to update group assignment", err);
-      return res
-        .status(500)
-        .json({ error: "Failed to update group assignment" });
+      return sendGroupMembershipError(
+        res,
+        err,
+        "Failed to update group assignment",
+      );
     } finally {
       client.release();
     }
@@ -3902,6 +4476,8 @@ router.post(
           continue;
         }
 
+        await lockStudentCourseMembership(client, courseId, studentId);
+
         const insertRes = await client.query(
           `
           INSERT INTO enrollments (course_id, user_id)
@@ -3918,15 +4494,11 @@ router.post(
         }
 
         if (parsed.data.groupId) {
-          await removeStudentFromCourseGroups(client, courseId, studentId);
-          await client.query(
-            `
-            INSERT INTO group_students (group_id, user_id)
-            VALUES ($1, $2)
-            ON CONFLICT (group_id, user_id) DO NOTHING
-          `,
-            [parsed.data.groupId, studentId],
-          );
+          await assignStudentToCourseGroup(client, {
+            courseId,
+            studentId,
+            groupId: parsed.data.groupId,
+          });
         }
 
         enrolled.push(studentId);
@@ -3938,14 +4510,14 @@ router.post(
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("Failed to bulk enroll students", err);
-      return res.status(500).json({ error: "Failed to enroll students" });
+      return sendGroupMembershipError(res, err, "Failed to enroll students");
     } finally {
       client.release();
     }
   },
 );
 
-router.post("/assets/upload", async (req, res) => {
+router.post("/assets/upload", requireCmsContentAccess, async (req, res) => {
   try {
     await runUploadFile(req, res);
   } catch (err) {
@@ -4050,7 +4622,7 @@ router.post("/assets/upload", async (req, res) => {
   }
 });
 
-router.post("/assets/register", async (req, res) => {
+router.post("/assets/register", requireCmsContentAccess, async (req, res) => {
   const {
     storagePath,
     publicUrl,
@@ -4111,7 +4683,7 @@ router.post("/assets/register", async (req, res) => {
   }
 });
 
-router.get("/assets", async (req, res) => {
+router.get("/assets", requireCmsContentAccess, async (req, res) => {
   const queryKind = typeof req.query.kind === "string" ? req.query.kind : null;
   const search =
     typeof req.query.search === "string" ? req.query.search.trim() : "";

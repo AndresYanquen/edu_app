@@ -426,6 +426,11 @@ const enrollmentOnlyMode = computed(
 const canManageEnrollments = computed(
   () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor', 'enrollment_manager'])),
 );
+const canManageGroups = computed(
+  () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor'])),
+);
+const attendanceReadOnly = computed(() => enrollmentOnlyMode.value);
+const liveSessionsReadOnly = computed(() => enrollmentOnlyMode.value);
 const courseTabRouteNames = {
   summary: 'cms-course-summary',
   build: 'cms-course-build',
@@ -473,7 +478,7 @@ const tabs = computed(() => {
   if (canManageEnrollments.value) {
     list.push({
       key: 'groups',
-      label: 'Groups',
+      label: 'Grupos',
       routeName: courseTabRouteNames.groups,
       icon: courseTabIcons.groups,
     });
@@ -494,20 +499,12 @@ const tabs = computed(() => {
       icon: courseTabIcons.posts,
     });
   }
-  if (canManageEnrollments.value || hasContentAccess.value) {
+  if (hasContentAccess.value) {
     list.push({
       key: 'forums',
       label: 'Forums',
       routeName: courseTabRouteNames.forums,
       icon: courseTabIcons.forums,
-    });
-  }
-  if (isAdmin.value) {
-    list.push({
-      key: 'live',
-      label: 'Live sessions',
-      routeName: courseTabRouteNames.live,
-      icon: courseTabIcons.live,
     });
   }
   if (canManageEnrollments.value) {
@@ -518,6 +515,14 @@ const tabs = computed(() => {
       icon: courseTabIcons.attendance,
     });
   }
+  if (isAdmin.value || enrollmentOnlyMode.value) {
+    list.push({
+      key: 'live',
+      label: 'Clases',
+      routeName: courseTabRouteNames.live,
+      icon: courseTabIcons.live,
+    });
+  }
   if (canManageEnrollments.value && hasContentAccess.value) {
     list.push({
       key: 'instructors',
@@ -526,7 +531,7 @@ const tabs = computed(() => {
       icon: courseTabIcons.instructors,
     });
   }
-  if (canManageEnrollments.value) {
+  if (canManageEnrollments.value && !enrollmentOnlyMode.value) {
     list.push({
       key: 'enrollments',
       label: 'Enrollments',
@@ -606,9 +611,6 @@ const hasTab = (key) => tabs.value.some((tab) => tab.key === key);
 const determineDefaultTabKey = () => {
   if (canManageEnrollments.value && hasTab('summary')) {
     return 'summary';
-  }
-  if (enrollmentOnlyMode.value && hasTab('enrollments')) {
-    return 'enrollments';
   }
   if (hasContentAccess.value && hasTab('build')) {
     return 'build';
@@ -1170,18 +1172,25 @@ const loadLiveSessionSessions = async () => {
 };
 
 const loadLiveSessionData = async () => {
-  if (!isAdmin.value || !liveSessionGroupId.value) {
+  if ((!isAdmin.value && !enrollmentOnlyMode.value) || !liveSessionGroupId.value) {
     return;
   }
   liveSessionLoading.value = true;
   liveSessionError.value = false;
   try {
-    await Promise.all([
-      loadLiveSessionClassTypes(),
-      loadLiveSessionTeachers(),
-      loadLiveSessionSeries(),
-      loadLiveSessionSessions(),
-    ]);
+    if (enrollmentOnlyMode.value) {
+      liveSessionClassTypes.value = [];
+      liveSessionTeachers.value = [];
+      liveSessionSeries.value = [];
+      await loadLiveSessionSessions();
+    } else {
+      await Promise.all([
+        loadLiveSessionClassTypes(),
+        loadLiveSessionTeachers(),
+        loadLiveSessionSeries(),
+        loadLiveSessionSessions(),
+      ]);
+    }
   } catch (err) {
     liveSessionError.value = true;
   } finally {
@@ -1190,7 +1199,7 @@ const loadLiveSessionData = async () => {
 };
 
 const ensureLiveSessionGroupSelection = () => {
-  if (!isAdmin.value) {
+  if (!isAdmin.value && !enrollmentOnlyMode.value) {
     liveSessionGroupId.value = null;
     return;
   }
@@ -2684,7 +2693,7 @@ const ensureDataForCurrentTab = async () => {
       tabDataReady.value = { ...tabDataReady.value, enrollments: true };
       return;
     case 'live':
-      if (!isAdmin.value) {
+      if (!isAdmin.value && !enrollmentOnlyMode.value) {
         return;
       }
       {
@@ -2897,6 +2906,9 @@ watch(
 provide(cmsCourseBuilderContextKey, {
   courseId,
   courseGroups,
+  canManageGroups,
+  attendanceReadOnly,
+  liveSessionsReadOnly,
   loadingModules,
   modules,
   activeModuleTabs,
@@ -2919,6 +2931,7 @@ provide(cmsCourseBuilderContextKey, {
   openDeleteLessonDialogForModule,
   reorderLessonForModule,
   loadingGroups,
+  refreshGroupList,
   openGroupDialog,
   openGroupTeacherDialog,
   deletingGroupId,

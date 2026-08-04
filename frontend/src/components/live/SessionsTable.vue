@@ -35,7 +35,7 @@
           />
         </div>
       </div>
-      <div class="filter-field">
+      <div v-if="!readOnly" class="filter-field">
         <label>{{ t('liveSessions.filters.classType') }}</label>
         <Dropdown
           v-model="filterClassType"
@@ -46,7 +46,7 @@
           showClear
         />
       </div>
-      <div class="filter-field">
+      <div v-if="!readOnly" class="filter-field">
         <label>{{ t('liveSessions.filters.module') }}</label>
         <Dropdown
           v-model="filterModule"
@@ -57,7 +57,7 @@
           showClear
         />
       </div>
-      <div class="filter-field">
+      <div v-if="!readOnly" class="filter-field">
         <label>{{ t('liveSessions.filters.teacher') }}</label>
         <Dropdown
           v-model="filterTeacher"
@@ -126,6 +126,7 @@
           />
           <span v-else class="muted">—</span>
           <Button
+            v-if="!readOnly"
             icon="pi pi-users"
             class="p-button-text"
             label="Asistencia"
@@ -135,6 +136,7 @@
             {{ attendanceSummaryText(data.id) }}
           </small>
           <Button
+            v-if="!readOnly"
             icon="pi pi-pencil"
             class="p-button-text"
             :label="t('common.edit')"
@@ -185,6 +187,10 @@ const props = defineProps({
   range: {
     type: Object,
     default: () => ({ from: null, to: null }),
+  },
+  readOnly: {
+    type: Boolean,
+    default: false,
   },
 });
 

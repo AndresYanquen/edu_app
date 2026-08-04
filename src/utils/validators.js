@@ -518,6 +518,25 @@ const bulkEnrollSchema = z.object({
     .nullable(),
 });
 
+const bulkGroupStudentsSchema = z.object({
+  studentIds: z
+    .array(
+      z
+        .string()
+        .trim()
+        .uuid({ message: "studentIds must contain valid UUIDs" }),
+    )
+    .min(1, "Select at least one student")
+    .max(500, "A maximum of 500 students can be processed at once"),
+});
+
+const bulkMoveGroupStudentsSchema = bulkGroupStudentsSchema.extend({
+  targetGroupId: z
+    .string({ required_error: "targetGroupId is required" })
+    .trim()
+    .uuid({ message: "targetGroupId must be a valid UUID" }),
+});
+
 const dateString = z
   .string()
   .trim()
@@ -848,5 +867,7 @@ module.exports = {
   coursePostCreateSchema,
   coursePostUpdateSchema,
   bulkEnrollSchema,
+  bulkGroupStudentsSchema,
+  bulkMoveGroupStudentsSchema,
   formatZodError,
 };

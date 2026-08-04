@@ -3,8 +3,10 @@
     <template #title>
       <div class="section-header">
         <div>
-          <div class="section-title">Live sessions</div>
-          <small class="muted">Manage recurring live meetings for each group</small>
+          <div class="section-title">Clases</div>
+          <small class="muted">
+            {{ liveSessionsReadOnly ? 'Consulta horarios y enlaces de acceso' : 'Manage recurring live meetings for each group' }}
+          </small>
         </div>
         <div class="live-session-controls">
           <label>Select group</label>
@@ -36,6 +38,7 @@
       </div>
       <div v-else>
         <SeriesTable
+          v-if="!liveSessionsReadOnly"
           :series="liveSessionSeries"
           :modules="modules"
           :loading="liveSessionSeriesLoading"
@@ -57,6 +60,7 @@
           :modules="modules"
           :teachers="liveSessionTeachers"
           :range="liveSessionRange"
+          :read-only="liveSessionsReadOnly"
           @refresh="handleLiveSessionsRefresh"
           @edit="openLiveSessionEdit"
           @range-change="handleLiveSessionsRangeChange"
@@ -76,6 +80,7 @@ const builder = inject(cmsCourseBuilderContextKey);
 
 const {
   liveSessionGroupId,
+  liveSessionsReadOnly,
   liveSessionGroupOptions,
   courseGroups,
   liveSessionLoading,

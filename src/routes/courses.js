@@ -185,6 +185,49 @@ const ensureCourseAttendanceAccess = async (req, courseId, groupId = null) => {
   };
 };
 
+const ensureCourseAttendanceWriteAccess = async (req, courseId, groupId = null) => {
+  if (hasGlobalRole(req.user, "admin")) {
+    return { allowed: true };
+  }
+
+  if (
+    hasGlobalRole(req.user, "enrollment_manager") &&
+    !hasGlobalRole(req.user, "instructor")
+  ) {
+    return {
+      allowed: false,
+      status: 403,
+      error: "You are not allowed to modify course attendance",
+    };
+  }
+
+  const course = await ensureCourseExists(courseId);
+  if (!course) {
+    return { allowed: false, status: 404, error: "Course not found" };
+  }
+
+  if (course.owner_user_id === req.user.id) {
+    return { allowed: true, course };
+  }
+
+  const instructor = await hasScopedCourseRole(req.user.id, courseId, [
+    "instructor",
+  ]);
+  if (instructor) {
+    return { allowed: true, course };
+  }
+
+  if (groupId && (await isGroupTeacher(req.user.id, groupId))) {
+    return { allowed: true, course };
+  }
+
+  return {
+    allowed: false,
+    status: 403,
+    error: "You are not allowed to modify course attendance",
+  };
+};
+
 const markAttendanceRunsFinalized = async (client, sessionIds, userId) => {
   if (!Array.isArray(sessionIds) || !sessionIds.length) {
     return;
@@ -711,7 +754,7 @@ router.put("/:courseId/attendance/week", async (req, res) => {
         });
     }
 
-    const access = await ensureCourseAttendanceAccess(req, courseId, group.id);
+    const access = await ensureCourseAttendanceWriteAccess(req, courseId, group.id);
     if (!access.allowed) {
       return res
         .status(access.status || 403)

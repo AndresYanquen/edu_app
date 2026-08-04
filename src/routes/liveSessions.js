@@ -121,6 +121,38 @@ const ensureInstructorForGroup = async (req, res, group) => {
   return { isAdmin: false, group };
 };
 
+const ensureLiveSessionReadAccess = async (req, res, group) => {
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return null;
+  }
+
+  if (hasGlobalRole(req.user, 'admin')) {
+    return { isAdmin: true, group };
+  }
+
+  const allowed = await hasCourseRole(req.user.id, group.course_id, [
+    'instructor',
+    'enrollment_manager',
+  ]);
+  if (!allowed) {
+    res.status(403).json({ error: 'You are not allowed to view this group' });
+    return null;
+  }
+
+  if (hasGlobalRole(req.user, 'enrollment_manager')) {
+    return { isAdmin: false, group };
+  }
+
+  const teacher = await isGroupTeacher(req.user.id, group.id);
+  if (!teacher) {
+    res.status(403).json({ error: 'You must be a teacher in this group' });
+    return null;
+  }
+
+  return { isAdmin: false, group };
+};
+
 const ensureHostBelongsToGroup = async (groupId, hostTeacherId) => {
   if (!hostTeacherId) {
     return false;
@@ -261,6 +293,19 @@ const ensureAttendanceAccess = async (req, res, sessionId) => {
   return { session, group, isAdmin: false };
 };
 
+const ensureAttendanceWriteAccess = async (req, res, sessionId) => {
+  if (
+    !hasGlobalRole(req.user, 'admin') &&
+    hasGlobalRole(req.user, 'enrollment_manager') &&
+    !hasGlobalRole(req.user, 'instructor')
+  ) {
+    res.status(403).json({ error: 'You are not allowed to modify attendance' });
+    return null;
+  }
+
+  return ensureAttendanceAccess(req, res, sessionId);
+};
+
 const markAttendanceRunFinalized = async (client, sessionId, userId) =>
   client.query(
     `
@@ -356,7 +401,7 @@ router.put('/live-sessions/:id/attendance', async (req, res) => {
       return res.status(400).json({ error: formatZodError(parsed.error) });
     }
 
-    const lookup = await ensureAttendanceAccess(req, res, parsed.data);
+    const lookup = await ensureAttendanceWriteAccess(req, res, parsed.data);
     if (!lookup) {
       return;
     }
@@ -1073,7 +1118,7 @@ const parseRangeQuery = (req) => {
 router.get('/groups/:groupId/live-sessions', async (req, res) => {
   try {
     const group = await loadGroup(req.params.groupId);
-    const auth = await ensureInstructorForGroup(req, res, group);
+    const auth = await ensureLiveSessionReadAccess(req, res, group);
     if (!auth) {
       return;
     }
@@ -1102,7 +1147,17 @@ router.get('/groups/:groupId/live-sessions', async (req, res) => {
       [group.id, range.from],
     );
 
-    return res.json(rows.map(mapSessionRow));
+    const canViewHostUrl =
+      hasGlobalRole(req.user, 'admin') || hasGlobalRole(req.user, 'instructor');
+    return res.json(
+      rows.map((row) => {
+        const session = mapSessionRow(row);
+        if (!canViewHostUrl) {
+          delete session.hostUrl;
+        }
+        return session;
+      }),
+    );
   } catch (err) {
     console.error('Failed to list live sessions', err);
     return res.status(500).json({ error: 'Failed to list live sessions' });

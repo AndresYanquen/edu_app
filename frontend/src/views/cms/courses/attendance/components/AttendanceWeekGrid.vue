@@ -68,7 +68,7 @@
                       statusClass(opt.value),
                       {
                         'is-selected': cellSelection(student, session) === opt.value,
-                        'is-disabled': saving,
+                        'is-disabled': saving || readOnly,
                       },
                     ]"
                   >
@@ -78,7 +78,7 @@
                       :name="`att-${student.userId}-${session.sessionId}`"
                       :value="opt.value"
                       :checked="cellSelection(student, session) === opt.value"
-                      :disabled="saving"
+                      :disabled="saving || readOnly"
                       @change="selectStatus(student, session, opt.value)"
                     />
                     <span class="attendance-inline-option__label">{{ opt.code }}</span>
@@ -145,7 +145,7 @@
                     statusClass(opt.value),
                     {
                       'is-selected': cellSelection(student, session) === opt.value,
-                      'is-disabled': saving,
+                      'is-disabled': saving || readOnly,
                     },
                   ]"
                 >
@@ -155,7 +155,7 @@
                     :name="`mobile-att-${student.userId}-${session.sessionId}`"
                     :value="opt.value"
                     :checked="cellSelection(student, session) === opt.value"
-                    :disabled="saving"
+                    :disabled="saving || readOnly"
                     @change="selectStatus(student, session, opt.value)"
                   />
                   <span class="attendance-inline-option__label">{{ opt.code }}</span>
@@ -176,6 +176,7 @@ const props = defineProps({
   days: { type: Array, default: () => [] },
   students: { type: Array, default: () => [] },
   saving: { type: Boolean, default: false },
+  readOnly: { type: Boolean, default: false },
   focusUserId: { type: String, default: '' },
 });
 
@@ -222,6 +223,7 @@ const statusClass = (status) => {
 };
 
 const selectStatus = async (student, session, status) => {
+  if (props.readOnly) return;
   const current = cellData(student, session);
   if (cellSelection(student, session) === status) {
     return;

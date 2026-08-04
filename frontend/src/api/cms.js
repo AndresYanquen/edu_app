@@ -88,6 +88,16 @@ export const uploadAssetFile = (file) => {
 export const registerAsset = (payload) => unwrap(api.post('/cms/assets/register', payload));
 
 export const getCourseGroups = groupsApi.listCourseGroups;
+export const getGroupStudents = (groupId, params = {}) =>
+  unwrap(api.get(`/cms/groups/${groupId}/students`, { params }));
+export const getGroupStudentCandidates = (groupId, params = {}) =>
+  unwrap(api.get(`/cms/groups/${groupId}/student-candidates`, { params }));
+export const bulkAssignGroupStudents = (courseId, groupId, payload) =>
+  unwrap(api.post(`/cms/courses/${courseId}/groups/${groupId}/students/bulk-assign`, payload));
+export const bulkMoveGroupStudents = (courseId, groupId, payload) =>
+  unwrap(api.post(`/cms/courses/${courseId}/groups/${groupId}/students/bulk-move`, payload));
+export const bulkRemoveGroupStudents = (courseId, groupId, payload) =>
+  unwrap(api.post(`/cms/courses/${courseId}/groups/${groupId}/students/bulk-remove`, payload));
 export const getAvailableStudents = (courseId) =>
   unwrap(api.get(`/cms/courses/${courseId}/students/available`));
 export const getCourseEnrollments = (courseId, params = {}) =>
@@ -143,6 +153,11 @@ export default {
   deleteQuizOption,
   createQuizEmbed,
   getCourseGroups,
+  getGroupStudents,
+  getGroupStudentCandidates,
+  bulkAssignGroupStudents,
+  bulkMoveGroupStudents,
+  bulkRemoveGroupStudents,
   getAvailableStudents,
   getCourseEnrollments,
   enrollStudent,

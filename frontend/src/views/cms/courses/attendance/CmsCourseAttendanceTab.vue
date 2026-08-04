@@ -124,6 +124,7 @@
           :days="displayDays"
           :students="students"
           :saving="saving"
+          :read-only="readOnly"
           :focus-user-id="focusedUserId"
           @save-cell="handleSaveCell"
         />
@@ -149,6 +150,10 @@ const props = defineProps({
   groups: {
     type: Array,
     default: () => [],
+  },
+  readOnly: {
+    type: Boolean,
+    default: false,
   },
 });
 
@@ -563,6 +568,7 @@ const updateLocalCell = ({ sessionId, userId, status, note }) => {
 };
 
 const handleSaveCell = async ({ sessionId, userId, status, note }) => {
+  if (props.readOnly) return;
   try {
     await attendanceStore.saveCourseWeekAttendance(
       resolvedCourseId.value,

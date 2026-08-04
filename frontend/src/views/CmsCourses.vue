@@ -54,6 +54,7 @@
             </span>
 
             <Button
+              v-if="!isEnrollmentOnly"
               :label="t('cmsCourses.createCourse')"
               icon="pi pi-plus"
               class="create-course-btn"
@@ -265,19 +266,29 @@ const dialogTitle = computed(() =>
     : t('cmsCourses.dialog.editHeader'),
 );
 
-const isEnrollmentManager = computed(() => auth.hasRole('enrollment_manager'));
+const isEnrollmentOnly = computed(
+  () =>
+    auth.hasRole('enrollment_manager') &&
+    !auth.hasAnyRole(['admin', 'instructor', 'content_editor']),
+);
 
 const rowMenuItems = computed(() => {
   if (!selectedCourse.value) return [];
 
   const course = selectedCourse.value;
 
+  const manageItem = {
+    label: t('cmsCourses.table.manage'),
+    icon: 'pi pi-folder',
+    command: () => goToBuilder(course.id),
+  };
+
+  if (isEnrollmentOnly.value) {
+    return [manageItem];
+  }
+
   return [
-    {
-      label: t('cmsCourses.table.manage'),
-      icon: 'pi pi-folder',
-      command: () => goToBuilder(course.id),
-    },
+    manageItem,
     {
       label: t('cmsCourses.table.edit'),
       icon: 'pi pi-pencil',
@@ -297,7 +308,6 @@ const rowMenuItems = computed(() => {
       label: t('common.delete'),
       icon: 'pi pi-trash',
       command: () => openDeleteCourseDialog(course),
-      disabled: isEnrollmentManager.value,
     },
   ];
 });
