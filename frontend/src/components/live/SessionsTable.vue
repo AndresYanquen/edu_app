@@ -7,6 +7,15 @@
       </div>
       <div class="actions">
         <Button
+          v-if="!readOnly"
+          icon="pi pi-trash"
+          class="p-button-text p-button-danger"
+          :label="t('liveSessions.actions.deleteScheduledSessions')"
+          :loading="bulkDeleting"
+          :disabled="loading || bulkDeleting || !filteredSessions.length"
+          @click="emit('delete-all')"
+        />
+        <Button
           icon="pi pi-refresh"
           class="p-button-text"
           :label="t('common.reload')"
@@ -114,6 +123,21 @@
           <Tag :value="statusLabel(data)" :severity="statusSeverity(data)" />
         </template>
       </Column>
+      <Column :header="t('liveSessions.sessionColumns.link')" style="min-width: 16rem">
+        <template #body="{ data }">
+          <a
+            v-if="data.joinUrl"
+            class="session-link"
+            :href="data.joinUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            :title="data.joinUrl"
+          >
+            {{ data.joinUrl }}
+          </a>
+          <span v-else class="muted">—</span>
+        </template>
+      </Column>
     <Column :header="t('liveSessions.sessionColumns.actions')" style="width: 15rem">
       <template #body="{ data }">
         <div class="session-actions-cell">
@@ -192,9 +216,13 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  bulkDeleting: {
+    type: Boolean,
+    default: false,
+  },
 });
 
-const emit = defineEmits(['refresh', 'range-change', 'edit']);
+const emit = defineEmits(['refresh', 'range-change', 'edit', 'delete-all']);
 const { t, locale } = useI18n();
 
 const rangeValue = ref([]);
@@ -439,6 +467,15 @@ const attendanceSummaryText = (sessionId) => {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem 0.4rem;
+}
+
+.session-link {
+  display: inline-block;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .attendance-mini-summary {

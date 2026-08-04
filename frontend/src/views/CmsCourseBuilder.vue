@@ -44,6 +44,7 @@
               />
               <div v-if="hasContentAccess" class="header-buttons">
                 <Button
+                  v-if="!instructorOnlyMode"
                   :label="course.is_published ? 'Unpublish' : 'Publish'"
                   :icon="course.is_published ? 'pi pi-eye-slash' : 'pi pi-eye'"
                   @click="toggleCoursePublish"
@@ -404,6 +405,7 @@ import {
   generateSeries,
   regenerateSeries,
   updateSession,
+  deleteGroupSessions,
   deleteSeries,
   listGroupSessions,
 } from '../api/liveSessions';
@@ -420,6 +422,12 @@ const hasContentAccess = computed(
 const isEnrollmentManagerRole = computed(
   () => auth.hasAnyRole && auth.hasAnyRole(['enrollment_manager']),
 );
+const isInstructorRole = computed(
+  () => auth.hasAnyRole && auth.hasAnyRole(['instructor']),
+);
+const instructorOnlyMode = computed(
+  () => isInstructorRole.value && !isAdmin.value && !isEnrollmentManagerRole.value,
+);
 const enrollmentOnlyMode = computed(
   () => isEnrollmentManagerRole.value && !hasContentAccess.value,
 );
@@ -430,7 +438,10 @@ const canManageGroups = computed(
   () => auth.isAdmin || (auth.hasAnyRole && auth.hasAnyRole(['instructor'])),
 );
 const attendanceReadOnly = computed(() => enrollmentOnlyMode.value);
-const liveSessionsReadOnly = computed(() => enrollmentOnlyMode.value);
+const liveSessionsReadOnly = computed(() => enrollmentOnlyMode.value || instructorOnlyMode.value);
+const canAccessLiveSessions = computed(
+  () => isAdmin.value || enrollmentOnlyMode.value || instructorOnlyMode.value,
+);
 const courseTabRouteNames = {
   summary: 'cms-course-summary',
   build: 'cms-course-build',
@@ -467,7 +478,7 @@ const tabs = computed(() => {
       icon: courseTabIcons.summary,
     });
   }
-  if (hasContentAccess.value) {
+  if (hasContentAccess.value && !instructorOnlyMode.value) {
     list.push({
       key: 'build',
       label: 'Build',
@@ -515,7 +526,7 @@ const tabs = computed(() => {
       icon: courseTabIcons.attendance,
     });
   }
-  if (isAdmin.value || enrollmentOnlyMode.value) {
+  if (canAccessLiveSessions.value) {
     list.push({
       key: 'live',
       label: 'Clases',
@@ -523,7 +534,7 @@ const tabs = computed(() => {
       icon: courseTabIcons.live,
     });
   }
-  if (canManageEnrollments.value && hasContentAccess.value) {
+  if (canManageEnrollments.value && hasContentAccess.value && !instructorOnlyMode.value) {
     list.push({
       key: 'instructors',
       label: 'Instructors',
@@ -531,7 +542,7 @@ const tabs = computed(() => {
       icon: courseTabIcons.instructors,
     });
   }
-  if (canManageEnrollments.value && !enrollmentOnlyMode.value) {
+  if (canManageEnrollments.value && !enrollmentOnlyMode.value && !instructorOnlyMode.value) {
     list.push({
       key: 'enrollments',
       label: 'Enrollments',
@@ -983,8 +994,20 @@ const groupTeacherOptions = computed(() =>
     value: group.id,
   })),
 );
+const liveSessionGroups = computed(() => {
+  if (!instructorOnlyMode.value) {
+    return courseGroups.value;
+  }
+  const userId = auth.user?.id;
+  if (!userId) {
+    return [];
+  }
+  return courseGroups.value.filter((group) =>
+    (group.teachers || []).some((teacher) => teacher.id === userId),
+  );
+});
 const liveSessionGroupOptions = computed(() =>
-  courseGroups.value.map((group) => ({
+  liveSessionGroups.value.map((group) => ({
     label: group.scheduleText ? `${group.name} (${group.scheduleText})` : group.name,
     value: group.id,
   })),
@@ -1072,6 +1095,7 @@ const liveSeriesDeletingId = ref(null);
 const liveSessionEditingSession = ref(null);
 const liveSessionEditDialogVisible = ref(false);
 const savingLiveSessionEdit = ref(false);
+const liveSessionsBulkDeleting = ref(false);
 const liveSessionRange = ref(null);
 
 const loadLiveSessionClassTypes = async () => {
@@ -1172,13 +1196,13 @@ const loadLiveSessionSessions = async () => {
 };
 
 const loadLiveSessionData = async () => {
-  if ((!isAdmin.value && !enrollmentOnlyMode.value) || !liveSessionGroupId.value) {
+  if (!canAccessLiveSessions.value || !liveSessionGroupId.value) {
     return;
   }
   liveSessionLoading.value = true;
   liveSessionError.value = false;
   try {
-    if (enrollmentOnlyMode.value) {
+    if (liveSessionsReadOnly.value) {
       liveSessionClassTypes.value = [];
       liveSessionTeachers.value = [];
       liveSessionSeries.value = [];
@@ -1199,19 +1223,19 @@ const loadLiveSessionData = async () => {
 };
 
 const ensureLiveSessionGroupSelection = () => {
-  if (!isAdmin.value && !enrollmentOnlyMode.value) {
+  if (!canAccessLiveSessions.value) {
     liveSessionGroupId.value = null;
     return;
   }
-  if (!courseGroups.value.length) {
+  if (!liveSessionGroups.value.length) {
     liveSessionGroupId.value = null;
     return;
   }
   if (
     !liveSessionGroupId.value ||
-    !courseGroups.value.some((group) => group.id === liveSessionGroupId.value)
+    !liveSessionGroups.value.some((group) => group.id === liveSessionGroupId.value)
   ) {
-    liveSessionGroupId.value = courseGroups.value[0].id;
+    liveSessionGroupId.value = liveSessionGroups.value[0].id;
   }
 };
 
@@ -1347,6 +1371,46 @@ const handleLiveSessionEditSubmit = async ({ sessionId, payload }) => {
     });
   } finally {
     savingLiveSessionEdit.value = false;
+  }
+};
+
+const handleLiveSessionsBulkDelete = async () => {
+  if (!liveSessionGroupId.value) {
+    return;
+  }
+  const confirmed = window.confirm(
+    t('liveSessions.confirmDeleteScheduledSessions'),
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  liveSessionsBulkDeleting.value = true;
+  try {
+    const params = {};
+    if (liveSessionRange.value?.from) {
+      params.from = liveSessionRange.value.from;
+    }
+    if (liveSessionRange.value?.to) {
+      params.to = liveSessionRange.value.to;
+    }
+    const result = await deleteGroupSessions(liveSessionGroupId.value, params);
+    toast.add({
+      severity: 'success',
+      summary: t('common.notifications.success'),
+      detail: t('liveSessions.toasts.sessionsDeleted', { count: result?.deleted || 0 }),
+      life: 3000,
+    });
+    await loadLiveSessionSessions();
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: t('common.notifications.error'),
+      detail: err?.response?.data?.error || t('liveSessions.toasts.sessionsDeleteFailed'),
+      life: 3500,
+    });
+  } finally {
+    liveSessionsBulkDeleting.value = false;
   }
 };
 
@@ -2693,11 +2757,11 @@ const ensureDataForCurrentTab = async () => {
       tabDataReady.value = { ...tabDataReady.value, enrollments: true };
       return;
     case 'live':
-      if (!isAdmin.value && !enrollmentOnlyMode.value) {
+      if (!canAccessLiveSessions.value) {
         return;
       }
       {
-        if (!tabDataReady.value.build && hasContentAccess.value) {
+        if (!tabDataReady.value.build && hasContentAccess.value && !instructorOnlyMode.value) {
           await loadModules();
           tabDataReady.value = { ...tabDataReady.value, build: true };
         }
@@ -2958,8 +3022,10 @@ provide(cmsCourseBuilderContextKey, {
   liveSessionClassTypes,
   liveSessionTeachers,
   liveSessionRange,
+  liveSessionsBulkDeleting,
   handleLiveSessionsRefresh,
   openLiveSessionEdit,
+  handleLiveSessionsBulkDelete,
   handleLiveSessionsRangeChange,
   selectedGroupForTeachers,
   groupTeacherOptions,

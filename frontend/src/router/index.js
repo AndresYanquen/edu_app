@@ -162,7 +162,7 @@ const routes = [
         path: 'live-sessions',
         name: 'cms-course-live-sessions',
         component: CmsCourseLiveSessionsTab,
-        meta: { requiresAuth: true, requiresStaff: true, roles: ['admin', 'enrollment_manager'], cmsCourseTabKey: 'live' },
+        meta: { requiresAuth: true, requiresStaff: true, roles: ['admin', 'instructor', 'enrollment_manager'], cmsCourseTabKey: 'live' },
       },
       {
         path: 'attendance',

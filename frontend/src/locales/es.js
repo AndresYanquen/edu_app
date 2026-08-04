@@ -298,10 +298,13 @@ export default {
       generate: 'Generar',
       regenerate: 'Regenerar',
       deleteSeries: 'Eliminar',
+      deleteScheduledSessions: 'Eliminar sesiones programadas',
       join: 'Unirse',
       reloadTab: 'Recargar datos',
     },
     confirmDeleteSeries: '¿Estás seguro de eliminar esta serie? Se quitarán las sesiones generadas.',
+    confirmDeleteScheduledSessions:
+      '¿Estás seguro de eliminar todas las sesiones programadas del rango actual? Las series recurrentes se mantendrán.',
     confirmRegenerateSeries:
       'Regenerar reemplazará las sesiones generadas anteriormente para esta serie. ¿Continuar?',
     columns: {
@@ -320,6 +323,7 @@ export default {
       type: 'Tipo',
       teacher: 'Docente',
       status: 'Estado',
+      link: 'Enlace',
       actions: 'Acciones',
     },
     filters: {
@@ -387,6 +391,10 @@ export default {
       classType: 'Selecciona un tipo de clase',
       hostTeacher: 'Selecciona un docente',
       dtstart: 'Selecciona la fecha de inicio',
+      dtend: 'Selecciona la fecha de fin',
+      invalidDate: 'Selecciona una fecha válida',
+      dtendAfterStart: 'La fecha de fin debe ser posterior al inicio',
+      dtendAfterFirstSession: 'La fecha de fin debe cubrir la duración de la primera clase',
       duration: 'La duración debe ser mayor a 0',
       rrule: 'Ingresa una regla de recurrencia',
       recurrenceDays: 'Selecciona al menos un día de la semana',
@@ -405,6 +413,8 @@ export default {
       sessionsRegenerated: 'Se regeneraron {created} sesiones y se eliminaron {deleted} anteriores.',
       sessionUpdated: 'Sesión actualizada',
       sessionUpdateFailed: 'No se pudo actualizar la sesión',
+      sessionsDeleted: 'Se eliminaron {count} sesiones programadas.',
+      sessionsDeleteFailed: 'No se pudieron eliminar las sesiones programadas.',
       noChanges: 'No se detectaron cambios',
       generateFailed: 'No se pudieron generar las sesiones.',
       seriesDeleted: 'Serie eliminada',

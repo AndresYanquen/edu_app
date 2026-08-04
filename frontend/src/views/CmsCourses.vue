@@ -54,7 +54,7 @@
             </span>
 
             <Button
-              v-if="!isEnrollmentOnly"
+              v-if="canCreateCourse"
               :label="t('cmsCourses.createCourse')"
               icon="pi pi-plus"
               class="create-course-btn"
@@ -271,6 +271,12 @@ const isEnrollmentOnly = computed(
     auth.hasRole('enrollment_manager') &&
     !auth.hasAnyRole(['admin', 'instructor', 'content_editor']),
 );
+const isInstructorOnly = computed(
+  () =>
+    auth.hasRole('instructor') &&
+    !auth.hasAnyRole(['admin', 'content_editor', 'enrollment_manager']),
+);
+const canCreateCourse = computed(() => !isInstructorOnly.value);
 
 const rowMenuItems = computed(() => {
   if (!selectedCourse.value) return [];
@@ -283,23 +289,12 @@ const rowMenuItems = computed(() => {
     command: () => goToBuilder(course.id),
   };
 
-  if (isEnrollmentOnly.value) {
-    return [manageItem];
-  }
-
-  return [
+  const items = [
     manageItem,
     {
       label: t('cmsCourses.table.edit'),
       icon: 'pi pi-pencil',
       command: () => openEditDialog(course),
-    },
-    {
-      label: course.is_published
-        ? t('cmsCourses.table.unpublish')
-        : t('cmsCourses.table.publish'),
-      icon: course.is_published ? 'pi pi-eye-slash' : 'pi pi-eye',
-      command: () => togglePublish(course),
     },
     {
       separator: true,
@@ -310,6 +305,18 @@ const rowMenuItems = computed(() => {
       command: () => openDeleteCourseDialog(course),
     },
   ];
+
+  if (!isInstructorOnly.value) {
+    items.splice(2, 0, {
+      label: course.is_published
+        ? t('cmsCourses.table.unpublish')
+        : t('cmsCourses.table.publish'),
+      icon: course.is_published ? 'pi pi-eye-slash' : 'pi pi-eye',
+      command: () => togglePublish(course),
+    });
+  }
+
+  return items;
 });
 
 const toggleRowMenu = (event, course) => {

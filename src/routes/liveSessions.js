@@ -17,10 +17,10 @@ const router = express.Router();
 
 router.use(auth);
 
-// Returns all class types for instructors/admins
+// Returns all class types for staff who manage live sessions
 router.get(
   '/class-types',
-  requireGlobalRoleAny(['instructor', 'admin']),
+  requireGlobalRoleAny(['instructor', 'admin', 'enrollment_manager']),
   async (req, res) => {
     try {
       const { rows } = await pool.query(
@@ -106,19 +106,40 @@ const ensureInstructorForGroup = async (req, res, group) => {
     return { isAdmin: true, group };
   }
 
+  const teacher = await isGroupTeacher(req.user.id, group.id);
   const hasInstructor = await hasCourseRole(req.user.id, group.course_id, INSTRUCTOR_ROLE);
-  if (!hasInstructor) {
+  if (!hasInstructor && !teacher) {
     res.status(403).json({ error: 'You are not allowed to manage this group' });
     return null;
   }
 
-  const teacher = await isGroupTeacher(req.user.id, group.id);
-  if (!teacher) {
+  if (hasInstructor && !teacher) {
     res.status(403).json({ error: 'You must be a teacher in this group' });
     return null;
   }
 
   return { isAdmin: false, group };
+};
+
+const ensureLiveSessionManageAccess = async (req, res, group) => {
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return null;
+  }
+
+  if (hasGlobalRole(req.user, 'admin')) {
+    return { isAdmin: true, group };
+  }
+
+  if (hasGlobalRole(req.user, 'enrollment_manager')) {
+    const allowed = await hasCourseRole(req.user.id, group.course_id, ['enrollment_manager']);
+    if (allowed) {
+      return { isAdmin: false, group };
+    }
+  }
+
+  res.status(403).json({ error: 'You are not allowed to manage this group' });
+  return null;
 };
 
 const ensureLiveSessionReadAccess = async (req, res, group) => {
@@ -131,11 +152,12 @@ const ensureLiveSessionReadAccess = async (req, res, group) => {
     return { isAdmin: true, group };
   }
 
-  const allowed = await hasCourseRole(req.user.id, group.course_id, [
+  const courseRoleAllowed = await hasCourseRole(req.user.id, group.course_id, [
     'instructor',
     'enrollment_manager',
   ]);
-  if (!allowed) {
+  const teacher = await isGroupTeacher(req.user.id, group.id);
+  if (!courseRoleAllowed && !teacher) {
     res.status(403).json({ error: 'You are not allowed to view this group' });
     return null;
   }
@@ -144,7 +166,6 @@ const ensureLiveSessionReadAccess = async (req, res, group) => {
     return { isAdmin: false, group };
   }
 
-  const teacher = await isGroupTeacher(req.user.id, group.id);
   if (!teacher) {
     res.status(403).json({ error: 'You must be a teacher in this group' });
     return null;
@@ -243,7 +264,10 @@ const ensureSeriesAccess = async (req, res, seriesId) => {
     res.status(404).json({ error: 'Series not found' });
     return null;
   }
-  const auth = await ensureInstructorForGroup(req, res, { id: series.group_id, course_id: series.course_id });
+  const auth = await ensureLiveSessionManageAccess(req, res, {
+    id: series.group_id,
+    course_id: series.course_id,
+  });
   if (!auth) {
     return null;
   }
@@ -257,7 +281,7 @@ const ensureSessionAccess = async (req, res, sessionId) => {
     return null;
   }
   const group = await loadGroup(session.group_id);
-  const auth = await ensureInstructorForGroup(req, res, group);
+  const auth = await ensureLiveSessionManageAccess(req, res, group);
   if (!auth) {
     return null;
   }
@@ -581,7 +605,7 @@ router.put('/live-sessions/:id/attendance', async (req, res) => {
 router.post('/groups/:groupId/live-series', async (req, res) => {
   try {
     const group = await loadGroup(req.params.groupId);
-    const auth = await ensureInstructorForGroup(req, res, group);
+    const auth = await ensureLiveSessionManageAccess(req, res, group);
     if (!auth) {
       return;
     }
@@ -655,7 +679,7 @@ router.post('/groups/:groupId/live-series', async (req, res) => {
 router.get('/groups/:groupId/live-series', async (req, res) => {
   try {
     const group = await loadGroup(req.params.groupId);
-    const auth = await ensureInstructorForGroup(req, res, group);
+    const auth = await ensureLiveSessionManageAccess(req, res, group);
     if (!auth) {
       return;
     }
@@ -813,21 +837,176 @@ router.delete('/live-series/:id', async (req, res) => {
 });
 
 const parseWindow = (fromInput, toInput) => {
-  const from = fromInput ? new Date(fromInput) : new Date();
+  const input =
+    fromInput && typeof fromInput === 'object' && !(fromInput instanceof Date)
+      ? fromInput
+      : { from: fromInput, to: toInput };
+  const from = input.from ? new Date(input.from) : new Date();
   let to;
-  if (toInput) {
-    to = new Date(toInput);
+  if (input.to) {
+    to = new Date(input.to);
   } else {
-    to = new Date(from.getTime() + 8 * WEEK_MS);
+    const weeks = Number(input.weeks || 8);
+    to = new Date(from.getTime() + (Number.isFinite(weeks) && weeks > 0 ? weeks : 8) * WEEK_MS);
   }
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    throw new Error('Invalid date range');
+  }
+  if (to <= from) {
     throw new Error('Invalid date range');
   }
   return { from, to };
 };
 
+const WEEKDAY_INDEX_BY_RRULE = {
+  SU: 0,
+  MO: 1,
+  TU: 2,
+  WE: 3,
+  TH: 4,
+  FR: 5,
+  SA: 6,
+};
+
+const zonedFormatters = new Map();
+
+const getZonedFormatter = (timezone) => {
+  const key = timezone || 'UTC';
+  if (!zonedFormatters.has(key)) {
+    zonedFormatters.set(
+      key,
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: key,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }),
+    );
+  }
+  return zonedFormatters.get(key);
+};
+
+const getZonedParts = (date, timezone) => {
+  const parts = {};
+  for (const part of getZonedFormatter(timezone).formatToParts(date)) {
+    if (part.type !== 'literal') {
+      parts[part.type] = Number(part.value);
+    }
+  }
+  if (parts.hour === 24) {
+    parts.hour = 0;
+  }
+  return parts;
+};
+
+const zonedDateTimeToUtc = (parts, timezone) => {
+  const desiredUtcMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour || 0,
+    parts.minute || 0,
+    parts.second || 0,
+  );
+  let guess = new Date(desiredUtcMs);
+  for (let i = 0; i < 3; i += 1) {
+    const actual = getZonedParts(guess, timezone);
+    const actualUtcMs = Date.UTC(
+      actual.year,
+      actual.month - 1,
+      actual.day,
+      actual.hour || 0,
+      actual.minute || 0,
+      actual.second || 0,
+    );
+    const delta = desiredUtcMs - actualUtcMs;
+    if (delta === 0) {
+      break;
+    }
+    guess = new Date(guess.getTime() + delta);
+  }
+  return guess;
+};
+
+const addUtcDays = (date, days) => {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+};
+
+const planWeeklyZonedOccurrences = (series, window, options) => {
+  const timezone = series.timezone || 'UTC';
+  const startInstant = new Date(series.dtstart);
+  const startParts = getZonedParts(startInstant, timezone);
+  const windowStartParts = getZonedParts(window.from, timezone);
+  const windowEndParts = getZonedParts(window.to, timezone);
+  const startLocalDay = new Date(Date.UTC(startParts.year, startParts.month - 1, startParts.day));
+  const windowStartLocalDay = new Date(
+    Date.UTC(windowStartParts.year, windowStartParts.month - 1, windowStartParts.day),
+  );
+  const windowEndLocalDay = new Date(
+    Date.UTC(windowEndParts.year, windowEndParts.month - 1, windowEndParts.day),
+  );
+  const selectedDays = new Set(
+    (options.byweekday || []).map((day) => {
+      if (typeof day === 'number') {
+        return day === 6 ? 0 : day + 1;
+      }
+      const weekday = typeof day.weekday === 'number' ? day.weekday : null;
+      return weekday === 6 ? 0 : weekday + 1;
+    }),
+  );
+  const interval = Number(options.interval || 1);
+  const safeInterval = Number.isFinite(interval) && interval > 0 ? interval : 1;
+  const occurrences = [];
+
+  for (
+    let localDay = windowStartLocalDay;
+    localDay <= windowEndLocalDay;
+    localDay = addUtcDays(localDay, 1)
+  ) {
+    if (localDay < startLocalDay) {
+      continue;
+    }
+    if (!selectedDays.has(localDay.getUTCDay())) {
+      continue;
+    }
+    const daysFromStart = Math.floor((localDay.getTime() - startLocalDay.getTime()) / 86400000);
+    const weekIndex = Math.floor(daysFromStart / 7);
+    if (weekIndex % safeInterval !== 0) {
+      continue;
+    }
+    const startsAt = zonedDateTimeToUtc(
+      {
+        year: localDay.getUTCFullYear(),
+        month: localDay.getUTCMonth() + 1,
+        day: localDay.getUTCDate(),
+        hour: startParts.hour || 0,
+        minute: startParts.minute || 0,
+        second: startParts.second || 0,
+      },
+      timezone,
+    );
+    if (startsAt >= window.from && startsAt <= window.to) {
+      occurrences.push({
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + (series.duration_minutes || 0) * 60000),
+      });
+    }
+  }
+
+  return occurrences;
+};
+
 const planSeriesOccurrences = (series, window) => {
   const options = RRule.parseString(series.rrule);
+  if (options.freq === RRule.WEEKLY && options.byweekday?.length) {
+    return planWeeklyZonedOccurrences(series, window, options);
+  }
   options.dtstart = new Date(series.dtstart);
   const rule = new RRule(options);
   const rawOccurrences = rule.between(window.from, window.to, true);
@@ -975,10 +1154,14 @@ router.post('/live-series/:id/regenerate', async (req, res) => {
     const { series } = lookup;
 
     let window;
-    try {
-      window = parseWindow(req.body || {});
-    } catch (err) {
-      return res.status(400).json({ error: err.message || 'Invalid window' });
+    if (!req.body?.from && !req.body?.to && series.dtstart && series.dtend) {
+      window = { from: new Date(series.dtstart), to: new Date(series.dtend) };
+    } else {
+      try {
+        window = parseWindow(req.body || {});
+      } catch (err) {
+        return res.status(400).json({ error: err.message || 'Invalid window' });
+      }
     }
 
 
@@ -1105,6 +1288,39 @@ router.patch('/live-sessions/:id', async (req, res) => {
   }
 });
 
+// Deletes generated live sessions for a group window without deleting recurring series
+router.delete('/groups/:groupId/live-sessions', async (req, res) => {
+  try {
+    const group = await loadGroup(req.params.groupId);
+    const auth = await ensureLiveSessionManageAccess(req, res, group);
+    if (!auth) {
+      return;
+    }
+
+    let range;
+    try {
+      range = parseRangeQuery(req);
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'Invalid date range' });
+    }
+
+    const deleted = await pool.query(
+      `
+        DELETE FROM live_sessions
+        WHERE group_id = $1
+          AND starts_at >= $2
+          AND starts_at <= $3
+      `,
+      [group.id, range.from, range.to],
+    );
+
+    return res.json({ deleted: deleted.rowCount || 0 });
+  } catch (err) {
+    console.error('Failed to delete live sessions', err);
+    return res.status(500).json({ error: 'Failed to delete live sessions' });
+  }
+});
+
 const parseRangeQuery = (req) => {
   const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - WEEK_MS);
   const to = req.query.to ? new Date(req.query.to) : new Date(Date.now() + 4 * WEEK_MS);
@@ -1142,9 +1358,10 @@ router.get('/groups/:groupId/live-sessions', async (req, res) => {
         LEFT JOIN users u ON u.id = ls.host_teacher_id
         WHERE ls.group_id = $1
           AND ls.starts_at >= $2
+          AND ls.starts_at <= $3
         ORDER BY ls.starts_at ASC
       `,
-      [group.id, range.from],
+      [group.id, range.from, range.to],
     );
 
     const canViewHostUrl =

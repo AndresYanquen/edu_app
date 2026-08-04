@@ -11,6 +11,7 @@ const cmsRoutes = require('../src/routes/cms');
 const coursesRoutes = require('../src/routes/courses');
 const adminRoutes = require('../src/routes/admin');
 const forumRoutes = require('../src/routes/forums');
+const instructorRoutes = require('../src/routes/instructor');
 const liveSessionRoutes = require('../src/routes/liveSessions');
 const { assignStudentToCourseGroup } = require('../src/utils/groupMembership');
 
@@ -24,6 +25,7 @@ const IDS = {
   student: '66666666-6666-4666-8666-666666666666',
   teacher: '77777777-7777-4777-8777-777777777777',
   session: '88888888-8888-4888-8888-888888888888',
+  series: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   lesson: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
 };
 
@@ -63,6 +65,8 @@ const state = {
   targetCapacity: 20,
   targetStudentCount: 0,
   candidateSearchSupportsPlatformId: false,
+  liveSessionRangeParams: null,
+  regenerateWindowParams: null,
 };
 
 const normalizeSql = (sql) => String(sql).replace(/\s+/g, ' ').trim().toLowerCase();
@@ -214,6 +218,9 @@ const mockQuery = async (sql, values = []) => {
   if (text.includes('from live_sessions ls') && text.includes('join groups g')) return queryResult();
 
   if (text.includes('from live_sessions ls') && text.includes('join class_types ct')) {
+    if (text.includes('where ls.group_id = $1') && text.includes('ls.starts_at >= $2')) {
+      state.liveSessionRangeParams = values;
+    }
     return queryResult([
       {
         id: IDS.session,
@@ -234,6 +241,57 @@ const mockQuery = async (sql, values = []) => {
         updated_at: new Date('2026-01-01T00:00:00Z'),
       },
     ]);
+  }
+
+  if (text.includes('from live_session_series s') && text.includes('join class_types ct')) {
+    if (text.includes('where s.id = $1')) {
+      if (values[0] !== IDS.series) return queryResult([]);
+      return queryResult([
+        {
+          id: IDS.series,
+          group_id: IDS.group,
+          course_id: IDS.course,
+          module_id: null,
+          class_type_id: IDS.teacher,
+          class_type_name: 'Conversation',
+          class_type_code: 'conversation',
+          host_teacher_id: IDS.teacher,
+          host_teacher_name: 'Teacher One',
+          title: 'Weekly conversation',
+          timezone: 'America/Bogota',
+          rrule: 'FREQ=WEEKLY;BYDAY=MO',
+          dtstart: new Date('2026-08-03T16:00:00Z'),
+          dtend: new Date('2026-09-01T16:00:00Z'),
+          duration_minutes: 60,
+          published: true,
+          join_url: 'https://classes.example/join',
+          host_url: 'https://classes.example/host-secret',
+          created_by: IDS.manager,
+          created_at: new Date('2026-01-01T00:00:00Z'),
+          updated_at: new Date('2026-01-01T00:00:00Z'),
+        },
+      ]);
+    }
+    return queryResult([]);
+  }
+
+  if (text.includes('select dtend from live_session_series')) {
+    return queryResult(
+      values[0] === IDS.series ? [{ dtend: new Date('2026-09-01T16:00:00Z') }] : [],
+    );
+  }
+
+  if (text.startsWith('delete from live_sessions') && text.includes('series_id = $1')) {
+    state.regenerateWindowParams = values;
+    return queryResult([], 2);
+  }
+
+  if (text.includes('select starts_at') && text.includes('from live_sessions') && text.includes('series_id = $1')) {
+    return queryResult([]);
+  }
+
+  if (text.startsWith('insert into live_sessions')) {
+    return queryResult([], 0);
   }
 
   if (text.includes('from lessons l') && text.includes('join modules m')) {
@@ -297,6 +355,12 @@ const mockQuery = async (sql, values = []) => {
     return queryResult([{ id: IDS.teacher, name: 'student' }]);
   }
 
+  if (text.includes('from class_types')) {
+    return queryResult([
+      { id: IDS.teacher, code: 'conversation', label: 'Conversation', is_active: true },
+    ]);
+  }
+
   if (text.startsWith('delete from group_students') || text.startsWith('insert into group_students')) {
     return queryResult([], 1);
   }
@@ -317,6 +381,7 @@ app.use('/courses', coursesRoutes);
 app.use('/admin', adminRoutes);
 app.use(forumRoutes);
 app.use(liveSessionRoutes);
+app.use(instructorRoutes);
 
 let server;
 let baseUrl;
@@ -361,6 +426,8 @@ test.beforeEach(() => {
   state.targetCapacity = 20;
   state.targetStudentCount = 0;
   state.candidateSearchSupportsPlatformId = false;
+  state.liveSessionRangeParams = null;
+  state.regenerateWindowParams = null;
 });
 
 test('course listing is limited to courses assigned as enrollment_manager', async () => {
@@ -447,12 +514,11 @@ test('attendance modification is forbidden', async (t) => {
   });
 });
 
-test('academic content, forums, live sessions and assets are forbidden', async (t) => {
+test('academic content, forums and assets are forbidden', async (t) => {
   const cases = [
     ['module', `/cms/courses/${IDS.course}/modules`, 'POST', { title: 'Module' }],
     ['quiz', `/cms/lessons/${IDS.lesson}/quiz/questions`, 'POST', { questionText: 'Question?' }],
     ['forum', '/forums', 'POST', { scope: 'course', courseId: IDS.course, title: 'Forum' }],
-    ['live session series', `/groups/${IDS.group}/live-series`, 'POST', {}],
     ['asset', '/cms/assets/register', 'POST', { storagePath: 'x', publicUrl: 'x', kind: 'image' }],
   ];
 
@@ -670,11 +736,40 @@ test('assigned course attendance remains readable', async () => {
 });
 
 test('assigned course live sessions remain readable', async () => {
-  const response = await request(`/groups/${IDS.group}/live-sessions`);
+  const response = await request(
+    `/groups/${IDS.group}/live-sessions?from=2026-07-28T00:00:00.000Z&to=2026-09-01T23:59:59.999Z`,
+  );
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body[0].joinUrl, 'https://classes.example/join');
   assert.equal(Object.hasOwn(body[0], 'hostUrl'), false);
+  assert.equal(state.liveSessionRangeParams.length, 3);
+  assert.equal(state.liveSessionRangeParams[0], IDS.group);
+  assert.equal(state.liveSessionRangeParams[1].toISOString(), '2026-07-28T00:00:00.000Z');
+  assert.equal(state.liveSessionRangeParams[2].toISOString(), '2026-09-01T23:59:59.999Z');
+});
+
+test('assigned course live sessions remain manageable', async () => {
+  let response = await request(`/groups/${IDS.group}/live-series`);
+  assert.equal(response.status, 200);
+
+  response = await request('/class-types');
+  assert.equal(response.status, 200);
+
+  response = await request(`/live-sessions/${IDS.session}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'completed' }),
+  });
+  assert.equal(response.status, 200);
+
+  response = await request(`/live-series/${IDS.series}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify({ weeks: 8 }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(state.regenerateWindowParams[0], IDS.series);
+  assert.equal(state.regenerateWindowParams[1].toISOString(), '2026-08-03T16:00:00.000Z');
+  assert.equal(state.regenerateWindowParams[2].toISOString(), '2026-09-01T16:00:00.000Z');
 });
 
 test('enroll, change group and withdraw remain allowed on an assigned course', async () => {

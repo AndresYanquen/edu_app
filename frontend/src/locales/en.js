@@ -298,11 +298,14 @@ export default {
       generate: 'Generate',
       regenerate: 'Regenerate',
       deleteSeries: 'Delete',
+      deleteScheduledSessions: 'Delete scheduled sessions',
       join: 'Join',
       reloadTab: 'Reload data',
     },
     confirmDeleteSeries:
       'Are you sure you want to delete this series? Generated sessions will be removed.',
+    confirmDeleteScheduledSessions:
+      'Are you sure you want to delete all scheduled sessions in the current range? Recurring series will remain active.',
     confirmRegenerateSeries:
       'Regenerating will replace the previously generated sessions for this series. Continue?',
     columns: {
@@ -321,6 +324,7 @@ export default {
       type: 'Type',
       teacher: 'Teacher',
       status: 'Status',
+      link: 'Link',
       actions: 'Actions',
     },
     filters: {
@@ -392,6 +396,9 @@ export default {
       hostTeacher: 'Select a host teacher',
       dtstart: 'Select a start date',
       dtend: 'Select an end date',
+      invalidDate: 'Select a valid date',
+      dtendAfterStart: 'End date must be after the series start',
+      dtendAfterFirstSession: 'End date must cover the first session duration',
       duration: 'Duration must be greater than 0',
       rrule: 'Enter a recurrence rule',
       recurrenceDays: 'Select at least one weekday',
@@ -411,6 +418,8 @@ export default {
       sessionUpdated: 'Session updated',
       noChanges: 'No changes detected',
       sessionUpdateFailed: 'Failed to update session',
+      sessionsDeleted: 'Deleted {count} scheduled sessions.',
+      sessionsDeleteFailed: 'Failed to delete scheduled sessions.',
       generateFailed: 'Failed to generate sessions.',
       seriesDeleted: 'Series deleted',
       deleteFailed: 'Failed to delete series.',

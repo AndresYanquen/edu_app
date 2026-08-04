@@ -25,6 +25,8 @@ export const getSessionAttendance = (sessionId) =>
   unwrap(api.get(`/live-sessions/${sessionId}/attendance`));
 export const saveSessionAttendance = (sessionId, payload = {}) =>
   unwrap(api.put(`/live-sessions/${sessionId}/attendance`, payload));
+export const deleteGroupSessions = (groupId, params = {}) =>
+  unwrap(api.delete(`/groups/${groupId}/live-sessions`, { params }));
 export const deleteSeries = (seriesId) =>
   unwrap(api.delete(`/live-series/${seriesId}`));
 export const listGroupSessions = (groupId, params = {}) =>
@@ -46,6 +48,7 @@ export default {
   updateSession,
   getSessionAttendance,
   saveSessionAttendance,
+  deleteGroupSessions,
   deleteSeries,
   listGroupSessions,
   listMyLiveSessions,

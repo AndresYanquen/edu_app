@@ -194,55 +194,106 @@
             />
           </div>
           <div v-else class="live-tab">
-            <SeriesTable
-              :series="liveSeries"
-              :modules="courseModules"
-              :loading="seriesLoading"
-              :publishLoadingId="publishLoadingId"
-              :generatingId="generatingSeriesId"
-              :regeneratingId="regeneratingSeriesId"
-              :deletingId="deletingSeriesId"
-              @create="openCreateSeries"
-              @edit="openEditSeries"
-              @toggle-publish="handlePublishToggle"
-              @generate="handleGenerateSeries"
-              @regenerate="handleRegenerateSeries"
-              @delete-series="handleDeleteSeries"
-            />
-            <SessionsTable
-              :sessions="liveSessions"
-              :loading="sessionsLoading"
-              :classTypes="classTypes"
-              :modules="courseModules"
-              :teachers="groupTeachers"
-              :range="sessionRange"
-              @refresh="loadSessions"
-              @edit="openSessionEditDialog"
-              @range-change="handleSessionsRangeChange"
-            />
+            <div class="readonly-live-sessions">
+              <div class="readonly-toolbar">
+                <div>
+                  <h3>Sesiones programadas</h3>
+                  <small class="muted">Consulta tus próximas clases y enlaces de acceso.</small>
+                </div>
+                <div class="readonly-actions">
+                  <Calendar
+                    v-model="readonlyRangeValue"
+                    selectionMode="range"
+                    showIcon
+                    dateFormat="yy-mm-dd"
+                    placeholder="Selecciona día o rango"
+                  />
+                  <Button
+                    icon="pi pi-check"
+                    label="Aplicar"
+                    class="p-button-text"
+                    @click="applyReadonlyRange"
+                  />
+                  <Button
+                    icon="pi pi-times"
+                    label="Limpiar"
+                    class="p-button-text"
+                    @click="clearReadonlyRange"
+                  />
+                  <Button
+                    icon="pi pi-refresh"
+                    label="Recargar"
+                    class="p-button-text"
+                    :loading="sessionsLoading"
+                    @click="loadSessions"
+                  />
+                </div>
+              </div>
+
+              <div v-if="!readonlySessions.length" class="empty-state">
+                <p>No hay sesiones programadas para este grupo.</p>
+              </div>
+
+              <div v-else class="readonly-session-grid">
+                <article
+                  v-for="session in readonlySessions"
+                  :key="session.id"
+                  class="readonly-session-card"
+                  :class="`is-${session.displayStatus}`"
+                >
+                  <div class="session-leading-icon">
+                    <i
+                      class="pi"
+                      :class="
+                        session.displayStatus === 'live'
+                          ? 'pi-video'
+                          : session.displayStatus === 'past'
+                            ? 'pi-check-circle'
+                            : 'pi-calendar-clock'
+                      "
+                    />
+                  </div>
+
+                  <div class="session-main">
+                    <div class="session-topline">
+                      <Tag :value="session.statusLabel" :severity="session.statusSeverity" />
+                      <Tag :value="session.classTypeName || 'Live'" severity="info" />
+                    </div>
+                    <h4>{{ session.title || 'Clase en vivo' }}</h4>
+                    <div class="session-details">
+                      <span><i class="pi pi-calendar" /> {{ session.dateLabel }}</span>
+                      <span><i class="pi pi-clock" /> {{ session.timeLabel }}</span>
+                      <span><i class="pi pi-user" /> {{ session.hostTeacherName || 'Instructor pendiente' }}</span>
+                    </div>
+                  </div>
+
+                  <div class="session-actions">
+                    <Button
+                      icon="pi pi-sign-in"
+                      :label="session.displayStatus === 'past' ? 'Cerrada' : 'Ingresar'"
+                      class="p-button-text"
+                      :disabled="session.displayStatus === 'past' || !session.joinUrl"
+                      @click="openJoinLink(session.joinUrl)"
+                    />
+                    <a
+                      v-if="session.joinUrl"
+                      class="session-link"
+                      :href="session.joinUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      :title="session.joinUrl"
+                    >
+                      {{ session.joinUrl }}
+                    </a>
+                  </div>
+                </article>
+              </div>
+            </div>
           </div>
         </TabPanel>
       </TabView>
     </template>
   </Card>
-    <SeriesFormDialog
-      v-model:visible="seriesDialogVisible"
-      :loading="savingSeries"
-      :modules="courseModules"
-      :classTypes="classTypes"
-      :teachers="groupTeachers"
-      :editing="editingSeries"
-      @submit="handleSeriesSubmit"
-    />
-    <SessionEditDialog
-      v-model:visible="liveSessionEditDialogVisible"
-      :loading="savingLiveSessionEdit"
-      :session="editingLiveSession"
-      :modules="courseModules"
-      :classTypes="classTypes"
-      :teachers="groupTeachers"
-      @submit="handleSessionEditSubmit"
-    />
     <Dialog
       v-model:visible="studentProgressDrawerVisible"
       modal
@@ -350,22 +401,7 @@ import { useI18n } from 'vue-i18n';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 import api from '../api/axios';
-import SessionEditDialog from '../components/live/SessionEditDialog.vue';
-import SeriesTable from '../components/live/SeriesTable.vue';
-import SeriesFormDialog from '../components/live/SeriesFormDialog.vue';
-import SessionsTable from '../components/live/SessionsTable.vue';
 import {
-  getClassTypes,
-  getGroupTeachers,
-  listGroupSeries,
-  createSeries,
-  updateSeries,
-  publishSeries,
-  unpublishSeries,
-  generateSeries,
-  regenerateSeries,
-  updateSession,
-  deleteSeries,
   listGroupSessions,
 } from '../api/liveSessions';
 
@@ -423,9 +459,91 @@ const defaultSessionRange = () => {
   };
 };
 const sessionRange = ref(defaultSessionRange());
+const readonlyRangeValue = ref([]);
 const courseModules = computed(() => courseDetail.value?.modules || []);
 const PRESENCE_REFRESH_MS = 60000;
 let presenceRefreshTimer = null;
+
+const formatLiveSessionDate = (value) => {
+  if (!value) return 'Sin fecha';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sin fecha';
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const formatLiveSessionTimeRange = (session) => {
+  const startsAt = session.startsAt ? new Date(session.startsAt) : null;
+  const endsAt = session.endsAt ? new Date(session.endsAt) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return 'Hora pendiente';
+  const start = startsAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (!endsAt || Number.isNaN(endsAt.getTime())) return start;
+  return `${start} - ${endsAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+const resolveLiveSessionStatus = (session) => {
+  const now = Date.now();
+  const startsAt = session.startsAt ? new Date(session.startsAt).getTime() : null;
+  const endsAt = session.endsAt ? new Date(session.endsAt).getTime() : null;
+  if (startsAt && endsAt && startsAt <= now && endsAt >= now) return 'live';
+  if (endsAt && endsAt < now) return 'past';
+  return 'upcoming';
+};
+
+const readonlySessions = computed(() =>
+  [...(liveSessions.value || [])]
+    .sort((a, b) => new Date(a.startsAt || 0) - new Date(b.startsAt || 0))
+    .map((session) => {
+      const displayStatus = resolveLiveSessionStatus(session);
+      return {
+        ...session,
+        displayStatus,
+        dateLabel: formatLiveSessionDate(session.startsAt),
+        timeLabel: formatLiveSessionTimeRange(session),
+        statusLabel:
+          displayStatus === 'live' ? 'Live' : displayStatus === 'past' ? 'Pasada' : 'Próxima',
+        statusSeverity:
+          displayStatus === 'live' ? 'success' : displayStatus === 'past' ? 'secondary' : 'info',
+      };
+    }),
+);
+
+const startOfDay = (date) => {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+};
+
+const endOfDay = (date) => {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+};
+
+const applyReadonlyRange = () => {
+  const [from, to] = readonlyRangeValue.value || [];
+  if (!from) {
+    clearReadonlyRange();
+    return;
+  }
+  handleSessionsRangeChange({
+    from: startOfDay(from).toISOString(),
+    to: (to ? endOfDay(to) : endOfDay(from)).toISOString(),
+  });
+};
+
+const clearReadonlyRange = () => {
+  readonlyRangeValue.value = [];
+  handleSessionsRangeChange({ from: null, to: null });
+};
+
+const openJoinLink = (url) => {
+  if (!url) return;
+  window.open(url, '_blank', 'noopener');
+};
 
 const resetLiveTabState = () => {
   liveSeries.value = [];
@@ -779,13 +897,7 @@ const ensureLiveTabData = async (force = false) => {
   liveTabLoading.value = true;
   liveTabError.value = false;
   try {
-    await loadClassTypes({ showToast: false });
-    await loadCourseContent();
-    await loadGroupTeachersList({ showToast: false });
-    await Promise.all([
-      loadSeries({ showToast: false }),
-      loadSessions({ showToast: false }),
-    ]);
+    await loadSessions({ showToast: false });
     liveTabLoaded.value = true;
   } catch (err) {
     liveTabError.value = true;
@@ -1164,6 +1276,99 @@ onBeforeUnmount(() => {
   display: block;
 }
 
+.readonly-live-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.readonly-toolbar {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.readonly-toolbar h3 {
+  margin: 0;
+}
+
+.readonly-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.readonly-session-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.readonly-session-card {
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 1rem;
+}
+
+.readonly-session-card.is-live {
+  border-color: #22c55e;
+}
+
+.session-leading-icon {
+  align-items: center;
+  background: #eef2ff;
+  border-radius: 8px;
+  color: #4338ca;
+  display: inline-flex;
+  height: 2.5rem;
+  justify-content: center;
+  width: 2.5rem;
+}
+
+.session-main {
+  min-width: 0;
+}
+
+.session-main h4 {
+  margin: 0.45rem 0;
+}
+
+.session-topline,
+.session-details,
+.session-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.session-details span {
+  align-items: center;
+  color: #4b5563;
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.session-actions {
+  justify-content: flex-end;
+  max-width: 18rem;
+}
+
+.session-link {
+  color: #2563eb;
+  display: block;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 :deep(.student-progress-drawer) {
   margin: 0;
   height: 100vh;
@@ -1285,6 +1490,25 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 640px) {
+  .readonly-toolbar {
+    flex-direction: column;
+  }
+
+  .readonly-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .readonly-session-card {
+    align-items: flex-start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .session-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
   .student-detail-header,
   .student-lesson-row {
     flex-direction: column;

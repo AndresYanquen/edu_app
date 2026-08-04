@@ -87,8 +87,8 @@ app.use(gamificationRoutes);
 app.use(submissionsRoutes);
 app.use(progressRoutes);
 app.use(quizzesRoutes);
-app.use(instructorRoutes);
 app.use(liveSessionRoutes);
+app.use(instructorRoutes);
 
 const PORT = process.env.PORT || 3000;
 const REQUEST_TIMEOUT_MS = Number(process.env.SERVER_REQUEST_TIMEOUT_MS || 15_000);

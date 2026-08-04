@@ -11,7 +11,15 @@ const {
 const router = express.Router();
 const PRESENCE_ONLINE_TTL_SECONDS = Number(process.env.PRESENCE_ONLINE_TTL_SECONDS || 120);
 
-const instructorScopedPaths = ['/instructor', '/groups'];
+const instructorScopedPaths = [
+  '/instructor',
+  '/groups/:id/students',
+  '/groups/:id/teachers',
+  '/groups/:id/presence',
+  '/groups/:id/progress',
+  '/groups/:id/students/:studentId/progress',
+  '/groups/:id/analytics',
+];
 router.use(instructorScopedPaths, auth, requireGlobalRoleAny(['instructor', 'admin']));
 
 const resolveCourseIdFromParam = (param) => (req) => req.params[param];
