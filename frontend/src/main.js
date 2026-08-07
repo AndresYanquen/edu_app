@@ -30,10 +30,7 @@ import Calendar from 'primevue/calendar';
 import 'primevue/resources/themes/aura-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
 import 'primeicons/primeicons.css';
-import './styles/tokens.css';
-import './styles/base.css';
-import './styles/prime-overrides.css';
-import './style.css';
+import './styles/index.css';
 
 import App from './App.vue';
 import router from './router';

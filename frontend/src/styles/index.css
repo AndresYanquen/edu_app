@@ -1,0 +1,9 @@
+@import './tokens.css';
+@import './base.css';
+@import './primevue.css';
+@import './utilities.css';
+@import './layouts.css';
+@import './components.css';
+@import './domains/shell.css';
+@import './domains/cms.css';
+@import './domains/attendance.css';

@@ -66,30 +66,3 @@ const submit = () => {
 
 defineExpose({ open, hide });
 </script>
-
-<style scoped>
-.cell-editor {
-  min-width: 280px;
-  display: grid;
-  gap: 0.75rem;
-}
-.status-radio-list {
-  display: grid;
-  gap: 0.35rem;
-}
-.status-radio-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.note-field {
-  display: grid;
-  gap: 0.25rem;
-}
-.note-field label { font-size: 0.78rem; color: #64748b; }
-.editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.4rem;
-}
-</style>

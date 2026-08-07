@@ -1,0 +1,28 @@
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.text-subtle {
+  color: var(--text-subtle);
+}
+
+.mb-2 {
+  margin-bottom: 0.75rem;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.card-surface {
+  max-width: 100%;
+  background-color: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-md);
+}

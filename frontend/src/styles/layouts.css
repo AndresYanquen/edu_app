@@ -1,0 +1,33 @@
+.page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: var(--page-padding);
+  min-height: calc(100vh - 4rem);
+  background-color: var(--app-bg);
+  overflow-x: clip;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.section-title::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-accent);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.22);
+}
+
+@media (max-width: 768px) {
+  .page {
+    min-height: calc(100vh - 3.75rem);
+    padding: 0.75rem;
+  }
+}

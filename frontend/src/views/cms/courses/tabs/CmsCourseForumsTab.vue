@@ -159,25 +159,3 @@ onMounted(async () => {
   await loadForums();
 });
 </script>
-
-<style scoped>
-.forums-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.55rem;
-  margin-bottom: 0.9rem;
-}
-
-.w-14rem {
-  width: 14rem;
-}
-
-.w-18rem {
-  width: 18rem;
-}
-
-.w-20rem {
-  width: 20rem;
-}
-</style>

@@ -15,28 +15,3 @@ const items = [
   { code: 'J', label: 'Justificado' },
 ];
 </script>
-
-<style scoped>
-.attendance-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.legend-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border-radius: 999px;
-  padding: 0.35rem 0.65rem;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-}
-
-.legend-chip strong { font-size: 0.8rem; }
-.legend-chip small { color: #64748b; font-size: 0.75rem; }
-.legend-chip.is-P { background: #ecfdf5; border-color: #bbf7d0; }
-.legend-chip.is-A { background: #fef2f2; border-color: #fecaca; }
-.legend-chip.is-T { background: #fffbeb; border-color: #fde68a; }
-.legend-chip.is-J { background: #eef2ff; border-color: #c7d2fe; }
-</style>

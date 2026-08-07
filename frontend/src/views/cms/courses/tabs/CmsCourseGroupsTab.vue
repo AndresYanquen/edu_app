@@ -156,26 +156,3 @@ const handleStudentsChanged = async () => {
   selectedGroup.value = courseGroups.value.find((group) => group.id === selectedId) || selectedGroup.value;
 };
 </script>
-
-<style scoped>
-.groups-card {
-  margin-top: 1rem;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.next-class {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.next-class a {
-  font-size: 0.85rem;
-}
-</style>
-

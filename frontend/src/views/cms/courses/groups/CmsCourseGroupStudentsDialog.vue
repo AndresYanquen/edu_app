@@ -525,30 +525,3 @@ watch(
   },
 );
 </script>
-
-<style scoped>
-.dialog-heading h2 { margin: 0.15rem 0 0; }
-.eyebrow, .group-facts small, .student-cell small { color: var(--text-color-secondary); }
-.group-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; padding: 1rem; border: 1px solid var(--surface-border); border-radius: 12px; background: var(--surface-50); }
-.group-facts > div, .student-cell { display: flex; flex-direction: column; gap: 0.3rem; }
-.group-facts a { font-size: 0.875rem; }
-.roster-section { margin-top: 1.25rem; }
-.roster-toolbar, .candidate-toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-.bulk-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--primary-200); border-radius: 10px; background: var(--primary-50); }
-.bulk-action-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.operation-summary { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 10px; background: var(--green-50); color: var(--green-900); }
-.selection-count { margin: -0.25rem 0 0.75rem; color: var(--text-color-secondary); font-size: 0.9rem; }
-.candidate-status { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
-.capacity-warning { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; background: var(--red-50); color: var(--red-900); }
-.search-field { flex: 1 1 260px; }
-.search-field .p-inputtext { width: 100%; }
-.group-select { width: 100%; }
-.loading-state { min-height: 14rem; display: grid; place-items: center; }
-.move-warning { margin-top: 1rem; padding: 0.9rem; border-radius: 8px; background: var(--yellow-50); color: var(--yellow-900); display: grid; gap: 0.5rem; }
-@media (max-width: 760px) {
-  .group-facts { grid-template-columns: 1fr 1fr; }
-  .roster-toolbar > *, .candidate-toolbar > * { width: 100%; }
-  .bulk-actions, .bulk-action-buttons { align-items: stretch; flex-direction: column; width: 100%; }
-}
-@media (max-width: 480px) { .group-facts { grid-template-columns: 1fr; } }
-</style>

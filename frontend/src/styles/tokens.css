@@ -1,6 +1,6 @@
 @font-face {
   font-family: 'Satoshi';
-  src: url('/fonts/Satoshi-Regular.woff2') format('woff2');
+  src: url('/fonts/Satoshi-Regular.woff') format('woff');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -8,7 +8,7 @@
 
 @font-face {
   font-family: 'Satoshi';
-  src: url('/fonts/Satoshi-Medium.woff2') format('woff2');
+  src: url('/fonts/Satoshi-Medium.woff') format('woff');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -16,7 +16,7 @@
 
 @font-face {
   font-family: 'Satoshi';
-  src: url('/fonts/Satoshi-Bold.woff2') format('woff2');
+  src: url('/fonts/Satoshi-Bold.woff') format('woff');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -41,45 +41,142 @@
 :root {
   --font-heading: 'Clash Display','Satoshi','Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
   --font-body: 'Satoshi','Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-ui: var(--font-body);
 
-  /* Classic blue base */
-  --brand-primary: #0d3b66;
-  --brand-primary-hover: #0b2e57;
-  --brand-primary-soft: #d9e7ff;
+  /* Academia profesional */
+  --brand-primary: #12355b;
+  --brand-primary-hover: #0b2545;
+  --brand-primary-soft: #e8f1fb;
 
   /* Estados */
-  --brand-success: #1e88e5;
-  --brand-success-soft: #d0e9ff;
+  --brand-success: #16a34a;
+  --brand-success-soft: #dcfce7;
 
-  --brand-warning: #ffb300;
-  --brand-warning-soft: #fff4cd;
+  --brand-warning: #d97706;
+  --brand-warning-soft: #fffbeb;
 
-  --brand-danger: #e53935;
-  --brand-danger-soft: #ffd8d6;
+  --brand-danger: #dc2626;
+  --brand-danger-soft: #fef2f2;
 
-  /* Acento para highlights */
-  --brand-accent: #2680eb;
-  --brand-accent-soft: #e3f0ff;
+  --brand-info: #2563eb;
+  --brand-info-strong: #1d4ed8;
+  --brand-info-soft: #eff6ff;
+  --brand-info-tint: #dbeafe;
+  --brand-info-border: #bfdbfe;
+  --brand-info-focus: #93c5fd;
+
+  /* Acento para highlights academicos */
+  --brand-accent: #c99700;
+  --brand-accent-strong: #a87500;
+  --brand-accent-soft: #fff6d8;
 
   /* Fondos y superficies */
-  --app-bg: #f2f6ff;
+  --app-bg: #f6f8fb;
   --app-surface: #ffffff;
-  --app-surface-2: #f7f9ff;
-  --app-border: rgba(13, 59, 102, 0.15);
+  --app-surface-2: #f8fafc;
+  --app-surface-3: #f8fafc;
+  --app-border: #dbe3ef;
+  --app-border-strong: #dbe3ef;
 
   /* Texto */
-  --text-primary: #0b1b2b;
-  --text-secondary: #2d3e55;
-  --text-muted: #5b6a83;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-subtle: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* Paleta neutral de uso frecuente */
+  --color-white: #ffffff;
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-500: #64748b;
+  --color-slate-700: #334155;
+  --color-slate-900: #0f172a;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-slate-600: #475569;
+
+  /* Dominio CMS */
+  --cms-surface: #ffffff;
+  --cms-surface-subtle: #fbfcfe;
+  --cms-surface-muted: #f8fafc;
+  --cms-border: #e5e7eb;
+  --cms-border-soft: #e5eaf2;
+  --cms-border-muted: #edf2f7;
+  --cms-border-strong: #dbe6f4;
+  --cms-hover-bg: #f3f7fb;
+  --cms-shadow-color: rgba(15, 23, 42, 0.04);
+  --cms-row-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+  --cms-card-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+
+  /* Estados de asistencia */
+  --attendance-present-bg: #ecfdf5;
+  --attendance-present-border: #bbf7d0;
+  --attendance-present-text: #166534;
+  --attendance-present-strong: #15803d;
+  --attendance-present-accent: #22c55e;
+
+  --attendance-absent-bg: #fef2f2;
+  --attendance-absent-soft: #fee2e2;
+  --attendance-absent-border: #fecaca;
+  --attendance-absent-text: #991b1b;
+  --attendance-absent-strong: #dc2626;
+
+  --attendance-late-bg: #fffbeb;
+  --attendance-late-soft: #fef3c7;
+  --attendance-late-border: #fde68a;
+  --attendance-late-text: #92400e;
+  --attendance-late-strong: #a16207;
+
+  --attendance-excused-bg: #eef2ff;
+  --attendance-excused-soft: #e0e7ff;
+  --attendance-excused-border: #c7d2fe;
+  --attendance-excused-text: #3730a3;
+  --attendance-excused-strong: #4f46e5;
+
+  --attendance-pending-bg: #f8fafc;
+  --attendance-pending-border: #e2e8f0;
+  --attendance-pending-text: #94a3b8;
 
   /* Forma y profundidad */
+  --radius-xs: 8px;
   --radius-sm: 12px;
   --radius-md: 16px;
   --radius-lg: 20px;
+  --radius-pill: 999px;
 
   --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.07);
   --shadow-md: 0 14px 32px rgba(15, 23, 42, 0.12);
+  --shadow-lg: 0 24px 46px rgba(15, 23, 42, 0.18);
 
   /* Focus ring amigable */
-  --focus-ring: 0 0 0 4px rgba(13, 59, 102, 0.25);
+  --focus-ring: 0 0 0 4px rgba(18, 53, 91, 0.24);
+
+  --content-max-width: 1280px;
+  --page-padding: clamp(0.85rem, 2vw, 1.5rem);
+  --control-height: 2.5rem;
+
+  /* Shell y sidebar */
+  --shell-bg: linear-gradient(180deg, var(--app-bg) 0%, var(--color-slate-50) 100%);
+  --sidebar-width: 280px;
+  --sidebar-collapsed-width: 68px;
+  --sidebar-width-tablet: 240px;
+  --sidebar-collapsed-width-tablet: 64px;
+  --topbar-height: 4.5rem;
+
+  --sidebar-bg: #0b2545;
+  --sidebar-bg-2: #12355b;
+  --sidebar-surface: rgba(255, 255, 255, 0.055);
+  --sidebar-surface-hover: rgba(255, 255, 255, 0.085);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-text: #f8fafc;
+  --sidebar-muted: #b7c4d6;
+  --sidebar-subtle: #8fa1ba;
+  --sidebar-active-bg: rgba(255, 255, 255, 0.105);
+  --sidebar-active-border: rgba(201, 151, 0, 0.62);
+  --sidebar-active-accent: var(--brand-accent);
+  --sidebar-danger: var(--brand-danger);
+  --sidebar-shadow: 8px 0 24px rgba(11, 37, 69, 0.16);
 }

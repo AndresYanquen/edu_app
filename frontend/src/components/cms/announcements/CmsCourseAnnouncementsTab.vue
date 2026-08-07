@@ -455,38 +455,3 @@ onBeforeUnmount(() => {
   }
 })
 </script>
-
-<style scoped>
-.announcement-filters {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 0.9rem;
-}
-
-.filter-field {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.filter-actions {
-  align-content: end;
-}
-
-.visible-cell {
-  display: grid;
-  gap: 0.15rem;
-}
-
-@media (max-width: 1200px) {
-  .announcement-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .announcement-filters {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

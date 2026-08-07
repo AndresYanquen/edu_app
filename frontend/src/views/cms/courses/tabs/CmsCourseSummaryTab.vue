@@ -477,34 +477,3 @@ onMounted(async () => {
   }
 });
 </script>
-
-<style scoped>
-.cms-course-summary-tab {
-  display: grid;
-  gap: 0.9rem;
-}
-
-.attendance-content-card {
-  border-radius: 20px;
-}
-
-.attendance-loading-state,
-.attendance-error-state,
-.attendance-empty-state {
-  padding: 0.4rem 0;
-}
-
-.attendance-empty-state {
-  min-height: 180px;
-  display: grid;
-  place-content: center;
-  gap: 0.35rem;
-  color: #64748b;
-  text-align: center;
-}
-
-.attendance-empty-state i {
-  font-size: 1.6rem;
-  justify-self: center;
-}
-</style>
