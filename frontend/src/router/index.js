@@ -14,6 +14,7 @@ const DashboardView = () => import('../views/admin/DashboardView.vue');
 const UsersView = () => import('../views/admin/UsersView.vue');
 const InvitationsView = () => import('../views/admin/InvitationsView.vue');
 const CourseLevelsView = () => import('../views/admin/CourseLevelsView.vue');
+const ImagesView = () => import('../views/admin/ImagesView.vue');
 const SettingsView = () => import('../views/admin/SettingsView.vue');
 const CmsCourses = () => import('../views/CmsCourses.vue');
 const CmsCourseBuilder = () => import('../views/CmsCourseBuilder.vue');
@@ -100,6 +101,12 @@ const routes = [
         path: 'course-levels',
         name: 'admin-course-levels',
         component: CourseLevelsView,
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
+      {
+        path: 'images',
+        name: 'admin-images',
+        component: ImagesView,
         meta: { requiresAuth: true, requiresAdmin: true },
       },
       {

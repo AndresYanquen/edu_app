@@ -236,19 +236,21 @@ exports.down = async (knex) => {
     DROP INDEX IF EXISTS idx_modules_course_id;
 
     -- Drop tables in reverse dependency order
-    DROP TABLE IF EXISTS announcements;
-    DROP TABLE IF EXISTS lesson_assets;
-    DROP TABLE IF EXISTS assets;
-    DROP TABLE IF EXISTS lesson_progress;
-    DROP TABLE IF EXISTS enrollments;
-    DROP TABLE IF EXISTS group_students;
-    DROP TABLE IF EXISTS group_teachers;
-    DROP TABLE IF EXISTS groups;
-    DROP TABLE IF EXISTS lessons;
-    DROP TABLE IF EXISTS modules;
-    DROP TABLE IF EXISTS courses;
-    DROP TABLE IF EXISTS academy_memberships;
-    DROP TABLE IF EXISTS users;
+    DROP TABLE IF EXISTS lesson_submission_files CASCADE;
+    DROP TABLE IF EXISTS lesson_submissions CASCADE;
+    DROP TABLE IF EXISTS announcements CASCADE;
+    DROP TABLE IF EXISTS lesson_assets CASCADE;
+    DROP TABLE IF EXISTS assets CASCADE;
+    DROP TABLE IF EXISTS lesson_progress CASCADE;
+    DROP TABLE IF EXISTS enrollments CASCADE;
+    DROP TABLE IF EXISTS group_students CASCADE;
+    DROP TABLE IF EXISTS group_teachers CASCADE;
+    DROP TABLE IF EXISTS groups CASCADE;
+    DROP TABLE IF EXISTS lessons CASCADE;
+    DROP TABLE IF EXISTS modules CASCADE;
+    DROP TABLE IF EXISTS courses CASCADE;
+    DROP TABLE IF EXISTS academy_memberships CASCADE;
+    DROP TABLE IF EXISTS users CASCADE;
 
     -- Drop enums
     DROP TYPE IF EXISTS announcement_scope;

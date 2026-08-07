@@ -4,41 +4,85 @@
       <template #title>
         <div class="card-title">
           <h2>Configuración</h2>
-          <p>Opciones administrativas y de seguridad.</p>
+          <p>Personaliza los colores globales de la aplicación.</p>
         </div>
       </template>
 
       <template #content>
-        <div class="settings-grid">
-          <article class="settings-item">
-            <div class="settings-item__icon">
-              <i class="pi pi-palette" />
-            </div>
-            <div class="settings-item__content">
-              <h3>Configuración general</h3>
-              <p class="muted">Ajustes de branding y parámetros globales del LMS.</p>
-            </div>
-          </article>
+        <div v-if="loading" class="settings-loading">
+          <ProgressSpinner />
+        </div>
 
-          <article class="settings-item">
-            <div class="settings-item__icon">
-              <i class="pi pi-bell" />
-            </div>
-            <div class="settings-item__content">
-              <h3>Notificaciones</h3>
-              <p class="muted">Preferencias de alertas administrativas y reportes.</p>
-            </div>
-          </article>
+        <div v-else class="theme-settings">
+          <div class="theme-form">
+            <section
+              v-for="group in colorGroups"
+              :key="group.title"
+              class="theme-group"
+            >
+              <h3>{{ group.title }}</h3>
 
-          <article class="settings-item">
-            <div class="settings-item__icon">
-              <i class="pi pi-shield" />
+              <div class="theme-color-grid">
+                <label
+                  v-for="field in group.fields"
+                  :key="field.key"
+                  class="theme-color-field"
+                >
+                  <span>{{ field.label }}</span>
+                  <div class="theme-color-control">
+                    <input
+                      v-model="form.colors[field.key]"
+                      type="color"
+                      :aria-label="field.label"
+                    />
+                    <InputText v-model="form.colors[field.key]" />
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            <div class="theme-actions">
+              <Button
+                label="Restaurar valores base"
+                icon="pi pi-refresh"
+                severity="secondary"
+                outlined
+                type="button"
+                @click="resetDefaults"
+              />
+              <Button
+                label="Guardar tema"
+                icon="pi pi-save"
+                type="button"
+                :loading="saving"
+                @click="saveTheme"
+              />
             </div>
-            <div class="settings-item__content">
-              <h3>Opciones globales</h3>
-              <p class="muted">Políticas de seguridad y comportamiento por defecto.</p>
+          </div>
+
+          <aside class="theme-preview" :style="previewStyle">
+            <div class="theme-preview__sidebar">
+              <div class="theme-preview__brand">Go4+</div>
+              <div class="theme-preview__nav is-active">Dashboard</div>
+              <div class="theme-preview__nav">Cursos</div>
+              <div class="theme-preview__nav">Usuarios</div>
             </div>
-          </article>
+
+            <div class="theme-preview__content">
+              <div class="theme-preview__header">
+                <div>
+                  <span>Vista previa</span>
+                  <h3>Panel académico</h3>
+                </div>
+                <button type="button">Acción</button>
+              </div>
+              <div class="theme-preview__card">
+                <strong>Curso destacado</strong>
+                <p>Los componentes usan los tokens centralizados del sistema visual.</p>
+                <div class="theme-preview__pill">Activo</div>
+              </div>
+            </div>
+          </aside>
         </div>
       </template>
     </Card>
@@ -46,158 +90,119 @@
 </template>
 
 <script setup>
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useToast } from 'primevue/usetoast';
+import { getAdminTheme, updateAdminTheme } from '../../api/admin';
+import { applyTheme, DEFAULT_THEME, normalizeTheme } from '../../utils/theme';
+
+const toast = useToast();
+const loading = ref(false);
+const saving = ref(false);
+const form = reactive(normalizeTheme(DEFAULT_THEME));
+
+const colorGroups = [
+  {
+    title: 'Marca',
+    fields: [
+      { key: 'brandPrimary', label: 'Principal' },
+      { key: 'brandPrimaryHover', label: 'Principal hover' },
+      { key: 'brandPrimarySoft', label: 'Principal suave' },
+      { key: 'brandAccent', label: 'Acento' },
+      { key: 'brandAccentStrong', label: 'Acento fuerte' },
+      { key: 'brandAccentSoft', label: 'Acento suave' },
+    ],
+  },
+  {
+    title: 'Aplicación',
+    fields: [
+      { key: 'appBg', label: 'Fondo' },
+      { key: 'appSurface', label: 'Superficie' },
+      { key: 'appSurface2', label: 'Superficie secundaria' },
+      { key: 'appBorder', label: 'Borde' },
+      { key: 'textPrimary', label: 'Texto principal' },
+      { key: 'textSecondary', label: 'Texto secundario' },
+      { key: 'textMuted', label: 'Texto tenue' },
+    ],
+  },
+  {
+    title: 'Sidebar',
+    fields: [
+      { key: 'sidebarBg', label: 'Fondo inicial' },
+      { key: 'sidebarBg2', label: 'Fondo final' },
+      { key: 'sidebarText', label: 'Texto' },
+      { key: 'sidebarMuted', label: 'Texto tenue' },
+      { key: 'sidebarActiveAccent', label: 'Acento activo' },
+    ],
+  },
+];
+
+const assignTheme = (theme) => {
+  const normalized = normalizeTheme(theme);
+  form.colors = { ...normalized.colors };
+};
+
+const previewStyle = computed(() => ({
+  '--preview-brand-primary': form.colors.brandPrimary,
+  '--preview-brand-primary-hover': form.colors.brandPrimaryHover,
+  '--preview-brand-primary-soft': form.colors.brandPrimarySoft,
+  '--preview-brand-accent': form.colors.brandAccent,
+  '--preview-app-bg': form.colors.appBg,
+  '--preview-app-surface': form.colors.appSurface,
+  '--preview-app-border': form.colors.appBorder,
+  '--preview-text-primary': form.colors.textPrimary,
+  '--preview-text-secondary': form.colors.textSecondary,
+  '--preview-text-muted': form.colors.textMuted,
+  '--preview-sidebar-bg': form.colors.sidebarBg,
+  '--preview-sidebar-bg-2': form.colors.sidebarBg2,
+  '--preview-sidebar-text': form.colors.sidebarText,
+  '--preview-sidebar-muted': form.colors.sidebarMuted,
+  '--preview-sidebar-active-accent': form.colors.sidebarActiveAccent,
+}));
+
+const loadTheme = async () => {
+  loading.value = true;
+  try {
+    const theme = await getAdminTheme();
+    assignTheme(theme);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'No se pudo cargar el tema',
+      detail: err.response?.data?.error || 'Intenta nuevamente.',
+      life: 4000,
+    });
+  } finally {
+    loading.value = false;
+  }
+};
+
+const resetDefaults = () => {
+  assignTheme(DEFAULT_THEME);
+};
+
+const saveTheme = async () => {
+  saving.value = true;
+  try {
+    const theme = await updateAdminTheme({ colors: form.colors });
+    assignTheme(theme);
+    applyTheme(theme);
+    toast.add({
+      severity: 'success',
+      summary: 'Tema actualizado',
+      detail: 'Los colores globales se aplicaron correctamente.',
+      life: 3000,
+    });
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'No se pudo guardar',
+      detail: err.response?.data?.error || 'Revisa los colores e intenta nuevamente.',
+      life: 4500,
+    });
+  } finally {
+    saving.value = false;
+  }
+};
+
+onMounted(loadTheme);
 </script>
-
-<style scoped>
-.admin-settings-view,
-.admin-settings-view * {
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-.admin-settings-view {
-  width: 100%;
-  display: grid;
-  gap: 1rem;
-}
-
-.card {
-  width: 100%;
-  background: #fff;
-  border-radius: 22px;
-  border: 1px solid var(--app-border);
-  box-shadow: var(--shadow-sm);
-  padding: 1.2rem 1.4rem;
-  overflow: hidden;
-}
-
-.card-title {
-  min-width: 0;
-}
-
-.card-title h2 {
-  margin: 0;
-  font-size: 1.4rem;
-  line-height: 1.1;
-  color: #1e3a5f;
-}
-
-.card-title p,
-.muted {
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.card-title p {
-  margin: 0.35rem 0 0;
-}
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.settings-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.9rem;
-  border: 1px solid var(--app-border);
-  border-radius: 16px;
-  padding: 1rem;
-  background: #f8fafc;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-}
-
-.settings-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-  border-color: rgba(59, 130, 246, 0.18);
-}
-
-.settings-item__icon {
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 14px;
-  background: #dbeafe;
-  color: #2563eb;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
-
-.settings-item__content {
-  min-width: 0;
-}
-
-.settings-item h3 {
-  margin: 0 0 0.35rem;
-  font-size: 1rem;
-  line-height: 1.25;
-  color: #0f172a;
-}
-
-.settings-item p {
-  margin: 0;
-  font-size: 0.92rem;
-  word-break: break-word;
-}
-
-@media (max-width: 1024px) {
-  .settings-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 900px) {
-  .card {
-    padding: 1rem;
-    border-radius: 18px;
-  }
-}
-
-@media (max-width: 640px) {
-  .admin-settings-view {
-    gap: 0.9rem;
-  }
-
-  .card {
-    padding: 0.9rem;
-    border-radius: 16px;
-  }
-
-  .card-title h2 {
-    font-size: 1.2rem;
-  }
-
-  .card-title p {
-    font-size: 0.92rem;
-  }
-
-  .settings-grid {
-    grid-template-columns: 1fr;
-    gap: 0.85rem;
-  }
-
-  .settings-item {
-    padding: 0.9rem;
-    border-radius: 14px;
-  }
-
-  .settings-item__icon {
-    width: 2.55rem;
-    height: 2.55rem;
-    border-radius: 12px;
-  }
-
-  .settings-item h3 {
-    font-size: 0.98rem;
-  }
-
-  .settings-item p {
-    font-size: 0.9rem;
-  }
-}
-</style>

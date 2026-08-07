@@ -98,6 +98,10 @@ exports.down = async (knex) => {
     table.dropColumn('meta');
   });
 
+  await knex(TABLE_NAME_QUESTIONS)
+    .whereNotIn('question_type', ['single_choice', 'true_false'])
+    .update({ question_type: 'single_choice' });
+
   await knex.raw(`
     ALTER TABLE ${TABLE_NAME_QUESTIONS} DROP CONSTRAINT IF EXISTS quiz_questions_question_type_check;
     ALTER TABLE ${TABLE_NAME_QUESTIONS} ADD CONSTRAINT quiz_questions_question_type_check

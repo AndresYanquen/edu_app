@@ -14,6 +14,20 @@ export const bulkInviteUsers = (formData) =>
     }),
   );
 
+export const getAdminTheme = () => unwrap(api.get('/admin/theme'));
+export const updateAdminTheme = (payload) => unwrap(api.patch('/admin/theme', payload));
+export const listAdminImages = (params = {}) => unwrap(api.get('/admin/images', { params }));
+export const replaceAdminImage = (assetId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return unwrap(api.post(`/admin/images/${assetId}/replace`, formData));
+};
+export const replaceLessonCoverImage = (lessonId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return unwrap(api.post(`/admin/images/lesson-cover/${lessonId}/replace`, formData));
+};
+
 export const listCourseLevels = () => unwrap(api.get('/admin/course-levels'));
 export const createCourseLevel = (payload) => unwrap(api.post('/admin/course-levels', payload));
 export const updateCourseLevel = (id, payload) => unwrap(api.patch(`/admin/course-levels/${id}`, payload));
@@ -32,6 +46,11 @@ export default {
   deactivateUser,
   activateUser,
   bulkInviteUsers,
+  getAdminTheme,
+  updateAdminTheme,
+  listAdminImages,
+  replaceAdminImage,
+  replaceLessonCoverImage,
   getCourseStaff,
   assignCourseStaff,
   removeCourseStaffRole,

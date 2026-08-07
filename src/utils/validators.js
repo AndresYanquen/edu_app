@@ -141,6 +141,43 @@ const userCreateSchema = z.object({
   ),
 });
 
+const hexColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Color must be a valid hex value");
+
+const themeSettingsSchema = z
+  .object({
+    colors: z
+      .object({
+        brandPrimary: hexColorSchema.optional(),
+        brandPrimaryHover: hexColorSchema.optional(),
+        brandPrimarySoft: hexColorSchema.optional(),
+        brandAccent: hexColorSchema.optional(),
+        brandAccentStrong: hexColorSchema.optional(),
+        brandAccentSoft: hexColorSchema.optional(),
+        appBg: hexColorSchema.optional(),
+        appSurface: hexColorSchema.optional(),
+        appSurface2: hexColorSchema.optional(),
+        appBorder: hexColorSchema.optional(),
+        textPrimary: hexColorSchema.optional(),
+        textSecondary: hexColorSchema.optional(),
+        textMuted: hexColorSchema.optional(),
+        sidebarBg: hexColorSchema.optional(),
+        sidebarBg2: hexColorSchema.optional(),
+        sidebarText: hexColorSchema.optional(),
+        sidebarMuted: hexColorSchema.optional(),
+        sidebarActiveAccent: hexColorSchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((data) => data.colors && Object.keys(data.colors).length > 0, {
+    message: "At least one theme color is required",
+    path: ["colors"],
+  });
+
 const activationSchema = z.object({
   token: z
     .string({ required_error: "token is required" })
@@ -856,6 +893,7 @@ module.exports = {
   liveSeriesUpdateSchema,
   liveSessionUpdateSchema,
   userCreateSchema,
+  themeSettingsSchema,
   activationSchema,
   enrollStudentSchema,
   assignGroupSchema,

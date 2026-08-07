@@ -41,6 +41,7 @@ const adminSections = [
   { name: 'admin-users', label: 'Usuarios', icon: 'pi pi-users' },
   { name: 'admin-invitations', label: 'Invitaciones', icon: 'pi pi-envelope' },
   { name: 'admin-course-levels', label: 'Niveles', icon: 'pi pi-graduation-cap' },
+  { name: 'admin-images', label: 'Imágenes', icon: 'pi pi-images' },
   { name: 'admin-settings', label: 'Configuración', icon: 'pi pi-cog' },
 ];
 </script>

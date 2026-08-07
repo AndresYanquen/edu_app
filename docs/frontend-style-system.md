@@ -169,6 +169,37 @@ frontend/src/styles/domains/attendance.css
 
 ## Como cambiar estilos ahora
 
+### Cambiar colores desde admin
+
+Los administradores pueden cambiar la paleta desde:
+
+```txt
+Admin > Configuracion
+```
+
+La pantalla guarda los colores en `app_settings` con la llave `theme` y el frontend los aplica como overrides de variables CSS en `:root`.
+
+El contrato entre la UI y CSS vive en:
+
+```txt
+frontend/src/utils/theme.js
+```
+
+Ese archivo mapea nombres de configuracion como `brandPrimary`, `appBg` o `sidebarBg` hacia tokens reales como:
+
+```css
+--brand-primary
+--app-bg
+--sidebar-bg
+```
+
+Para exponer un color nuevo al admin:
+
+1. Agregar el token base en `frontend/src/styles/tokens.css`.
+2. Agregar el mapping en `frontend/src/utils/theme.js`.
+3. Agregar la validacion del campo en `src/utils/validators.js`.
+4. Agregar el control correspondiente en `frontend/src/views/admin/SettingsView.vue`.
+
 ### Cambiar paleta global
 
 Editar `frontend/src/styles/tokens.css`.

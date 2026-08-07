@@ -37,6 +37,8 @@ import router from './router';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from './stores/auth';
 import i18n from './plugins/i18n';
+import { getTheme } from './api/theme';
+import { applyTheme } from './utils/theme';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -72,6 +74,13 @@ app.component('InputSwitch', InputSwitch);
 app.component('Calendar', Calendar);
 
 const bootstrap = async () => {
+  try {
+    const theme = await getTheme();
+    applyTheme(theme);
+  } catch (err) {
+    console.warn('Theme bootstrap failed', err);
+  }
+
   const auth = useAuthStore();
   await auth.bootstrap();
 };

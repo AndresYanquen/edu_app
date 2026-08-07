@@ -1,8 +1,17 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+const { randomUUID } = require('crypto');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
-const { userCreateSchema, courseStaffAssignSchema, formatZodError } = require('../utils/validators');
+const {
+  userCreateSchema,
+  courseStaffAssignSchema,
+  themeSettingsSchema,
+  formatZodError,
+} = require('../utils/validators');
 const { generateInviteToken, DEFAULT_INVITE_TTL_DAYS } = require('../utils/inviteTokens');
 const {
   lockStudentCourseMembership,
@@ -18,6 +27,7 @@ const {
   grantGlobalRoles,
   getGlobalRolesForUser,
 } = require('../utils/roleService');
+const { THEME_SETTING_KEY, normalizeTheme } = require('../utils/themeSettings');
 
 const router = express.Router();
 
@@ -27,10 +37,42 @@ const requireAdmin = requireGlobalRoleAny(['admin']);
 const requireBulkInviteAccess = requireGlobalRoleAny(['admin', 'enrollment_manager']);
 
 const MAX_BULK_UPLOAD_SIZE = 1024 * 1024;
+const MAX_IMAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const ALLOWED_ROLES = ['student', 'instructor', 'content_editor', 'enrollment_manager'];
+const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const imageUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const extension = path.extname(file.originalname) || '';
+    cb(null, `${randomUUID()}${extension}`);
+  },
+});
+
+const uploadImage = multer({
+  storage: imageUploadStorage,
+  limits: { fileSize: MAX_IMAGE_UPLOAD_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (IMAGE_MIME_TYPES.has(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new Error('Unsupported image type'), false);
+  },
+}).single('file');
+
+const runImageUpload = (req, res) =>
+  new Promise((resolve, reject) => {
+    uploadImage(req, res, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
 
 const parseMultipartForm = (req, maxSize = MAX_BULK_UPLOAD_SIZE) =>
   new Promise((resolve, reject) => {
@@ -171,6 +213,406 @@ const createInvite = async (client, userId, ttlDays) => {
 
   return { rawToken: invite.token, expiresAt: invite.expiresAt };
 };
+
+const fetchThemeSettings = async (client = pool) => {
+  const { rows } = await client.query(
+    'SELECT value FROM app_settings WHERE key = $1 LIMIT 1',
+    [THEME_SETTING_KEY],
+  );
+
+  return normalizeTheme(rows[0]?.value);
+};
+
+router.get('/theme', requireAdmin, async (req, res) => {
+  try {
+    const theme = await fetchThemeSettings();
+    return res.json(theme);
+  } catch (err) {
+    console.error('Failed to fetch theme settings', err);
+    return res.status(500).json({ error: 'Failed to fetch theme settings' });
+  }
+});
+
+router.patch('/theme', requireAdmin, async (req, res) => {
+  const parsed = themeSettingsSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: formatZodError(parsed.error) });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const currentTheme = await fetchThemeSettings(client);
+    const nextTheme = normalizeTheme({
+      colors: {
+        ...currentTheme.colors,
+        ...parsed.data.colors,
+      },
+    });
+
+    await client.query(
+      `
+        INSERT INTO app_settings (key, value, updated_by, updated_at)
+        VALUES ($1, $2::jsonb, $3, now())
+        ON CONFLICT (key)
+        DO UPDATE SET
+          value = EXCLUDED.value,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = now()
+      `,
+      [THEME_SETTING_KEY, JSON.stringify(nextTheme), req.user?.id || null],
+    );
+
+    await client.query('COMMIT');
+    return res.json(nextTheme);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to update theme settings', err);
+    return res.status(500).json({ error: 'Failed to update theme settings' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/images', requireAdmin, async (req, res) => {
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const courseId = typeof req.query.courseId === 'string' ? req.query.courseId.trim() : '';
+
+  if (courseId && !isUuid(courseId)) {
+    return res.status(400).json({ error: 'courseId must be a valid UUID' });
+  }
+
+  const values = [];
+  const filters = ["(a.kind = 'image' OR a.mime_type LIKE 'image/%')"];
+
+  if (search) {
+    values.push(`%${search}%`);
+    filters.push(`(a.original_name ILIKE $${values.length} OR a.public_url ILIKE $${values.length})`);
+  }
+
+  if (courseId) {
+    values.push(courseId);
+    filters.push(`
+      EXISTS (
+        SELECT 1
+        FROM lesson_assets la
+        JOIN lessons l ON l.id = la.lesson_id
+        JOIN modules m ON m.id = l.module_id
+        WHERE la.asset_id = a.id
+          AND m.course_id = $${values.length}
+      )
+    `);
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+        WITH asset_images AS (
+          SELECT
+            a.id::text AS id,
+            a.id AS asset_id,
+            NULL::uuid AS lesson_id,
+            'asset' AS source_type,
+            a.kind,
+            a.mime_type,
+            a.original_name,
+            a.size_bytes,
+            a.storage_provider,
+            a.storage_path,
+            a.public_url,
+            a.created_at,
+            uploader.email AS uploaded_by_email,
+            COALESCE(
+              jsonb_agg(
+                DISTINCT jsonb_build_object(
+                  'courseId', c.id,
+                  'courseTitle', c.title,
+                  'lessonId', l.id,
+                  'lessonTitle', l.title,
+                  'moduleId', m.id,
+                  'moduleTitle', m.title
+                )
+              ) FILTER (WHERE c.id IS NOT NULL),
+              '[]'::jsonb
+            ) AS usages
+          FROM assets a
+          LEFT JOIN users uploader ON uploader.id = a.uploaded_by_user_id
+          LEFT JOIN lesson_assets la ON la.asset_id = a.id
+          LEFT JOIN lessons l ON l.id = la.lesson_id
+          LEFT JOIN modules m ON m.id = l.module_id
+          LEFT JOIN courses c ON c.id = m.course_id
+          WHERE ${filters.join(' AND ')}
+          GROUP BY a.id, uploader.email
+        ),
+        cover_images AS (
+          SELECT
+            ('lesson-cover:' || l.id::text) AS id,
+            NULL::uuid AS asset_id,
+            l.id AS lesson_id,
+            'lesson_cover' AS source_type,
+            'image' AS kind,
+            NULL::text AS mime_type,
+            COALESCE(NULLIF(split_part(reverse(l.cover_image_url), '/', 1), ''), 'Portada de lección') AS original_name,
+            NULL::bigint AS size_bytes,
+            'external' AS storage_provider,
+            NULL::text AS storage_path,
+            l.cover_image_url AS public_url,
+            l.created_at,
+            NULL::text AS uploaded_by_email,
+            jsonb_build_array(
+              jsonb_build_object(
+                'courseId', c.id,
+                'courseTitle', c.title,
+                'lessonId', l.id,
+                'lessonTitle', l.title,
+                'moduleId', m.id,
+                'moduleTitle', m.title
+              )
+            ) AS usages
+          FROM lessons l
+          JOIN modules m ON m.id = l.module_id
+          JOIN courses c ON c.id = m.course_id
+          WHERE l.cover_image_url IS NOT NULL
+            AND l.cover_image_url <> ''
+            AND NOT EXISTS (
+              SELECT 1 FROM assets a WHERE a.public_url = l.cover_image_url
+            )
+            ${search ? `AND l.cover_image_url ILIKE $1` : ''}
+            ${courseId ? `AND c.id = $${values.length}` : ''}
+        )
+        SELECT
+          a.id,
+          a.asset_id,
+          a.lesson_id,
+          a.source_type,
+          a.kind,
+          a.mime_type,
+          a.original_name,
+          a.size_bytes,
+          a.storage_provider,
+          a.storage_path,
+          a.public_url,
+          a.created_at,
+          uploader.email AS uploaded_by_email,
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'courseId', c.id,
+                'courseTitle', c.title,
+                'lessonId', l.id,
+                'lessonTitle', l.title,
+                'moduleId', m.id,
+                'moduleTitle', m.title
+              )
+            ) FILTER (WHERE c.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS usages
+        FROM (
+          SELECT * FROM asset_images
+          UNION ALL
+          SELECT * FROM cover_images
+        ) a
+        ORDER BY a.created_at DESC
+        LIMIT 200
+      `,
+      values,
+    );
+
+    return res.json(
+      rows.map((asset) => ({
+        id: asset.id,
+        assetId: asset.asset_id,
+        lessonId: asset.lesson_id,
+        sourceType: asset.source_type,
+        kind: asset.kind,
+        mimeType: asset.mime_type,
+        originalName: asset.original_name,
+        sizeBytes: asset.size_bytes === null ? null : Number(asset.size_bytes || 0),
+        storageProvider: asset.storage_provider,
+        storagePath: asset.storage_path,
+        url: asset.public_url,
+        createdAt: asset.created_at,
+        uploadedByEmail: asset.uploaded_by_email,
+        usages: asset.usages || [],
+      })),
+    );
+  } catch (err) {
+    console.error('Failed to list admin images', err);
+    return res.status(500).json({ error: 'Failed to list images' });
+  }
+});
+
+router.post('/images/lesson-cover/:lessonId/replace', requireAdmin, async (req, res) => {
+  const { lessonId } = req.params;
+  if (!isUuid(lessonId)) {
+    return res.status(400).json({ error: 'lessonId must be a valid UUID' });
+  }
+
+  try {
+    await runImageUpload(req, res);
+  } catch (err) {
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ error: err.message || 'Image upload failed' });
+    }
+    return res.status(400).json({ error: err.message || 'Image upload failed' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'File is required' });
+  }
+
+  const filename = req.file.filename;
+  const publicUrl = `/uploads/${filename}`;
+
+  try {
+    const { rows } = await pool.query(
+      `
+        UPDATE lessons
+        SET cover_image_url = $2,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING id, title, cover_image_url
+      `,
+      [lessonId, publicUrl],
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+
+    return res.json({
+      id: `lesson-cover:${lessonId}`,
+      lessonId,
+      sourceType: 'lesson_cover',
+      kind: 'image',
+      mimeType: req.file.mimetype,
+      originalName: req.file.originalname,
+      sizeBytes: req.file.size,
+      storageProvider: 'local',
+      storagePath: path.posix.join('uploads', filename),
+      url: publicUrl,
+    });
+  } catch (err) {
+    console.error('Failed to replace lesson cover image', err);
+    return res.status(500).json({ error: 'Failed to replace lesson cover image' });
+  }
+});
+
+router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
+  const { assetId } = req.params;
+  if (!isUuid(assetId)) {
+    return res.status(400).json({ error: 'assetId must be a valid UUID' });
+  }
+
+  try {
+    await runImageUpload(req, res);
+  } catch (err) {
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ error: err.message || 'Image upload failed' });
+    }
+    return res.status(400).json({ error: err.message || 'Image upload failed' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'File is required' });
+  }
+
+  const filename = req.file.filename;
+  const storagePath = path.posix.join('uploads', filename);
+  const publicUrl = `/uploads/${filename}`;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const currentRes = await client.query(
+      `
+        SELECT id, public_url
+        FROM assets
+        WHERE id = $1
+          AND (kind = 'image' OR mime_type LIKE 'image/%')
+        FOR UPDATE
+      `,
+      [assetId],
+    );
+    const current = currentRes.rows[0];
+    if (!current) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    await client.query(
+      `
+        UPDATE assets
+        SET
+          uploaded_by_user_id = $2,
+          storage_provider = 'local',
+          storage_path = $3,
+          public_url = $4,
+          kind = 'image',
+          mime_type = $5,
+          original_name = $6,
+          size_bytes = $7
+        WHERE id = $1
+      `,
+      [
+        assetId,
+        req.user.id,
+        storagePath,
+        publicUrl,
+        req.file.mimetype,
+        req.file.originalname,
+        req.file.size,
+      ],
+    );
+
+    if (current.public_url && current.public_url !== publicUrl) {
+      await client.query(
+        `
+          UPDATE lessons
+          SET
+            cover_image_url = CASE WHEN cover_image_url = $1 THEN $2 ELSE cover_image_url END,
+            content_text = replace(content_text, $1, $2),
+            content_markdown = replace(content_markdown, $1, $2),
+            content_html = replace(content_html, $1, $2),
+            content_json = CASE
+              WHEN content_json IS NULL THEN NULL
+              ELSE replace(content_json::text, $1, $2)::jsonb
+            END
+          WHERE
+            cover_image_url = $1
+            OR content_text LIKE '%' || $1 || '%'
+            OR content_markdown LIKE '%' || $1 || '%'
+            OR content_html LIKE '%' || $1 || '%'
+            OR content_json::text LIKE '%' || $1 || '%'
+        `,
+        [current.public_url, publicUrl],
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.json({
+      id: assetId,
+      assetId,
+      kind: 'image',
+      mimeType: req.file.mimetype,
+      originalName: req.file.originalname,
+      sizeBytes: req.file.size,
+      storageProvider: 'local',
+      storagePath,
+      url: publicUrl,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to replace image', err);
+    return res.status(500).json({ error: 'Failed to replace image' });
+  } finally {
+    client.release();
+  }
+});
 
 const fetchManagedUser = async (client, userId) => {
   const { rows } = await client.query(
