@@ -28,6 +28,7 @@ const {
   getGlobalRolesForUser,
 } = require('../utils/roleService');
 const { THEME_SETTING_KEY, normalizeTheme } = require('../utils/themeSettings');
+const { getStorageProvider } = require('../services/storage');
 
 const router = express.Router();
 
@@ -37,7 +38,12 @@ const requireAdmin = requireGlobalRoleAny(['admin']);
 const requireBulkInviteAccess = requireGlobalRoleAny(['admin', 'enrollment_manager']);
 
 const MAX_BULK_UPLOAD_SIZE = 1024 * 1024;
-const MAX_IMAGE_UPLOAD_SIZE = 25 * 1024 * 1024;
+const mbToBytes = (value, fallback) => {
+  const parsed = Number(value);
+  const mb = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return mb * 1024 * 1024;
+};
+const MAX_IMAGE_UPLOAD_SIZE = mbToBytes(process.env.MAX_IMAGE_UPLOAD_MB, 10);
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const ALLOWED_ROLES = ['student', 'instructor', 'content_editor', 'enrollment_manager'];
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -223,6 +229,158 @@ const fetchThemeSettings = async (client = pool) => {
   return normalizeTheme(rows[0]?.value);
 };
 
+const IMAGE_URL_REGEX =
+  /https?:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?|\/uploads\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?|courses\/[^\s"'<>]+\/lessons\/[^\s"'<>]+\/images\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)/gi;
+const R2_HOST_SUFFIX = '.r2.cloudflarestorage.com';
+
+const getR2StorageKeyFromReference = (value = '') => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^courses\/[^/]+\/lessons\/[^/]+\//.test(raw)) {
+    return raw;
+  }
+
+  try {
+    const url = new URL(raw);
+    if (!url.hostname.endsWith(R2_HOST_SUFFIX) && !url.hostname.includes('.r2.')) {
+      return null;
+    }
+
+    const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    const bucket = process.env.R2_BUCKET;
+    if (bucket && pathname.startsWith(`${bucket}/`)) {
+      return pathname.slice(bucket.length + 1);
+    }
+    return pathname || null;
+  } catch {
+    return null;
+  }
+};
+
+const resolveR2ReferenceUrl = async (value) => {
+  const storageKey = getR2StorageKeyFromReference(value);
+  if (!storageKey) return value;
+
+  try {
+    return await getStorageProvider('r2').createDownloadUrl({ key: storageKey });
+  } catch (err) {
+    console.error('Failed to sign R2 image URL', err);
+    return value;
+  }
+};
+
+const getImageNameFromUrl = (url = '') => {
+  try {
+    const pathname = url.startsWith('http') ? new URL(url).pathname : url;
+    return decodeURIComponent(pathname.split('/').filter(Boolean).pop() || 'Imagen');
+  } catch {
+    return url.split('/').filter(Boolean).pop() || 'Imagen';
+  }
+};
+
+const collectImageUrls = (value, urls = new Set()) => {
+  if (!value) return urls;
+
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(IMAGE_URL_REGEX)) {
+      urls.add(match[0]);
+    }
+    return urls;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectImageUrls(item, urls));
+    return urls;
+  }
+
+  if (typeof value === 'object') {
+    Object.values(value).forEach((item) => collectImageUrls(item, urls));
+  }
+
+  return urls;
+};
+
+const matchesImageSearch = (item, search) => {
+  if (!search) return true;
+  const haystack = [
+    item.originalName,
+    item.url,
+    ...(item.usages || []).flatMap((usage) => [
+      usage.courseTitle,
+      usage.lessonTitle,
+      usage.moduleTitle,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(search.toLowerCase());
+};
+
+const matchesImageCourse = (item, courseId) => {
+  if (!courseId) return true;
+  return (item.usages || []).some((usage) => usage.courseId === courseId);
+};
+
+const getLocalUploadSize = async (url) => {
+  if (!url?.startsWith('/uploads/')) return null;
+  const filename = path.basename(url.split('?')[0]);
+  const filePath = path.join(UPLOADS_DIR, filename);
+  try {
+    const stat = await fs.promises.stat(filePath);
+    return stat.size;
+  } catch {
+    return null;
+  }
+};
+
+const getRemoteImageMetadata = async (url) => {
+  if (!url?.startsWith('http') || typeof fetch !== 'function') {
+    return {};
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+    });
+    if (!response.ok) return {};
+    const contentLength = Number(response.headers.get('content-length'));
+    return {
+      sizeBytes: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null,
+      mimeType: response.headers.get('content-type') || null,
+    };
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const enrichImageMetadata = async (images) =>
+  Promise.all(
+    images.map(async (image) => {
+      if (image.sizeBytes !== null && image.mimeType) return image;
+
+      const localSize = await getLocalUploadSize(image.url);
+      if (localSize !== null) {
+        return {
+          ...image,
+          sizeBytes: image.sizeBytes ?? localSize,
+        };
+      }
+
+      const remote = await getRemoteImageMetadata(image.url);
+      return {
+        ...image,
+        sizeBytes: image.sizeBytes ?? remote.sizeBytes ?? null,
+        mimeType: image.mimeType ?? remote.mimeType ?? null,
+      };
+    }),
+  );
+
 router.get('/theme', requireAdmin, async (req, res) => {
   try {
     const theme = await fetchThemeSettings();
@@ -283,109 +441,12 @@ router.get('/images', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'courseId must be a valid UUID' });
   }
 
-  const values = [];
-  const filters = ["(a.kind = 'image' OR a.mime_type LIKE 'image/%')"];
-
-  if (search) {
-    values.push(`%${search}%`);
-    filters.push(`(a.original_name ILIKE $${values.length} OR a.public_url ILIKE $${values.length})`);
-  }
-
-  if (courseId) {
-    values.push(courseId);
-    filters.push(`
-      EXISTS (
-        SELECT 1
-        FROM lesson_assets la
-        JOIN lessons l ON l.id = la.lesson_id
-        JOIN modules m ON m.id = l.module_id
-        WHERE la.asset_id = a.id
-          AND m.course_id = $${values.length}
-      )
-    `);
-  }
-
   try {
-    const { rows } = await pool.query(
+    const imageMap = new Map();
+    const assetRes = await pool.query(
       `
-        WITH asset_images AS (
-          SELECT
-            a.id::text AS id,
-            a.id AS asset_id,
-            NULL::uuid AS lesson_id,
-            'asset' AS source_type,
-            a.kind,
-            a.mime_type,
-            a.original_name,
-            a.size_bytes,
-            a.storage_provider,
-            a.storage_path,
-            a.public_url,
-            a.created_at,
-            uploader.email AS uploaded_by_email,
-            COALESCE(
-              jsonb_agg(
-                DISTINCT jsonb_build_object(
-                  'courseId', c.id,
-                  'courseTitle', c.title,
-                  'lessonId', l.id,
-                  'lessonTitle', l.title,
-                  'moduleId', m.id,
-                  'moduleTitle', m.title
-                )
-              ) FILTER (WHERE c.id IS NOT NULL),
-              '[]'::jsonb
-            ) AS usages
-          FROM assets a
-          LEFT JOIN users uploader ON uploader.id = a.uploaded_by_user_id
-          LEFT JOIN lesson_assets la ON la.asset_id = a.id
-          LEFT JOIN lessons l ON l.id = la.lesson_id
-          LEFT JOIN modules m ON m.id = l.module_id
-          LEFT JOIN courses c ON c.id = m.course_id
-          WHERE ${filters.join(' AND ')}
-          GROUP BY a.id, uploader.email
-        ),
-        cover_images AS (
-          SELECT
-            ('lesson-cover:' || l.id::text) AS id,
-            NULL::uuid AS asset_id,
-            l.id AS lesson_id,
-            'lesson_cover' AS source_type,
-            'image' AS kind,
-            NULL::text AS mime_type,
-            COALESCE(NULLIF(split_part(reverse(l.cover_image_url), '/', 1), ''), 'Portada de lección') AS original_name,
-            NULL::bigint AS size_bytes,
-            'external' AS storage_provider,
-            NULL::text AS storage_path,
-            l.cover_image_url AS public_url,
-            l.created_at,
-            NULL::text AS uploaded_by_email,
-            jsonb_build_array(
-              jsonb_build_object(
-                'courseId', c.id,
-                'courseTitle', c.title,
-                'lessonId', l.id,
-                'lessonTitle', l.title,
-                'moduleId', m.id,
-                'moduleTitle', m.title
-              )
-            ) AS usages
-          FROM lessons l
-          JOIN modules m ON m.id = l.module_id
-          JOIN courses c ON c.id = m.course_id
-          WHERE l.cover_image_url IS NOT NULL
-            AND l.cover_image_url <> ''
-            AND NOT EXISTS (
-              SELECT 1 FROM assets a WHERE a.public_url = l.cover_image_url
-            )
-            ${search ? `AND l.cover_image_url ILIKE $1` : ''}
-            ${courseId ? `AND c.id = $${values.length}` : ''}
-        )
         SELECT
           a.id,
-          a.asset_id,
-          a.lesson_id,
-          a.source_type,
           a.kind,
           a.mime_type,
           a.original_name,
@@ -408,35 +469,203 @@ router.get('/images', requireAdmin, async (req, res) => {
             ) FILTER (WHERE c.id IS NOT NULL),
             '[]'::jsonb
           ) AS usages
-        FROM (
-          SELECT * FROM asset_images
-          UNION ALL
-          SELECT * FROM cover_images
-        ) a
-        ORDER BY a.created_at DESC
-        LIMIT 200
+        FROM assets a
+        LEFT JOIN users uploader ON uploader.id = a.uploaded_by_user_id
+        LEFT JOIN lesson_assets la ON la.asset_id = a.id
+        LEFT JOIN lessons l ON l.id = la.lesson_id
+        LEFT JOIN modules m ON m.id = l.module_id
+        LEFT JOIN courses c ON c.id = m.course_id
+        WHERE a.kind = 'image' OR a.mime_type LIKE 'image/%'
+        GROUP BY a.id, uploader.email
       `,
-      values,
     );
 
-    return res.json(
-      rows.map((asset) => ({
-        id: asset.id,
-        assetId: asset.asset_id,
-        lessonId: asset.lesson_id,
-        sourceType: asset.source_type,
+    for (const asset of assetRes.rows) {
+      const assetUrl =
+        asset.storage_provider === 'r2'
+          ? await resolveR2ReferenceUrl(asset.storage_path)
+          : asset.public_url;
+      imageMap.set(`asset:${asset.id}`, {
+        id: `asset:${asset.id}`,
+        assetId: asset.id,
+        lessonId: null,
+        sourceType: 'asset',
         kind: asset.kind,
         mimeType: asset.mime_type,
-        originalName: asset.original_name,
+        originalName: asset.original_name || getImageNameFromUrl(asset.public_url || asset.storage_path),
         sizeBytes: asset.size_bytes === null ? null : Number(asset.size_bytes || 0),
         storageProvider: asset.storage_provider,
         storagePath: asset.storage_path,
-        url: asset.public_url,
+        url: assetUrl,
         createdAt: asset.created_at,
         uploadedByEmail: asset.uploaded_by_email,
         usages: asset.usages || [],
-      })),
+      });
+    }
+
+    const lessonRes = await pool.query(
+      `
+        SELECT
+          l.id AS lesson_id,
+          l.title AS lesson_title,
+          l.cover_image_url,
+          l.content_text,
+          l.content_markdown,
+          l.content_html,
+          l.content_json,
+          l.created_at,
+          m.id AS module_id,
+          m.title AS module_title,
+          c.id AS course_id,
+          c.title AS course_title
+        FROM lessons l
+        JOIN modules m ON m.id = l.module_id
+        JOIN courses c ON c.id = m.course_id
+      `,
     );
+
+    for (const lesson of lessonRes.rows) {
+      const usage = {
+        courseId: lesson.course_id,
+        courseTitle: lesson.course_title,
+        lessonId: lesson.lesson_id,
+        lessonTitle: lesson.lesson_title,
+        moduleId: lesson.module_id,
+        moduleTitle: lesson.module_title,
+      };
+
+      if (lesson.cover_image_url) {
+        const coverStorageKey = getR2StorageKeyFromReference(lesson.cover_image_url);
+        const coverUrl = await resolveR2ReferenceUrl(lesson.cover_image_url);
+        imageMap.set(`lesson_cover:${lesson.lesson_id}:${lesson.cover_image_url}`, {
+          id: `lesson_cover:${lesson.lesson_id}:${lesson.cover_image_url}`,
+          lessonId: lesson.lesson_id,
+          sourceType: 'lesson_cover',
+          kind: 'image',
+          mimeType: null,
+          originalName: getImageNameFromUrl(lesson.cover_image_url),
+          sizeBytes: null,
+          storageProvider: coverStorageKey ? 'r2' : lesson.cover_image_url.startsWith('/uploads/') ? 'local' : 'external',
+          storagePath: coverStorageKey,
+          url: coverUrl,
+          referenceUrl: lesson.cover_image_url,
+          createdAt: lesson.created_at,
+          uploadedByEmail: null,
+          usages: [usage],
+        });
+      }
+
+      const contentUrls = collectImageUrls([
+        lesson.content_text,
+        lesson.content_markdown,
+        lesson.content_html,
+        lesson.content_json,
+      ]);
+
+      for (const url of contentUrls) {
+        if (url === lesson.cover_image_url) continue;
+        const storageKey = getR2StorageKeyFromReference(url);
+        const resolvedUrl = await resolveR2ReferenceUrl(url);
+        imageMap.set(`lesson_content:${lesson.lesson_id}:${url}`, {
+          id: `lesson_content:${lesson.lesson_id}:${url}`,
+          lessonId: lesson.lesson_id,
+          sourceType: 'lesson_content',
+          kind: 'image',
+          mimeType: null,
+          originalName: getImageNameFromUrl(url),
+          sizeBytes: null,
+          storageProvider: storageKey ? 'r2' : url.startsWith('/uploads/') ? 'local' : 'external',
+          storagePath: storageKey,
+          url: resolvedUrl,
+          referenceUrl: url,
+          createdAt: lesson.created_at,
+          uploadedByEmail: null,
+          usages: [usage],
+        });
+      }
+    }
+
+    const postRes = await pool.query(
+      `
+        SELECT
+          cp.id,
+          cp.title,
+          cp.body,
+          cp.created_at,
+          c.id AS course_id,
+          c.title AS course_title
+        FROM course_posts cp
+        JOIN courses c ON c.id = cp.course_id
+      `,
+    );
+
+    for (const post of postRes.rows) {
+      for (const url of collectImageUrls(post.body)) {
+        const storageKey = getR2StorageKeyFromReference(url);
+        const resolvedUrl = await resolveR2ReferenceUrl(url);
+        imageMap.set(`course_post:${post.id}:${url}`, {
+          id: `course_post:${post.id}:${url}`,
+          sourceType: 'course_post',
+          entityId: post.id,
+          kind: 'image',
+          mimeType: null,
+          originalName: getImageNameFromUrl(url),
+          sizeBytes: null,
+          storageProvider: storageKey ? 'r2' : url.startsWith('/uploads/') ? 'local' : 'external',
+          storagePath: storageKey,
+          url: resolvedUrl,
+          referenceUrl: url,
+          createdAt: post.created_at,
+          uploadedByEmail: null,
+          usages: [{ courseId: post.course_id, courseTitle: post.course_title, lessonTitle: post.title }],
+        });
+      }
+    }
+
+    const announcementRes = await pool.query(
+      `
+        SELECT
+          a.id,
+          a.title,
+          a.body,
+          a.created_at,
+          c.id AS course_id,
+          c.title AS course_title
+        FROM announcements a
+        LEFT JOIN courses c ON c.id = a.course_id
+      `,
+    );
+
+    for (const announcement of announcementRes.rows) {
+      for (const url of collectImageUrls(announcement.body)) {
+        const storageKey = getR2StorageKeyFromReference(url);
+        const resolvedUrl = await resolveR2ReferenceUrl(url);
+        imageMap.set(`announcement:${announcement.id}:${url}`, {
+          id: `announcement:${announcement.id}:${url}`,
+          sourceType: 'announcement',
+          entityId: announcement.id,
+          kind: 'image',
+          mimeType: null,
+          originalName: getImageNameFromUrl(url),
+          sizeBytes: null,
+          storageProvider: storageKey ? 'r2' : url.startsWith('/uploads/') ? 'local' : 'external',
+          storagePath: storageKey,
+          url: resolvedUrl,
+          referenceUrl: url,
+          createdAt: announcement.created_at,
+          uploadedByEmail: null,
+          usages: [{ courseId: announcement.course_id, courseTitle: announcement.course_title, lessonTitle: announcement.title }],
+        });
+      }
+    }
+
+    const images = [...imageMap.values()]
+      .filter((item) => matchesImageSearch(item, search))
+      .filter((item) => matchesImageCourse(item, courseId))
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, 200);
+
+    return res.json(await enrichImageMetadata(images));
   } catch (err) {
     console.error('Failed to list admin images', err);
     return res.status(500).json({ error: 'Failed to list images' });
@@ -500,6 +729,230 @@ router.post('/images/lesson-cover/:lessonId/replace', requireAdmin, async (req, 
   }
 });
 
+router.post('/images/reference/replace', requireAdmin, async (req, res) => {
+  try {
+    await runImageUpload(req, res);
+  } catch (err) {
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ error: err.message || 'Image upload failed' });
+    }
+    return res.status(400).json({ error: err.message || 'Image upload failed' });
+  }
+
+  const { sourceType, entityId, oldUrl } = req.body || {};
+  if (!req.file) {
+    return res.status(400).json({ error: 'File is required' });
+  }
+  if (!['lesson_content', 'course_post', 'announcement'].includes(sourceType)) {
+    return res.status(400).json({ error: 'Invalid image source type' });
+  }
+  if (!isUuid(entityId)) {
+    return res.status(400).json({ error: 'entityId must be a valid UUID' });
+  }
+  if (!oldUrl || typeof oldUrl !== 'string') {
+    return res.status(400).json({ error: 'oldUrl is required' });
+  }
+
+  const filename = req.file.filename;
+  const storagePath = path.posix.join('uploads', filename);
+  const publicUrl = `/uploads/${filename}`;
+
+  try {
+    let result;
+    if (sourceType === 'lesson_content') {
+      result = await pool.query(
+        `
+          UPDATE lessons
+          SET
+            content_text = replace(content_text, $2, $3),
+            content_markdown = replace(content_markdown, $2, $3),
+            content_html = replace(content_html, $2, $3),
+            content_json = CASE
+              WHEN content_json IS NULL THEN NULL
+              ELSE replace(content_json::text, $2, $3)::jsonb
+            END,
+            updated_at = now()
+          WHERE id = $1
+            AND (
+              content_text LIKE '%' || $2 || '%'
+              OR content_markdown LIKE '%' || $2 || '%'
+              OR content_html LIKE '%' || $2 || '%'
+              OR content_json::text LIKE '%' || $2 || '%'
+            )
+          RETURNING id
+        `,
+        [entityId, oldUrl, publicUrl],
+      );
+    } else if (sourceType === 'course_post') {
+      result = await pool.query(
+        `
+          UPDATE course_posts
+          SET body = replace(body, $2, $3),
+              updated_at = now()
+          WHERE id = $1
+            AND body LIKE '%' || $2 || '%'
+          RETURNING id
+        `,
+        [entityId, oldUrl, publicUrl],
+      );
+    } else {
+      result = await pool.query(
+        `
+          UPDATE announcements
+          SET body = replace(body, $2, $3)
+          WHERE id = $1
+            AND body LIKE '%' || $2 || '%'
+          RETURNING id
+        `,
+        [entityId, oldUrl, publicUrl],
+      );
+    }
+
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Image reference not found' });
+    }
+
+    return res.json({
+      id: `${sourceType}:${entityId}:${publicUrl}`,
+      sourceType,
+      entityId,
+      kind: 'image',
+      mimeType: req.file.mimetype,
+      originalName: req.file.originalname,
+      sizeBytes: req.file.size,
+      storageProvider: 'local',
+      storagePath,
+      url: publicUrl,
+    });
+  } catch (err) {
+    console.error('Failed to replace image reference', err);
+    return res.status(500).json({ error: 'Failed to replace image reference' });
+  }
+});
+
+router.delete('/images/lesson-cover/:lessonId', requireAdmin, async (req, res) => {
+  const { lessonId } = req.params;
+  if (!isUuid(lessonId)) {
+    return res.status(400).json({ error: 'lessonId must be a valid UUID' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+        UPDATE lessons
+        SET cover_image_url = NULL,
+            updated_at = now()
+        WHERE id = $1
+          AND cover_image_url IS NOT NULL
+        RETURNING id
+      `,
+      [lessonId],
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Image reference not found' });
+    }
+
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error('Failed to delete lesson cover image', err);
+    return res.status(500).json({ error: 'Failed to delete lesson cover image' });
+  }
+});
+
+router.delete('/images/reference', requireAdmin, async (req, res) => {
+  const { sourceType, entityId, oldUrl } = req.body || {};
+
+  if (!['lesson_content', 'course_post', 'announcement'].includes(sourceType)) {
+    return res.status(400).json({ error: 'Invalid image source type' });
+  }
+  if (!isUuid(entityId)) {
+    return res.status(400).json({ error: 'entityId must be a valid UUID' });
+  }
+  if (!oldUrl || typeof oldUrl !== 'string') {
+    return res.status(400).json({ error: 'oldUrl is required' });
+  }
+
+  try {
+    let result;
+    if (sourceType === 'lesson_content') {
+      result = await pool.query(
+        `
+          UPDATE lessons
+          SET
+            content_text = replace(content_text, $2, ''),
+            content_markdown = replace(content_markdown, $2, ''),
+            content_html = replace(content_html, $2, ''),
+            content_json = CASE
+              WHEN content_json IS NULL THEN NULL
+              ELSE replace(content_json::text, $2, '')::jsonb
+            END,
+            updated_at = now()
+          WHERE id = $1
+            AND (
+              content_text LIKE '%' || $2 || '%'
+              OR content_markdown LIKE '%' || $2 || '%'
+              OR content_html LIKE '%' || $2 || '%'
+              OR content_json::text LIKE '%' || $2 || '%'
+            )
+          RETURNING id
+        `,
+        [entityId, oldUrl],
+      );
+    } else if (sourceType === 'course_post') {
+      result = await pool.query(
+        `
+          UPDATE course_posts
+          SET body = replace(body, $2, ''),
+              updated_at = now()
+          WHERE id = $1
+            AND body LIKE '%' || $2 || '%'
+          RETURNING id
+        `,
+        [entityId, oldUrl],
+      );
+    } else {
+      result = await pool.query(
+        `
+          UPDATE announcements
+          SET body = replace(body, $2, '')
+          WHERE id = $1
+            AND body LIKE '%' || $2 || '%'
+          RETURNING id
+        `,
+        [entityId, oldUrl],
+      );
+    }
+
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Image reference not found' });
+    }
+
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error('Failed to delete image reference', err);
+    return res.status(500).json({ error: 'Failed to delete image reference' });
+  }
+});
+
+router.post('/images/download-url', requireAdmin, async (req, res) => {
+  const { storagePath } = req.body || {};
+  const storageKey = getR2StorageKeyFromReference(storagePath);
+
+  if (!storageKey) {
+    return res.status(400).json({ error: 'storagePath must be a valid R2 storage key' });
+  }
+
+  try {
+    const url = await getStorageProvider('r2').createDownloadUrl({ key: storageKey });
+    return res.json({ url });
+  } catch (err) {
+    console.error('Failed to create admin image download URL', err);
+    return res.status(500).json({ error: 'Failed to create download URL' });
+  }
+});
+
 router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
   const { assetId } = req.params;
   if (!isUuid(assetId)) {
@@ -530,7 +983,7 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
 
     const currentRes = await client.query(
       `
-        SELECT id, public_url
+        SELECT id, public_url, storage_path
         FROM assets
         WHERE id = $1
           AND (kind = 'image' OR mime_type LIKE 'image/%')
@@ -569,7 +1022,8 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
       ],
     );
 
-    if (current.public_url && current.public_url !== publicUrl) {
+    const currentReference = current.public_url || current.storage_path;
+    if (currentReference && currentReference !== publicUrl) {
       await client.query(
         `
           UPDATE lessons
@@ -589,7 +1043,24 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
             OR content_html LIKE '%' || $1 || '%'
             OR content_json::text LIKE '%' || $1 || '%'
         `,
-        [current.public_url, publicUrl],
+        [currentReference, publicUrl],
+      );
+      await client.query(
+        `
+          UPDATE course_posts
+          SET body = replace(body, $1, $2),
+              updated_at = now()
+          WHERE body LIKE '%' || $1 || '%'
+        `,
+        [currentReference, publicUrl],
+      );
+      await client.query(
+        `
+          UPDATE announcements
+          SET body = replace(body, $1, $2)
+          WHERE body LIKE '%' || $1 || '%'
+        `,
+        [currentReference, publicUrl],
       );
     }
 
@@ -609,6 +1080,90 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Failed to replace image', err);
     return res.status(500).json({ error: 'Failed to replace image' });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/images/:assetId', requireAdmin, async (req, res) => {
+  const { assetId } = req.params;
+  if (!isUuid(assetId)) {
+    return res.status(400).json({ error: 'assetId must be a valid UUID' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const currentRes = await client.query(
+      `
+        SELECT id, public_url, storage_path
+        FROM assets
+        WHERE id = $1
+          AND (kind = 'image' OR mime_type LIKE 'image/%')
+        FOR UPDATE
+      `,
+      [assetId],
+    );
+    const current = currentRes.rows[0];
+    if (!current) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const currentReference = current.public_url || current.storage_path;
+    if (currentReference) {
+      await client.query(
+        `
+          UPDATE lessons
+          SET
+            cover_image_url = CASE WHEN cover_image_url = $1 THEN NULL ELSE cover_image_url END,
+            content_text = replace(content_text, $1, ''),
+            content_markdown = replace(content_markdown, $1, ''),
+            content_html = replace(content_html, $1, ''),
+            content_json = CASE
+              WHEN content_json IS NULL THEN NULL
+              ELSE replace(content_json::text, $1, '')::jsonb
+            END,
+            updated_at = now()
+          WHERE
+            cover_image_url = $1
+            OR content_text LIKE '%' || $1 || '%'
+            OR content_markdown LIKE '%' || $1 || '%'
+            OR content_html LIKE '%' || $1 || '%'
+            OR content_json::text LIKE '%' || $1 || '%'
+        `,
+        [currentReference],
+      );
+      await client.query(
+        `
+          UPDATE course_posts
+          SET body = replace(body, $1, ''),
+              updated_at = now()
+          WHERE body LIKE '%' || $1 || '%'
+        `,
+        [currentReference],
+      );
+      await client.query(
+        `
+          UPDATE announcements
+          SET body = replace(body, $1, '')
+          WHERE body LIKE '%' || $1 || '%'
+        `,
+        [currentReference],
+      );
+    }
+
+    await client.query('DELETE FROM lesson_assets WHERE asset_id = $1', [assetId]);
+    await client.query('DELETE FROM assets WHERE id = $1', [assetId]);
+    await client.query('COMMIT');
+
+    return res.json({ deleted: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to delete image', err);
+    return res.status(500).json({ error: 'Failed to delete image' });
   } finally {
     client.release();
   }

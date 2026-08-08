@@ -7,6 +7,7 @@ const { canEditCourse } = require("../utils/cmsPermissions");
 const { recordGamificationEvent } = require("../services/gamification");
 const { decorateLessonAvailability } = require("../utils/lessonAvailability");
 const { normalizeLessonType } = require("../utils/lessonTypes");
+const { getStorageProvider } = require("../services/storage");
 const {
   ensureCourseExists,
   hasCourseRole: hasScopedCourseRole,
@@ -26,6 +27,7 @@ const WEEK_ATTENDANCE_EXCEPTION_STATUSES = new Set([
   "late",
   "excused",
 ]);
+const R2_HOST_SUFFIX = ".r2.cloudflarestorage.com";
 
 const router = express.Router();
 
@@ -41,6 +43,78 @@ const mapCoursePostRow = (row) => ({
   body: row.body,
   createdAt: row.created_at,
 });
+
+const getR2StorageKeyFromReference = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/^courses\/[^/]+\/lessons\/[^/]+\//.test(raw)) {
+    return raw;
+  }
+
+  try {
+    const url = new URL(raw);
+    if (!url.hostname.endsWith(R2_HOST_SUFFIX) && !url.hostname.includes(".r2.")) {
+      return null;
+    }
+
+    const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+    const bucket = process.env.R2_BUCKET;
+    if (bucket && pathname.startsWith(`${bucket}/`)) {
+      return pathname.slice(bucket.length + 1);
+    }
+    return pathname || null;
+  } catch {
+    return null;
+  }
+};
+
+const resolveR2ReferenceUrl = async (value) => {
+  const storageKey = getR2StorageKeyFromReference(value);
+  if (!storageKey) return value;
+
+  try {
+    return await getStorageProvider("r2").createDownloadUrl({ key: storageKey });
+  } catch (err) {
+    console.error("Failed to sign R2 reference URL", err);
+    return value;
+  }
+};
+
+const resolveContentJsonR2References = async (contentJson) => {
+  if (!contentJson || typeof contentJson !== "object") return contentJson;
+  const next = JSON.parse(JSON.stringify(contentJson));
+  const pages = Array.isArray(next.pages) ? next.pages : [];
+
+  for (const page of pages) {
+    const blocks = Array.isArray(page?.blocks) ? page.blocks : [];
+    for (const block of blocks) {
+      if (block?.src) {
+        block.src = await resolveR2ReferenceUrl(block.src);
+      }
+    }
+  }
+
+  return next;
+};
+
+const resolveHtmlR2References = async (html = "") => {
+  const value = String(html || "");
+  if (!value) return html;
+
+  const matches = [
+    ...new Set(value.match(/https?:\/\/[^"' <>()]+r2[^"' <>()]+|courses\/[^"' <>()]+\/lessons\/[^"' <>()]+/g) || []),
+  ];
+  let next = value;
+
+  for (const match of matches) {
+    const resolved = await resolveR2ReferenceUrl(match);
+    if (resolved && resolved !== match) {
+      next = next.split(match).join(resolved);
+    }
+  }
+
+  return next;
+};
 
 
 const isValidWeekStartString = (value) =>
@@ -1272,6 +1346,16 @@ router.get(
           if (!assetsByLesson[row.lesson_id]) {
             assetsByLesson[row.lesson_id] = [];
           }
+          let assetUrl = row.public_url;
+          if (row.storage_provider === "r2") {
+            try {
+              assetUrl = await getStorageProvider("r2").createDownloadUrl({ key: row.storage_path });
+            } catch (err) {
+              console.error("Failed to sign R2 lesson asset URL", err);
+              assetUrl = null;
+            }
+          }
+
           assetsByLesson[row.lesson_id].push({
             id: row.id,
             kind: row.kind,
@@ -1279,7 +1363,7 @@ router.get(
             originalName: row.original_name,
             sizeBytes: row.size_bytes,
             storagePath: row.storage_path,
-            url: row.public_url,
+            url: assetUrl,
             storageProvider: row.storage_provider,
           });
         }
@@ -1307,6 +1391,7 @@ router.get(
               parsedContentJson = null;
             }
           }
+          const resolvedCoverImage = await resolveR2ReferenceUrl(lesson.cover_image_url);
           const lessonPayload = {
             id: lesson.id,
             title: lesson.title,
@@ -1316,11 +1401,11 @@ router.get(
             normalizedType,
             contentText: lesson.content_text,
             contentMarkdown: lesson.content_markdown,
-            contentHtml: lesson.content_html,
-            contentJson: parsedContentJson,
+            contentHtml: await resolveHtmlR2References(lesson.content_html),
+            contentJson: await resolveContentJsonR2References(parsedContentJson),
             videoUrl: lesson.video_url,
-            coverImage: lesson.cover_image_url,
-            cover_image_url: lesson.cover_image_url,
+            coverImage: resolvedCoverImage,
+            cover_image_url: resolvedCoverImage,
             contentUrl: lesson.content_url,
             externalLabel: parsedContentJson?.notice?.externalLabel || null,
             embedHtml: lesson.embed_html,

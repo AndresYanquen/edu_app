@@ -85,6 +85,26 @@ export const uploadAssetFile = (file) => {
   return unwrap(api.post('/cms/assets/upload', formData));
 };
 
+export const createLessonAssetUploadUrl = ({ courseId, lessonId, fileName, mimeType, sizeBytes, kind }) =>
+  unwrap(
+    api.post(`/cms/courses/${courseId}/lessons/${lessonId}/assets/upload-url`, {
+      fileName,
+      mimeType,
+      sizeBytes,
+      kind,
+    }),
+  );
+
+export const uploadProcessedLessonImage = ({ courseId, lessonId, file }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return unwrap(api.post(`/cms/courses/${courseId}/lessons/${lessonId}/assets/upload-image`, formData));
+};
+
+export const confirmAssetUpload = (payload) => unwrap(api.post('/cms/assets/confirm-upload', payload));
+
+export const getAssetDownloadUrl = (assetId) => unwrap(api.get(`/cms/assets/${assetId}/download-url`));
+
 export const registerAsset = (payload) => unwrap(api.post('/cms/assets/register', payload));
 
 export const getCourseGroups = groupsApi.listCourseGroups;
@@ -170,5 +190,9 @@ export default {
   listCourseLevels,
   listAssets,
   uploadAssetFile,
+  createLessonAssetUploadUrl,
+  uploadProcessedLessonImage,
+  confirmAssetUpload,
+  getAssetDownloadUrl,
   registerAsset,
 };

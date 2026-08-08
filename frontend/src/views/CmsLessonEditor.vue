@@ -1938,6 +1938,9 @@ import {
   deleteQuizOption,
   listAssets,
   uploadAssetFile,
+  createLessonAssetUploadUrl,
+  uploadProcessedLessonImage,
+  confirmAssetUpload,
 } from "../api/cms";
 
 const route = useRoute();
@@ -2036,7 +2039,23 @@ const recentAssets = ref([]);
 const mediaLibraryTab = ref("image");
 const mediaLibrarySearch = ref("");
 const assetsUploadProcessing = ref(false);
-const MAX_ASSET_FILE_SIZE = 25 * 1024 * 1024;
+const mbToBytes = (value, fallback) => {
+  const parsed = Number(value);
+  const mb = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return mb * 1024 * 1024;
+};
+const bytesToMb = (value) => Math.round(value / 1024 / 1024);
+const MAX_IMAGE_ASSET_FILE_SIZE = mbToBytes(import.meta.env.VITE_MAX_IMAGE_UPLOAD_MB, 10);
+const MAX_DOCUMENT_ASSET_FILE_SIZE = mbToBytes(import.meta.env.VITE_MAX_DOCUMENT_UPLOAD_MB, 25);
+const MAX_AUDIO_ASSET_FILE_SIZE = mbToBytes(import.meta.env.VITE_MAX_AUDIO_UPLOAD_MB, 50);
+const getMaxAssetFileSize = (mimeType = "") => {
+  if (mimeType.startsWith("image/")) return MAX_IMAGE_ASSET_FILE_SIZE;
+  if (mimeType === "application/pdf") return MAX_DOCUMENT_ASSET_FILE_SIZE;
+  if (mimeType.startsWith("audio/")) return MAX_AUDIO_ASSET_FILE_SIZE;
+  return MAX_DOCUMENT_ASSET_FILE_SIZE;
+};
+const getAssetFileSizeError = (mimeType) =>
+  `File must be ${bytesToMb(getMaxAssetFileSize(mimeType))} MB or smaller`;
 
 const imageInputRef = ref(null);
 const audioInputRef = ref(null);
@@ -3392,11 +3411,60 @@ const addRecentAsset = (entry) => {
 };
 
 const uploadAndRegisterAsset = async (kind, file) => {
-  if (file.size > MAX_ASSET_FILE_SIZE) {
-    throw new Error("File must be 25 MB or smaller");
+  if (file.size > getMaxAssetFileSize(file.type)) {
+    throw new Error(getAssetFileSizeError(file.type));
   }
 
-  const registered = await uploadAssetFile(file);
+  let registered;
+  if (courseId && lessonId) {
+    try {
+      if (kind === "image") {
+        registered = await uploadProcessedLessonImage({ courseId, lessonId, file });
+      } else {
+        const presigned = await createLessonAssetUploadUrl({
+          courseId,
+          lessonId,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          kind,
+        });
+
+        await fetch(presigned.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        }).then((response) => {
+          if (!response.ok) {
+            throw new Error("Direct upload failed");
+          }
+        });
+
+        registered = await confirmAssetUpload({
+          courseId,
+          lessonId,
+          storageKey: presigned.storageKey || presigned.storagePath,
+          kind,
+          mimeType: file.type,
+          originalName: file.name,
+          sizeBytes: file.size,
+          storageProvider: presigned.provider || "r2",
+        });
+      }
+    } catch (err) {
+      const endpointMissing = err?.response?.status === 404;
+      if (!endpointMissing) {
+        throw err;
+      }
+      console.warn("R2 upload endpoint is unavailable, falling back to local upload", err);
+    }
+  }
+
+  if (!registered) {
+    registered = await uploadAssetFile(file);
+  }
 
   const entry = {
     assetId: registered.assetId,

@@ -27,6 +27,23 @@ export const replaceLessonCoverImage = (lessonId, file) => {
   formData.append('file', file);
   return unwrap(api.post(`/admin/images/lesson-cover/${lessonId}/replace`, formData));
 };
+export const replaceImageReference = ({ sourceType, entityId, oldUrl, file }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('sourceType', sourceType);
+  formData.append('entityId', entityId);
+  formData.append('oldUrl', oldUrl);
+  return unwrap(api.post('/admin/images/reference/replace', formData));
+};
+export const deleteAdminImage = (assetId) => unwrap(api.delete(`/admin/images/${assetId}`));
+export const deleteLessonCoverImage = (lessonId) =>
+  unwrap(api.delete(`/admin/images/lesson-cover/${lessonId}`));
+export const deleteImageReference = ({ sourceType, entityId, oldUrl }) =>
+  unwrap(api.delete('/admin/images/reference', {
+    data: { sourceType, entityId, oldUrl },
+  }));
+export const getAdminImageDownloadUrl = (storagePath) =>
+  unwrap(api.post('/admin/images/download-url', { storagePath }));
 
 export const listCourseLevels = () => unwrap(api.get('/admin/course-levels'));
 export const createCourseLevel = (payload) => unwrap(api.post('/admin/course-levels', payload));
@@ -51,6 +68,11 @@ export default {
   listAdminImages,
   replaceAdminImage,
   replaceLessonCoverImage,
+  replaceImageReference,
+  deleteAdminImage,
+  deleteLessonCoverImage,
+  deleteImageReference,
+  getAdminImageDownloadUrl,
   getCourseStaff,
   assignCourseStaff,
   removeCourseStaffRole,

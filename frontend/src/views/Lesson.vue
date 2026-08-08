@@ -2101,6 +2101,10 @@ onBeforeUnmount(() => {
 
 .lesson-cover-hero {
   width: 100%;
+  min-height: clamp(180px, 34vw, 360px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 22px;
   overflow: hidden;
   border: 1px solid #e2e8f0;
@@ -2111,8 +2115,10 @@ onBeforeUnmount(() => {
 .lesson-cover-hero img {
   display: block;
   width: 100%;
+  max-width: 100%;
   height: clamp(180px, 34vw, 360px);
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center center;
 }
 
 @media (max-width: 768px) {

@@ -43,6 +43,8 @@ const { canEditCourse } = require("../utils/cmsPermissions");
 const { ensureCourseExists } = require("../utils/roleService");
 const { decorateLessonAvailability } = require("../utils/lessonAvailability");
 const { normalizeLessonType, toStoredLessonType } = require("../utils/lessonTypes");
+const { getStorageProvider } = require("../services/storage");
+const { canConvertToWebp, convertImageToWebp } = require("../services/imageProcessing");
 const {
   lockStudentCourseMembership,
   removeStudentFromCourseGroups,
@@ -75,7 +77,6 @@ const isEnrollmentManagerOnly = (user) =>
   !hasGlobalRole(user, "content_editor");
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
 const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const AUDIO_MIME_TYPES = [
   "audio/mpeg",
@@ -90,7 +91,182 @@ const ALLOWED_MIME_TYPES = new Set([
   ...AUDIO_MIME_TYPES,
   ...DOCUMENT_MIME_TYPES,
 ]);
+const mbToBytes = (value, fallback) => {
+  const parsed = Number(value);
+  const mb = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return mb * 1024 * 1024;
+};
+const bytesToMb = (value) => Math.round(value / 1024 / 1024);
+const MAX_IMAGE_UPLOAD_SIZE = mbToBytes(process.env.MAX_IMAGE_UPLOAD_MB, 10);
+const MAX_DOCUMENT_UPLOAD_SIZE = mbToBytes(process.env.MAX_DOCUMENT_UPLOAD_MB, 25);
+const MAX_AUDIO_UPLOAD_SIZE = mbToBytes(process.env.MAX_AUDIO_UPLOAD_MB, 50);
+const MAX_UPLOAD_SIZE = Math.max(
+  MAX_IMAGE_UPLOAD_SIZE,
+  MAX_DOCUMENT_UPLOAD_SIZE,
+  MAX_AUDIO_UPLOAD_SIZE,
+);
+const getMaxUploadSizeForMime = (mimeType) => {
+  if (IMAGE_MIME_TYPES.includes(mimeType)) return MAX_IMAGE_UPLOAD_SIZE;
+  if (DOCUMENT_MIME_TYPES.includes(mimeType)) return MAX_DOCUMENT_UPLOAD_SIZE;
+  if (AUDIO_MIME_TYPES.includes(mimeType)) return MAX_AUDIO_UPLOAD_SIZE;
+  return 0;
+};
+const getUploadSizeError = (mimeType) => {
+  const maxSize = getMaxUploadSizeForMime(mimeType);
+  return maxSize ? `File must be ${bytesToMb(maxSize)} MB or smaller` : "Unsupported file type";
+};
 const ASSET_LIST_LIMIT = 50;
+const R2_ASSET_UPLOAD_TTL_SECONDS = Number(process.env.R2_PRESIGNED_TTL_SECONDS || 5 * 60);
+const R2_HOST_SUFFIX = ".r2.cloudflarestorage.com";
+
+const getR2StorageKeyFromReference = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/^courses\/[^/]+\/lessons\/[^/]+\//.test(raw)) {
+    return raw;
+  }
+
+  try {
+    const url = new URL(raw);
+    if (!url.hostname.endsWith(R2_HOST_SUFFIX) && !url.hostname.includes(".r2.")) {
+      return null;
+    }
+
+    const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+    const bucket = process.env.R2_BUCKET;
+    if (bucket && pathname.startsWith(`${bucket}/`)) {
+      return pathname.slice(bucket.length + 1);
+    }
+    return pathname || null;
+  } catch {
+    return null;
+  }
+};
+
+const toStoredR2Reference = (value) => getR2StorageKeyFromReference(value) || value;
+
+const resolveR2ReferenceUrl = async (value) => {
+  const storageKey = getR2StorageKeyFromReference(value);
+  if (!storageKey) return value;
+
+  try {
+    return await getStorageProvider("r2").createDownloadUrl({ key: storageKey });
+  } catch (err) {
+    console.error("Failed to sign R2 reference URL", err);
+    return value;
+  }
+};
+
+const resolveContentJsonR2References = async (contentJson) => {
+  if (!contentJson || typeof contentJson !== "object") return contentJson;
+  const next = JSON.parse(JSON.stringify(contentJson));
+  const pages = Array.isArray(next.pages) ? next.pages : [];
+
+  for (const page of pages) {
+    const blocks = Array.isArray(page?.blocks) ? page.blocks : [];
+    for (const block of blocks) {
+      if (block?.src) {
+        block.src = await resolveR2ReferenceUrl(block.src);
+      }
+    }
+  }
+
+  return next;
+};
+
+const resolveHtmlR2References = async (html = "") => {
+  const value = String(html || "");
+  if (!value) return html;
+
+  const matches = [
+    ...new Set(value.match(/https?:\/\/[^"' <>()]+r2[^"' <>()]+|courses\/[^"' <>()]+\/lessons\/[^"' <>()]+/g) || []),
+  ];
+  let next = value;
+
+  for (const match of matches) {
+    const resolved = await resolveR2ReferenceUrl(match);
+    if (resolved && resolved !== match) {
+      next = next.split(match).join(resolved);
+    }
+  }
+
+  return next;
+};
+
+const toStoredContentJsonR2References = (contentJson) => {
+  if (!contentJson || typeof contentJson !== "object") return contentJson;
+  const next = JSON.parse(JSON.stringify(contentJson));
+  const pages = Array.isArray(next.pages) ? next.pages : [];
+
+  for (const page of pages) {
+    const blocks = Array.isArray(page?.blocks) ? page.blocks : [];
+    for (const block of blocks) {
+      if (block?.src) {
+        block.src = toStoredR2Reference(block.src);
+      }
+    }
+  }
+
+  return next;
+};
+
+const toStoredHtmlR2References = (html = "") => {
+  const value = String(html || "");
+  if (!value) return html;
+
+  const matches = [
+    ...new Set(value.match(/https?:\/\/[^"' <>()]+r2[^"' <>()]+|courses\/[^"' <>()]+\/lessons\/[^"' <>()]+/g) || []),
+  ];
+  let next = value;
+
+  for (const match of matches) {
+    const stored = toStoredR2Reference(match);
+    if (stored && stored !== match) {
+      next = next.split(match).join(stored);
+    }
+  }
+
+  return next;
+};
+
+const sanitizeObjectFileName = (value = "") =>
+  String(value)
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]/g, "")
+    .slice(0, 120) || "asset";
+
+const getExtensionForMime = (mimeType, originalName = "") => {
+  const existing = path.extname(originalName).toLowerCase();
+  if (existing && existing.length <= 10) return existing;
+  if (mimeType === "image/jpeg") return ".jpg";
+  if (mimeType === "image/png") return ".png";
+  if (mimeType === "image/webp") return ".webp";
+  if (mimeType === "image/gif") return ".gif";
+  if (mimeType === "audio/mpeg") return ".mp3";
+  if (mimeType === "audio/wav") return ".wav";
+  if (mimeType === "audio/ogg") return ".ogg";
+  if (mimeType === "application/pdf") return ".pdf";
+  if (mimeType === "video/mp4") return ".mp4";
+  if (mimeType === "video/webm") return ".webm";
+  return "";
+};
+
+const buildLessonAssetStorageKey = ({ courseId, lessonId, kind, mimeType, originalName }) => {
+  const folderByKind = {
+    image: "images",
+    audio: "audio",
+    video: "videos",
+    file: "files",
+  };
+  const safeName = sanitizeObjectFileName(originalName);
+  const extension = getExtensionForMime(mimeType, safeName);
+  const baseName = extension && safeName.endsWith(extension) ? safeName.slice(0, -extension.length) : safeName;
+  return `courses/${courseId}/lessons/${lessonId}/${folderByKind[kind] || "files"}/${randomUUID()}-${baseName}${extension}`;
+};
 const ASSET_KIND_VALUES = new Set(["image", "audio", "file"]);
 
 const sanitizeAssetKind = (kind) =>
@@ -211,9 +387,30 @@ const uploadAsset = multer({
   },
 }).single("file");
 
+const uploadImageToProcess = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_UPLOAD_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (IMAGE_MIME_TYPES.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Unsupported image type"), false);
+  },
+}).single("file");
+
 const runUploadFile = (req, res) =>
   new Promise((resolve, reject) => {
     uploadAsset(req, res, (err) => {
+      if (err) {
+        return reject(err);
+      }
+      resolve();
+    });
+  });
+
+const runImageProcessingUpload = (req, res) =>
+  new Promise((resolve, reject) => {
+    uploadImageToProcess(req, res, (err) => {
       if (err) {
         return reject(err);
       }
@@ -2039,7 +2236,14 @@ router.get(
       `,
         [moduleId],
       );
-      return res.json(rows.map((lesson) => decorateLessonAvailability(lesson)));
+      return res.json(
+        await Promise.all(
+          rows.map(async (lesson) => ({
+            ...decorateLessonAvailability(lesson),
+            cover_image_url: await resolveR2ReferenceUrl(lesson.cover_image_url),
+          })),
+        ),
+      );
     } catch (err) {
       console.error("Failed to list lessons", err);
       return res.status(500).json({ error: "Failed to list lessons" });
@@ -2089,20 +2293,24 @@ router.post(
       }
 
       const htmlContent =
-        parsed.data.contentHtml ||
-        parsed.data.contentMarkdown ||
-        parsed.data.contentText ||
-        null;
+        toStoredHtmlR2References(
+          parsed.data.contentHtml ||
+            parsed.data.contentMarkdown ||
+            parsed.data.contentText ||
+            null,
+        );
 
       const contentJsonValue =
         parsed.data.contentJson !== undefined
-          ? JSON.stringify(parsed.data.contentJson)
+          ? JSON.stringify(toStoredContentJsonR2References(parsed.data.contentJson))
           : null;
       const coverImage =
-        parsed.data.coverImage ??
-        parsed.data.cover_image_url ??
-        parsed.data.image_url ??
-        null;
+        toStoredR2Reference(
+          parsed.data.coverImage ??
+            parsed.data.cover_image_url ??
+            parsed.data.image_url ??
+            null,
+        );
       const contentUrl =
         parsed.data.contentUrl ??
         parsed.data.content_url ??
@@ -2185,11 +2393,15 @@ router.post(
 
       return res.status(201).json({
         ...decorateLessonAvailability(lesson),
-        content_json: lesson.content_json
-          ? typeof lesson.content_json === "string"
-            ? JSON.parse(lesson.content_json)
-            : lesson.content_json
-          : null,
+        cover_image_url: await resolveR2ReferenceUrl(lesson.cover_image_url),
+        content_html: await resolveHtmlR2References(lesson.content_html),
+        content_json: await resolveContentJsonR2References(
+          lesson.content_json
+            ? typeof lesson.content_json === "string"
+              ? JSON.parse(lesson.content_json)
+              : lesson.content_json
+            : null,
+        ),
       });
     } catch (err) {
       console.error("Failed to create lesson", err);
@@ -2259,7 +2471,7 @@ router.patch(
       }
 
       if (parsed.data.contentHtml !== undefined) {
-        values.push(parsed.data.contentHtml ?? null);
+        values.push(toStoredHtmlR2References(parsed.data.contentHtml ?? null));
         updates.push(`content_html = $${values.length}`);
       }
 
@@ -2267,7 +2479,7 @@ router.patch(
         values.push(
           parsed.data.contentJson === null
             ? null
-            : JSON.stringify(parsed.data.contentJson),
+            : JSON.stringify(toStoredContentJsonR2References(parsed.data.contentJson)),
         );
         updates.push(`content_json = $${values.length}`);
       }
@@ -2283,10 +2495,12 @@ router.patch(
         parsed.data.image_url !== undefined
       ) {
         const coverImage =
-          parsed.data.coverImage ??
-          parsed.data.cover_image_url ??
-          parsed.data.image_url ??
-          null;
+          toStoredR2Reference(
+            parsed.data.coverImage ??
+              parsed.data.cover_image_url ??
+              parsed.data.image_url ??
+              null,
+          );
 
         values.push(coverImage);
         updates.push(`cover_image_url = $${values.length}`);
@@ -2466,11 +2680,15 @@ router.patch(
 
       return res.json({
         ...decorateLessonAvailability(lesson),
-        content_json: lesson.content_json
-          ? typeof lesson.content_json === "string"
-            ? JSON.parse(lesson.content_json)
-            : lesson.content_json
-          : null,
+        cover_image_url: await resolveR2ReferenceUrl(lesson.cover_image_url),
+        content_html: await resolveHtmlR2References(lesson.content_html),
+        content_json: await resolveContentJsonR2References(
+          lesson.content_json
+            ? typeof lesson.content_json === "string"
+              ? JSON.parse(lesson.content_json)
+              : lesson.content_json
+            : null,
+        ),
       });
     } catch (err) {
       console.error("Failed to update lesson", err);
@@ -2570,7 +2788,9 @@ router.get(
 
       return res.json({
         ...decorateLessonAvailability(lesson),
-        content_json: parsedContentJson,
+        cover_image_url: await resolveR2ReferenceUrl(lesson.cover_image_url),
+        content_html: await resolveHtmlR2References(lesson.content_html),
+        content_json: await resolveContentJsonR2References(parsedContentJson),
       });
     } catch (err) {
       console.error("Error loading lesson:", err);
@@ -4563,6 +4783,9 @@ router.post("/assets/upload", requireCmsContentAccess, async (req, res) => {
     });
     return res.status(400).json({ error: "Unsupported file type" });
   }
+  if (req.file.size > getMaxUploadSizeForMime(req.file.mimetype)) {
+    return res.status(413).json({ error: getUploadSizeError(req.file.mimetype) });
+  }
 
   const filename = req.file.filename;
   const storagePath = path.posix.join("uploads", filename);
@@ -4619,6 +4842,385 @@ router.post("/assets/upload", requireCmsContentAccess, async (req, res) => {
   } catch (err) {
     console.error("Failed to save asset metadata", err);
     return res.status(500).json({ error: "Failed to save asset metadata" });
+  }
+});
+
+router.post(
+  "/courses/:courseId/lessons/:lessonId/assets/upload-image",
+  requireCourseContentRole(resolveCourseIdFromParam("courseId")),
+  async (req, res) => {
+    const parsedLessonId = uuidSchema.safeParse(req.params.lessonId);
+    if (!parsedLessonId.success) {
+      return res.status(400).json({ error: "lessonId must be a valid UUID" });
+    }
+
+    try {
+      await runImageProcessingUpload(req, res);
+    } catch (err) {
+      if (err instanceof multer.MulterError) {
+        const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+        return res.status(status).json({ error: err.message || "Image upload failed" });
+      }
+      return res.status(400).json({ error: err.message || "Image upload failed" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "File is required" });
+    }
+    if (!canConvertToWebp(req.file.mimetype)) {
+      return res.status(400).json({ error: "Unsupported image type" });
+    }
+    if (req.file.size > getMaxUploadSizeForMime(req.file.mimetype)) {
+      return res.status(413).json({ error: getUploadSizeError(req.file.mimetype) });
+    }
+
+    const client = await pool.connect();
+    try {
+      const lessonRes = await client.query(
+        `
+          SELECT l.id
+          FROM lessons l
+          JOIN modules m ON m.id = l.module_id
+          WHERE l.id = $1
+            AND m.course_id = $2
+          LIMIT 1
+        `,
+        [parsedLessonId.data, req.courseContext.courseId],
+      );
+      if (!lessonRes.rows[0]) {
+        return res.status(404).json({ error: "Lesson not found for this course" });
+      }
+
+      const processed = await convertImageToWebp({
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+      });
+      if (!processed) {
+        return res.status(400).json({ error: "Unsupported image type" });
+      }
+
+      const storageKey = buildLessonAssetStorageKey({
+        courseId: req.courseContext.courseId,
+        lessonId: parsedLessonId.data,
+        kind: "image",
+        mimeType: processed.mimeType,
+        originalName: processed.fileName,
+      });
+      const storage = getStorageProvider("r2");
+
+      await storage.putObject({
+        key: storageKey,
+        body: processed.buffer,
+        mimeType: processed.mimeType,
+        metadata: {
+          originalName: req.file.originalname,
+          sourceMimeType: req.file.mimetype,
+        },
+      });
+
+      const exists = await storage.objectExists({ key: storageKey });
+      if (!exists) {
+        return res.status(500).json({ error: "Uploaded object was not found" });
+      }
+
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+        `
+          INSERT INTO assets (
+            uploaded_by_user_id,
+            storage_provider,
+            storage_path,
+            public_url,
+            kind,
+            mime_type,
+            original_name,
+            size_bytes
+          )
+          VALUES ($1,$2,$3,NULL,$4,$5,$6,$7)
+          RETURNING id, storage_path, public_url, kind, mime_type, original_name, size_bytes, created_at, storage_provider
+        `,
+        [
+          req.user.id,
+          "r2",
+          storageKey,
+          "image",
+          processed.mimeType,
+          req.file.originalname,
+          processed.sizeBytes,
+        ],
+      );
+      const asset = rows[0];
+
+      await client.query(
+        `
+          INSERT INTO lesson_assets (lesson_id, asset_id)
+          VALUES ($1, $2)
+          ON CONFLICT DO NOTHING
+        `,
+        [parsedLessonId.data, asset.id],
+      );
+
+      const downloadUrl = await storage.createDownloadUrl({ key: storageKey });
+      await client.query("COMMIT");
+
+      return res.status(201).json({
+        assetId: asset.id,
+        storagePath: asset.storage_path,
+        publicUrl: asset.public_url,
+        kind: asset.kind,
+        mimeType: asset.mime_type,
+        originalName: asset.original_name,
+        sizeBytes: Number(asset.size_bytes || 0),
+        storageProvider: asset.storage_provider,
+        createdAt: asset.created_at,
+        url: downloadUrl,
+        processed: {
+          convertedTo: "image/webp",
+          originalMimeType: req.file.mimetype,
+          originalSizeBytes: req.file.size,
+          sizeBytes: processed.sizeBytes,
+        },
+      });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("Failed to process R2 image upload", err);
+      return res.status(500).json({ error: "Failed to process image upload" });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+router.post(
+  "/courses/:courseId/lessons/:lessonId/assets/upload-url",
+  requireCourseContentRole(resolveCourseIdFromParam("courseId")),
+  async (req, res) => {
+    const parsedLessonId = uuidSchema.safeParse(req.params.lessonId);
+    if (!parsedLessonId.success) {
+      return res.status(400).json({ error: "lessonId must be a valid UUID" });
+    }
+
+    const { fileName, mimeType, sizeBytes, kind } = req.body || {};
+    const numericSize = Number(sizeBytes);
+    const sanitizedKind = sanitizeAssetKind(kind || getAssetKind(mimeType));
+
+    if (!fileName || !mimeType || !Number.isFinite(numericSize) || numericSize <= 0) {
+      return res.status(400).json({ error: "fileName, mimeType and sizeBytes are required" });
+    }
+    if (!ALLOWED_MIME_TYPES.has(mimeType) || !isValidAssetKind(sanitizedKind)) {
+      return res.status(400).json({ error: "Unsupported file type" });
+    }
+    if (numericSize > getMaxUploadSizeForMime(mimeType)) {
+      return res.status(413).json({ error: getUploadSizeError(mimeType) });
+    }
+
+    try {
+      const lessonRes = await pool.query(
+        `
+          SELECT l.id
+          FROM lessons l
+          JOIN modules m ON m.id = l.module_id
+          WHERE l.id = $1
+            AND m.course_id = $2
+          LIMIT 1
+        `,
+        [parsedLessonId.data, req.courseContext.courseId],
+      );
+      if (!lessonRes.rows[0]) {
+        return res.status(404).json({ error: "Lesson not found for this course" });
+      }
+
+      const storageKey = buildLessonAssetStorageKey({
+        courseId: req.courseContext.courseId,
+        lessonId: parsedLessonId.data,
+        kind: sanitizedKind,
+        mimeType,
+        originalName: fileName,
+      });
+      const storage = getStorageProvider("r2");
+      const uploadUrl = await storage.createUploadUrl({
+        key: storageKey,
+        mimeType,
+        sizeBytes: numericSize,
+        expiresIn: R2_ASSET_UPLOAD_TTL_SECONDS,
+      });
+
+      return res.json({
+        provider: "r2",
+        uploadUrl,
+        storageKey,
+        storagePath: storageKey,
+        expiresIn: R2_ASSET_UPLOAD_TTL_SECONDS,
+      });
+    } catch (err) {
+      console.error("Failed to create R2 upload URL", err);
+      return res.status(500).json({ error: "Failed to create upload URL" });
+    }
+  },
+);
+
+router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) => {
+  const {
+    courseId,
+    lessonId,
+    storageKey,
+    kind,
+    mimeType,
+    originalName,
+    sizeBytes,
+    storageProvider = "r2",
+  } = req.body || {};
+
+  const parsedCourseId = uuidSchema.safeParse(courseId);
+  const parsedLessonId = uuidSchema.safeParse(lessonId);
+  const numericSize = Number(sizeBytes);
+  const sanitizedKind = sanitizeAssetKind(kind || getAssetKind(mimeType));
+
+  if (!parsedCourseId.success || !parsedLessonId.success) {
+    return res.status(400).json({ error: "courseId and lessonId must be valid UUIDs" });
+  }
+  if (!storageKey || typeof storageKey !== "string" || storageKey.includes("..")) {
+    return res.status(400).json({ error: "storageKey is required" });
+  }
+  if (!mimeType || !ALLOWED_MIME_TYPES.has(mimeType) || !isValidAssetKind(sanitizedKind)) {
+    return res.status(400).json({ error: "Unsupported file type" });
+  }
+  if (!Number.isFinite(numericSize) || numericSize <= 0) {
+    return res.status(400).json({ error: "Invalid file size" });
+  }
+  if (numericSize > getMaxUploadSizeForMime(mimeType)) {
+    return res.status(413).json({ error: getUploadSizeError(mimeType) });
+  }
+  if (storageProvider !== "r2") {
+    return res.status(400).json({ error: "Unsupported storage provider" });
+  }
+
+  const expectedPrefix = `courses/${parsedCourseId.data}/lessons/${parsedLessonId.data}/`;
+  if (!storageKey.startsWith(expectedPrefix)) {
+    return res.status(400).json({ error: "Invalid storage key for lesson" });
+  }
+
+  const client = await pool.connect();
+  try {
+    const allowed = await canEditCourse(parsedCourseId.data, req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: "You cannot upload assets for this course" });
+    }
+
+    const lessonRes = await client.query(
+      `
+        SELECT l.id
+        FROM lessons l
+        JOIN modules m ON m.id = l.module_id
+        WHERE l.id = $1
+          AND m.course_id = $2
+        LIMIT 1
+      `,
+      [parsedLessonId.data, parsedCourseId.data],
+    );
+    if (!lessonRes.rows[0]) {
+      return res.status(404).json({ error: "Lesson not found for this course" });
+    }
+
+    const storage = getStorageProvider("r2");
+    const exists = await storage.objectExists({ key: storageKey });
+    if (!exists) {
+      return res.status(400).json({ error: "Uploaded object was not found" });
+    }
+
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `
+        INSERT INTO assets (
+          uploaded_by_user_id,
+          storage_provider,
+          storage_path,
+          public_url,
+          kind,
+          mime_type,
+          original_name,
+          size_bytes
+        )
+        VALUES ($1,$2,$3,NULL,$4,$5,$6,$7)
+        RETURNING id, storage_path, public_url, kind, mime_type, original_name, size_bytes, created_at, storage_provider
+      `,
+      [
+        req.user.id,
+        "r2",
+        storageKey,
+        sanitizedKind,
+        mimeType,
+        originalName || null,
+        numericSize,
+      ],
+    );
+    const asset = rows[0];
+
+    await client.query(
+      `
+        INSERT INTO lesson_assets (lesson_id, asset_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+      `,
+      [parsedLessonId.data, asset.id],
+    );
+
+    const downloadUrl = await storage.createDownloadUrl({ key: storageKey });
+    await client.query("COMMIT");
+
+    return res.status(201).json({
+      assetId: asset.id,
+      storagePath: asset.storage_path,
+      publicUrl: asset.public_url,
+      kind: asset.kind,
+      mimeType: asset.mime_type,
+      originalName: asset.original_name,
+      sizeBytes: Number(asset.size_bytes || 0),
+      storageProvider: asset.storage_provider,
+      createdAt: asset.created_at,
+      url: downloadUrl,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Failed to confirm R2 asset upload", err);
+    return res.status(500).json({ error: "Failed to confirm asset upload" });
+  } finally {
+    client.release();
+  }
+});
+
+router.get("/assets/:assetId/download-url", requireCmsContentAccess, async (req, res) => {
+  const parsedAssetId = uuidSchema.safeParse(req.params.assetId);
+  if (!parsedAssetId.success) {
+    return res.status(400).json({ error: "assetId must be a valid UUID" });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT id, storage_provider, storage_path, public_url
+        FROM assets
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [parsedAssetId.data],
+    );
+    const asset = rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Asset not found" });
+    }
+
+    if (asset.storage_provider !== "r2") {
+      return res.json({ url: asset.public_url });
+    }
+
+    const storage = getStorageProvider("r2");
+    const url = await storage.createDownloadUrl({ key: asset.storage_path });
+    return res.json({ url });
+  } catch (err) {
+    console.error("Failed to create asset download URL", err);
+    return res.status(500).json({ error: "Failed to create download URL" });
   }
 });
 
@@ -4715,6 +5317,7 @@ router.get("/assets", requireCmsContentAccess, async (req, res) => {
           original_name,
           size_bytes,
           storage_path,
+          storage_provider,
           public_url,
           created_at
         FROM assets
@@ -4725,18 +5328,32 @@ router.get("/assets", requireCmsContentAccess, async (req, res) => {
       values,
     );
 
-    return res.json(
-      rows.map((asset) => ({
+    const items = await Promise.all(
+      rows.map(async (asset) => {
+        let url = asset.public_url;
+        if (asset.storage_provider === "r2") {
+          try {
+            url = await getStorageProvider("r2").createDownloadUrl({ key: asset.storage_path });
+          } catch (err) {
+            console.error("Failed to sign R2 asset URL", err);
+            url = null;
+          }
+        }
+
+        return {
         assetId: asset.id,
         kind: asset.kind,
         mimeType: asset.mime_type,
         originalName: asset.original_name,
         sizeBytes: asset.size_bytes,
         storagePath: asset.storage_path,
-        url: asset.public_url,
+        storageProvider: asset.storage_provider,
+        url,
         createdAt: asset.created_at,
-      })),
+        };
+      }),
     );
+    return res.json(items);
   } catch (err) {
     console.error("Failed to list assets", err);
     return res.status(500).json({ error: "Failed to list assets" });
