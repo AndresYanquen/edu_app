@@ -1,11 +1,17 @@
 import { defineStore } from 'pinia';
-import { getSessionAttendance, saveSessionAttendance } from '../api/liveSessions';
+import {
+  getSessionAttendance,
+  importZoomAttendance,
+  previewZoomAttendanceImport,
+  saveSessionAttendance,
+} from '../api/liveSessions';
 
 export const useLiveSessionsStore = defineStore('liveSessions', {
   state: () => ({
     attendanceBySession: {},
     loadingAttendanceBySession: {},
     savingAttendanceBySession: {},
+    importingAttendanceBySession: {},
   }),
   actions: {
     async fetchAttendance(sessionId) {
@@ -44,6 +50,42 @@ export const useLiveSessionsStore = defineStore('liveSessions', {
       } finally {
         this.savingAttendanceBySession = {
           ...this.savingAttendanceBySession,
+          [sessionId]: false,
+        };
+      }
+    },
+
+    async previewZoomAttendance(sessionId, payload = {}) {
+      if (!sessionId) {
+        throw new Error('sessionId is required');
+      }
+      this.importingAttendanceBySession = {
+        ...this.importingAttendanceBySession,
+        [sessionId]: true,
+      };
+      try {
+        return await previewZoomAttendanceImport(sessionId, payload);
+      } finally {
+        this.importingAttendanceBySession = {
+          ...this.importingAttendanceBySession,
+          [sessionId]: false,
+        };
+      }
+    },
+
+    async importZoomAttendance(sessionId, payload = {}) {
+      if (!sessionId) {
+        throw new Error('sessionId is required');
+      }
+      this.importingAttendanceBySession = {
+        ...this.importingAttendanceBySession,
+        [sessionId]: true,
+      };
+      try {
+        return await importZoomAttendance(sessionId, payload);
+      } finally {
+        this.importingAttendanceBySession = {
+          ...this.importingAttendanceBySession,
           [sessionId]: false,
         };
       }

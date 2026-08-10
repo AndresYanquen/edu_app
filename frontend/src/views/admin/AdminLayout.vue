@@ -64,10 +64,10 @@ const adminSections = [
   min-width: 0;
   max-width: 100%;
   margin: 0;
-  padding: 1.1rem;
+  padding: var(--page-padding);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.8rem;
   overflow-x: hidden;
 }
 
@@ -77,13 +77,11 @@ const adminSections = [
   min-width: 0;
   position: relative;
   overflow: hidden;
-  border-radius: 22px;
-  padding: 1.25rem;
-  background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 30%),
-    linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.15rem;
+  background: linear-gradient(135deg, var(--app-surface) 0%, var(--app-surface-2) 100%);
+  border: 1px solid var(--app-border);
+  box-shadow: var(--shadow-sm);
 }
 
 .admin-layout-header__content {
@@ -95,28 +93,28 @@ const adminSections = [
 
 .admin-layout-header h1 {
   margin: 0;
-  font-size: clamp(1.55rem, 2.8vw, 2.2rem);
+  font-size: clamp(1.35rem, 2vw, 1.7rem);
   line-height: 1.08;
-  font-weight: 800;
-  color: #0f172a;
+  font-weight: 700;
+  color: var(--text-primary);
   word-break: break-word;
 }
 
 .admin-layout-eyebrow {
   margin: 0 0 0.45rem;
   text-transform: uppercase;
-  font-size: 0.76rem;
-  letter-spacing: 0.24rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.16rem;
   font-weight: 700;
-  color: #2563eb;
+  color: var(--brand-primary);
 }
 
 .admin-layout-description {
-  margin: 0.7rem 0 0;
+  margin: 0.5rem 0 0;
   max-width: 620px;
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-muted);
 }
 
 /* SUBNAV */
@@ -125,13 +123,12 @@ const adminSections = [
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
-  padding: 0.45rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -140,13 +137,13 @@ const adminSections = [
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  min-height: 44px;
-  border-radius: 12px;
-  padding: 0.72rem 1rem;
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: #475569;
+  gap: 0.45rem;
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
+  padding: 0.48rem 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--text-secondary);
   text-decoration: none;
   border: 1px solid transparent;
   white-space: nowrap;
@@ -154,12 +151,11 @@ const adminSections = [
     background 0.18s ease,
     color 0.18s ease,
     border-color 0.18s ease,
-    transform 0.18s ease,
     box-shadow 0.18s ease;
 }
 
 .admin-subnav__item i {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   flex-shrink: 0;
 }
 
@@ -169,16 +165,15 @@ const adminSections = [
 }
 
 .admin-subnav__item:hover {
-  background: #f8fafc;
-  color: #0f172a;
-  transform: translateY(-1px);
+  background: var(--app-surface-2);
+  color: var(--text-primary);
 }
 
 .admin-subnav__item.active {
-  color: #1d4ed8;
-  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
-  border-color: rgba(37, 99, 235, 0.22);
-  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.1);
+  color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+  border-color: rgba(18, 53, 91, 0.2);
+  box-shadow: none;
 }
 
 /* CONTENT */
@@ -192,12 +187,12 @@ const adminSections = [
 /* TABLET */
 @media (max-width: 1024px) {
   .admin-layout-main {
-    padding: 0.95rem;
+    padding: 0.9rem;
   }
 
   .admin-layout-header {
-    padding: 1.1rem;
-    border-radius: 20px;
+    padding: 0.95rem;
+    border-radius: var(--radius-lg);
   }
 
   .admin-layout-description {
@@ -251,8 +246,8 @@ const adminSections = [
   .admin-subnav {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.55rem;
-    padding: 0.75rem 0.95rem;
+    gap: 0.45rem;
+    padding: 0.65rem 0.95rem;
     overflow: visible;
   }
 
@@ -260,7 +255,7 @@ const adminSections = [
     width: 100%;
     min-width: 0;
     justify-content: flex-start;
-    padding: 0.75rem 0.85rem;
+    padding: 0.62rem 0.75rem;
     white-space: normal;
   }
 
@@ -295,9 +290,9 @@ const adminSections = [
   }
 
   .admin-subnav__item {
-    min-height: 42px;
-    font-size: 0.88rem;
-    padding: 0.7rem 0.85rem;
+    min-height: var(--control-height);
+    font-size: 0.86rem;
+    padding: 0.58rem 0.7rem;
   }
 
   .admin-layout-content {

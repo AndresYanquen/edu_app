@@ -84,6 +84,14 @@
         <label>{{ t('liveSessions.form.hostUrl') }}</label>
         <InputText v-model="form.hostUrl" placeholder="https://meet.google.com/..." />
       </div>
+      <div class="form-field">
+        <label>ID reunion Zoom</label>
+        <InputText v-model="form.zoomMeetingId" placeholder="81315984186" />
+      </div>
+      <div class="form-field">
+        <label>UUID reunion Zoom</label>
+        <InputText v-model="form.zoomMeetingUuid" placeholder="wh/j84EZR7GQZmYu58baRw==" />
+      </div>
     </div>
 
     <template #footer>
@@ -164,6 +172,8 @@ const defaultForm = () => ({
   published: false,
   joinUrl: '',
   hostUrl: '',
+  zoomMeetingId: '',
+  zoomMeetingUuid: '',
 });
 
 const form = reactive(defaultForm());
@@ -201,6 +211,8 @@ watch(
     form.published = Boolean(session.published);
     form.joinUrl = session.joinUrl || '';
     form.hostUrl = session.hostUrl || '';
+    form.zoomMeetingId = session.zoomMeetingId || '';
+    form.zoomMeetingUuid = session.zoomMeetingUuid || '';
   },
   { immediate: true },
 );
@@ -254,6 +266,12 @@ const handleSubmit = () => {
   }
   if ((session.hostUrl || '') !== (form.hostUrl || '')) {
     payload.hostUrl = form.hostUrl || null;
+  }
+  if ((session.zoomMeetingId || '') !== (form.zoomMeetingId || '')) {
+    payload.zoomMeetingId = form.zoomMeetingId || null;
+  }
+  if ((session.zoomMeetingUuid || '') !== (form.zoomMeetingUuid || '')) {
+    payload.zoomMeetingUuid = form.zoomMeetingUuid || null;
   }
 
   if (!Object.keys(payload).length) {

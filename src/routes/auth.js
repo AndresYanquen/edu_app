@@ -1,7 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
 const pool = require('../db');
+const env = require('../config/env');
 const { loginSchema, activationSchema, formatZodError } = require('../utils/validators');
 const {
   createAccessToken,
@@ -10,10 +12,12 @@ const {
   hashRefreshToken,
 } = require('../utils/authTokens');
 const { hashInviteToken } = require('../utils/inviteTokens');
-const { getGlobalRolesForUser } = require('../utils/roleService');
+const { bumpUserTokenVersion, getGlobalRolesForUser } = require('../utils/roleService');
 
 const router = express.Router();
 const refreshCookieOptions = buildCookieOptions();
+const LOGIN_FAILURE_RESPONSE = { error: 'Invalid email or password' };
+const DUMMY_PASSWORD_HASH = '$2a$10$7EqJtq98hPqEX7fNZaFWoOhiuKZMpgXX8T6qLqFkiZ7P2T6A2wN3e';
 
 const loginLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -46,14 +50,16 @@ const insertRefreshToken = async (userId, hash, expiresAt) => {
 };
 
 const revokeRefreshTokenByHash = async (hash) => {
-  await pool.query(
+  const { rows } = await pool.query(
     `
       UPDATE refresh_tokens
       SET revoked_at = now()
       WHERE token_hash = $1 AND revoked_at IS NULL
+      RETURNING user_id
     `,
     [hash],
   );
+  return rows[0]?.user_id || null;
 };
 
 const revokeRefreshTokenById = async (id) => {
@@ -65,6 +71,55 @@ const revokeRefreshTokenById = async (id) => {
     `,
     [id],
   );
+};
+
+const revokeActiveRefreshTokensForUser = async (userId) => {
+  await pool.query(
+    `
+      UPDATE refresh_tokens
+      SET revoked_at = now()
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+    `,
+    [userId],
+  );
+};
+
+const findActiveRefreshTokenUserId = async (rawToken) => {
+  if (!rawToken) {
+    return null;
+  }
+  const tokenHash = hashRefreshToken(rawToken);
+  const { rows } = await pool.query(
+    `
+      SELECT user_id
+      FROM refresh_tokens
+      WHERE token_hash = $1
+        AND revoked_at IS NULL
+        AND expires_at > now()
+      LIMIT 1
+    `,
+    [tokenHash],
+  );
+  return rows[0]?.user_id || null;
+};
+
+const getBearerPayload = (req) => {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.replace('Bearer', '').trim();
+  if (!token) {
+    return null;
+  }
+
+  try {
+    return jwt.verify(token, env.JWT_SECRET);
+  } catch (err) {
+    return null;
+  }
 };
 
 router.post('/login', loginLimiter, async (req, res) => {
@@ -83,7 +138,8 @@ router.post('/login', loginLimiter, async (req, res) => {
           u.password_hash,
           u.full_name,
           u.must_set_password,
-          u.is_active
+          u.is_active,
+          COALESCE(u.token_version, 0)::int AS token_version
         FROM users u
         WHERE LOWER(u.email) = LOWER($1)
         LIMIT 1
@@ -92,27 +148,32 @@ router.post('/login', loginLimiter, async (req, res) => {
     );
 
     const user = rows[0];
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
+    const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
+    const passwordMatches = await bcrypt.compare(password, passwordHash);
+    const loginFailureReason = !user
+      ? 'user_not_found'
+      : !passwordMatches
+        ? 'password_mismatch'
+        : !user.is_active
+          ? 'user_inactive'
+          : user.must_set_password
+            ? 'activation_required'
+            : null;
 
-    if (!user.is_active) {
-      return res.status(403).json({ error: 'User is not active' });
-    }
-
-    if (user.must_set_password) {
-      return res.status(403).json({ error: 'Account not activated' });
-    }
-
-    const passwordMatches = await bcrypt.compare(password, user.password_hash || '');
-    if (!passwordMatches) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+    if (loginFailureReason) {
+      console.warn('Login rejected', {
+        reason: loginFailureReason,
+        email,
+        userId: user?.id || null,
+      });
+      return res.status(401).json(LOGIN_FAILURE_RESPONSE);
     }
 
     const globalRoles = await getGlobalRolesForUser(user.id);
 
     const accessToken = createAccessToken({
       id: user.id,
+      tokenVersion: Number(user.token_version || 0),
       globalRoles,
     });
     const refreshToken = generateRefreshToken();
@@ -163,7 +224,13 @@ router.post('/refresh', async (req, res) => {
 
     const userRes = await pool.query(
       `
-        SELECT u.id, u.email, u.full_name, u.is_active, u.must_set_password
+        SELECT
+          u.id,
+          u.email,
+          u.full_name,
+          u.is_active,
+          u.must_set_password,
+          COALESCE(u.token_version, 0)::int AS token_version
         FROM users u
         WHERE u.id = $1
         LIMIT 1
@@ -194,6 +261,7 @@ router.post('/refresh', async (req, res) => {
 
     const accessToken = createAccessToken({
       id: user.id,
+      tokenVersion: Number(user.token_version || 0),
       globalRoles,
     });
 
@@ -206,13 +274,24 @@ router.post('/refresh', async (req, res) => {
 
 router.post('/logout', async (req, res) => {
   const rawToken = req.cookies?.refresh_token;
-  if (rawToken) {
-    try {
+
+  try {
+    const bearerPayload = getBearerPayload(req);
+    if (bearerPayload?.id) {
+      await bumpUserTokenVersion(pool, bearerPayload.id);
+      await revokeActiveRefreshTokensForUser(bearerPayload.id);
+    } else if (rawToken) {
+      const refreshUserId = await findActiveRefreshTokenUserId(rawToken);
       const tokenHash = hashRefreshToken(rawToken);
-      await revokeRefreshTokenByHash(tokenHash);
-    } catch (err) {
-      console.error('Failed to revoke refresh token during logout', err);
+      const revokedUserId = await revokeRefreshTokenByHash(tokenHash);
+      const userId = refreshUserId || revokedUserId;
+      if (userId) {
+        await bumpUserTokenVersion(pool, userId);
+        await revokeActiveRefreshTokensForUser(userId);
+      }
     }
+  } catch (err) {
+    console.error('Failed to revoke session during logout', err);
   }
 
   clearRefreshCookie(res);
@@ -254,7 +333,10 @@ router.post('/activate', async (req, res) => {
     await client.query(
       `
         UPDATE users
-        SET password_hash = $1, must_set_password = false, is_active = true
+        SET password_hash = $1,
+            must_set_password = false,
+            is_active = true,
+            token_version = COALESCE(token_version, 0) + 1
         WHERE id = $2
       `,
       [passwordHash, invite.user_id],

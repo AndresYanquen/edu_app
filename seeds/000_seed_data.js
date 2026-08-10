@@ -364,40 +364,8 @@ const lessons = [
   }),
 ];
 
-const assetProjectBriefId = uuid();
-const assetSqlCheatId = uuid();
-
-const assets = [
-  {
-    id: assetProjectBriefId,
-    uploaded_by_user_id: contentEditor.id,
-    storage_provider: 'local',
-    storage_path: 'demo-assets/full-stack-project-brief.pdf',
-    public_url: '/uploads/demo-full-stack-project-brief.pdf',
-    kind: 'file',
-    original_name: 'full-stack-project-brief.pdf',
-    mime_type: 'application/pdf',
-    size_bytes: 132400,
-    created_at: TIMESTAMP,
-  },
-  {
-    id: assetSqlCheatId,
-    uploaded_by_user_id: instructors[1].id,
-    storage_provider: 'local',
-    storage_path: 'demo-assets/sql-reference.pdf',
-    public_url: '/uploads/demo-sql-reference.pdf',
-    kind: 'file',
-    original_name: 'sql-reference.pdf',
-    mime_type: 'application/pdf',
-    size_bytes: 88400,
-    created_at: TIMESTAMP,
-  },
-];
-
-const lessonAssets = [
-  { lesson_id: lessonApiDesignId, asset_id: assetProjectBriefId },
-  { lesson_id: lessonSqlWarmupId, asset_id: assetSqlCheatId },
-];
+const assets = [];
+const lessonAssets = [];
 
 const groupWeeknightId = uuid();
 const groupWeekendId = uuid();
@@ -862,8 +830,12 @@ exports.seed = async (knex) => {
     await trx('course_user_roles').insert(courseUserRoles);
     await trx('modules').insert(modules);
     await trx('lessons').insert(lessons);
-    await trx('assets').insert(assets);
-    await trx('lesson_assets').insert(lessonAssets);
+    if (assets.length) {
+      await trx('assets').insert(assets);
+    }
+    if (lessonAssets.length) {
+      await trx('lesson_assets').insert(lessonAssets);
+    }
     await trx('groups').insert(groups);
     await trx('group_teachers').insert(groupTeachers);
     await trx('live_session_series').insert(liveSessionSeries);

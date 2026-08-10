@@ -3,8 +3,9 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 
-process.env.JWT_SECRET = 'authorization-test-secret';
+process.env.JWT_SECRET = 'authorization-test-secret-with-32-plus-chars';
 process.env.NODE_ENV = 'test';
+process.env.STORAGE_PROVIDER = 'r2';
 
 const pool = require('../src/db');
 const cmsRoutes = require('../src/routes/cms');
@@ -77,6 +78,22 @@ const mockQuery = async (sql, values = []) => {
   const text = normalizeSql(sql);
 
   if (text === 'begin' || text === 'commit' || text === 'rollback') return queryResult();
+
+  if (
+    text.includes('from users u') &&
+    text.includes('coalesce(u.token_version') &&
+    text.includes('global_roles')
+  ) {
+    return queryResult([
+      {
+        id: IDS.manager,
+        is_active: true,
+        must_set_password: false,
+        token_version: 0,
+        global_roles: ['enrollment_manager'],
+      },
+    ]);
+  }
 
   if (text.includes('pg_advisory_xact_lock')) {
     state.advisoryLocks.push(values[0]);
@@ -387,13 +404,22 @@ let server;
 let baseUrl;
 
 const token = jwt.sign(
-  { id: IDS.manager, globalRoles: ['enrollment_manager'] },
+  { id: IDS.manager, tokenVersion: 0, globalRoles: ['enrollment_manager'] },
   process.env.JWT_SECRET,
 );
 
 const request = async (path, options = {}) => {
   const headers = new Headers(options.headers || {});
   headers.set('Authorization', `Bearer ${token}`);
+  if (options.body && typeof options.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  return fetch(`${baseUrl}${path}`, { ...options, headers });
+};
+
+const requestWithToken = async (path, accessToken, options = {}) => {
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${accessToken}`);
   if (options.body && typeof options.body === 'string' && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
@@ -428,6 +454,15 @@ test.beforeEach(() => {
   state.candidateSearchSupportsPlatformId = false;
   state.liveSessionRangeParams = null;
   state.regenerateWindowParams = null;
+});
+
+test('stale access token version is rejected', async () => {
+  const staleToken = jwt.sign(
+    { id: IDS.manager, tokenVersion: 1, globalRoles: ['enrollment_manager'] },
+    process.env.JWT_SECRET,
+  );
+  const response = await requestWithToken('/cms/courses', staleToken);
+  assert.equal(response.status, 401);
 });
 
 test('course listing is limited to courses assigned as enrollment_manager', async () => {

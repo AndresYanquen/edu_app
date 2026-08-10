@@ -1937,7 +1937,6 @@ import {
   updateQuizOption,
   deleteQuizOption,
   listAssets,
-  uploadAssetFile,
   createLessonAssetUploadUrl,
   uploadProcessedLessonImage,
   confirmAssetUpload,
@@ -3454,16 +3453,12 @@ const uploadAndRegisterAsset = async (kind, file) => {
         });
       }
     } catch (err) {
-      const endpointMissing = err?.response?.status === 404;
-      if (!endpointMissing) {
-        throw err;
-      }
-      console.warn("R2 upload endpoint is unavailable, falling back to local upload", err);
+      throw err;
     }
   }
 
   if (!registered) {
-    registered = await uploadAssetFile(file);
+    throw new Error("Open this lesson from a course before uploading assets");
   }
 
   const entry = {

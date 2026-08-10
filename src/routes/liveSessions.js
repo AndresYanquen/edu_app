@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
 const { hasCourseRole, isGroupTeacher } = require('../utils/roleService');
 const { recordGamificationEvent } = require('../services/gamification');
+const { getZoomParticipants } = require('../services/zoomAttendance');
 const {
   liveSeriesCreateSchema,
   liveSeriesUpdateSchema,
@@ -84,10 +85,20 @@ const mapSessionRow = (row) => ({
   status: row.status,
   joinUrl: row.join_url || null,
   hostUrl: row.host_url || null,
+  zoomMeetingId: row.zoom_meeting_id || null,
+  zoomMeetingUuid: row.zoom_meeting_uuid || null,
   createdAt: row.created_at ? row.created_at.toISOString() : null,
   updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
   courseId: row.course_id || null,
 });
+
+const normalizeComparable = (value = '') =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
 
 const loadGroup = async (groupId) => {
   const { rows } = await pool.query('SELECT id, course_id FROM groups WHERE id = $1 LIMIT 1', [
@@ -352,6 +363,194 @@ const markAttendanceRunFinalized = async (client, sessionId, userId) =>
     [sessionId, userId],
   );
 
+const savePresentAttendance = async ({ session, group, items, actorUserId, source }) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let updatedCount = 0;
+    if (items.length) {
+      const values = [];
+      const placeholders = [];
+      items.forEach((item, index) => {
+        const base = index * 5;
+        placeholders.push(
+          `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, now(), now(), now())`,
+        );
+        values.push(session.id, item.userId, 'present', item.note || null, actorUserId);
+      });
+
+      const upsertRes = await client.query(
+        `
+          INSERT INTO live_session_attendance (
+            live_session_id,
+            user_id,
+            status,
+            note,
+            marked_by,
+            marked_at,
+            created_at,
+            updated_at
+          )
+          VALUES ${placeholders.join(', ')}
+          ON CONFLICT (live_session_id, user_id)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            note = EXCLUDED.note,
+            marked_by = EXCLUDED.marked_by,
+            marked_at = now(),
+            updated_at = now()
+        `,
+        values,
+      );
+      updatedCount = upsertRes.rowCount || items.length;
+    }
+
+    await client.query('COMMIT');
+
+    for (const item of items) {
+      try {
+        await recordGamificationEvent({
+          userId: item.userId,
+          courseId: session.course_id || group.course_id || null,
+          groupId: group.id,
+          actorUserId,
+          eventType: 'attendance_present_student',
+          eventKey: `attendance:${session.id}:${item.userId}`,
+          occurredAt: new Date(),
+          meta: { sessionId: session.id, status: item.status, source },
+        });
+      } catch (gamificationErr) {
+        console.warn('Failed to record student attendance gamification event', gamificationErr);
+      }
+    }
+
+    return updatedCount;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+const loadActiveGroupRoster = async (groupId) => {
+  const { rows } = await pool.query(
+    `
+      SELECT
+        gs.user_id,
+        u.full_name,
+        u.email
+      FROM group_students gs
+      JOIN users u ON u.id = gs.user_id
+      WHERE gs.group_id = $1
+        AND gs.status = 'active'
+      ORDER BY u.full_name ASC
+    `,
+    [groupId],
+  );
+  return rows.map((row) => ({
+    userId: row.user_id,
+    fullName: row.full_name,
+    email: row.email,
+  }));
+};
+
+const buildZoomAttendancePreview = ({ roster, participants }) => {
+  const byEmail = new Map();
+  const byName = new Map();
+  for (const student of roster) {
+    const emailKey = normalizeComparable(student.email);
+    if (emailKey) byEmail.set(emailKey, student);
+
+    const nameKey = normalizeComparable(student.fullName);
+    if (nameKey) {
+      if (!byName.has(nameKey)) byName.set(nameKey, []);
+      byName.get(nameKey).push(student);
+    }
+  }
+
+  const matchedByUserId = new Map();
+  const unmatched = [];
+  const ambiguous = [];
+
+  for (const participant of participants) {
+    const emailKey = normalizeComparable(participant.email);
+    const nameKey = normalizeComparable(participant.name);
+    const byEmailMatch = emailKey ? byEmail.get(emailKey) : null;
+
+    if (byEmailMatch) {
+      if (!matchedByUserId.has(byEmailMatch.userId)) {
+        matchedByUserId.set(byEmailMatch.userId, {
+          student: byEmailMatch,
+          participant,
+          matchBy: 'email',
+        });
+      }
+      continue;
+    }
+
+    const nameMatches = nameKey ? byName.get(nameKey) || [] : [];
+    if (nameMatches.length === 1) {
+      if (!matchedByUserId.has(nameMatches[0].userId)) {
+        matchedByUserId.set(nameMatches[0].userId, {
+          student: nameMatches[0],
+          participant,
+          matchBy: 'name',
+        });
+      }
+      continue;
+    }
+
+    if (nameMatches.length > 1) {
+      ambiguous.push({ participant, candidates: nameMatches });
+      continue;
+    }
+
+    unmatched.push(participant);
+  }
+
+  const matched = Array.from(matchedByUserId.values());
+  return {
+    matched,
+    unmatched,
+    ambiguous,
+    summary: {
+      zoomParticipants: participants.length,
+      matchedStudents: matched.length,
+      unmatchedParticipants: unmatched.length,
+      ambiguousParticipants: ambiguous.length,
+    },
+  };
+};
+
+const mapZoomPreviewResponse = ({ session, group, mode, preview }) => ({
+  sessionId: session.id,
+  groupId: group.id,
+  mode,
+  summary: preview.summary,
+  matched: preview.matched.map((item) => ({
+    userId: item.student.userId,
+    fullName: item.student.fullName,
+    email: item.student.email,
+    matchBy: item.matchBy,
+    status: 'present',
+    note: 'Importado desde Zoom',
+    zoomParticipant: item.participant,
+  })),
+  unmatched: preview.unmatched,
+  ambiguous: preview.ambiguous.map((item) => ({
+    participant: item.participant,
+    candidates: item.candidates,
+  })),
+});
+
+const resolveZoomImportRequest = (session, body = {}) => ({
+  mode: body.mode || 'auto',
+  meetingId: body.meetingId || session.zoom_meeting_id || null,
+  meetingUuid: body.meetingUuid || session.zoom_meeting_uuid || null,
+});
+
 router.get('/live-sessions/:id/attendance', async (req, res) => {
   try {
     const parsed = uuidSchema.safeParse(req.params.id);
@@ -415,6 +614,114 @@ router.get('/live-sessions/:id/attendance', async (req, res) => {
   } catch (err) {
     console.error('Failed to load live session attendance', err);
     return res.status(500).json({ error: 'Failed to load live session attendance' });
+  }
+});
+
+router.post('/live-sessions/:id/attendance/import/zoom/preview', async (req, res) => {
+  try {
+    const parsed = uuidSchema.safeParse(req.params.id);
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    const lookup = await ensureAttendanceWriteAccess(req, res, parsed.data);
+    if (!lookup) {
+      return;
+    }
+
+    const { session, group } = lookup;
+    const request = resolveZoomImportRequest(session, req.body || {});
+    const zoomResult = await getZoomParticipants(request);
+    const roster = await loadActiveGroupRoster(group.id);
+    const preview = buildZoomAttendancePreview({
+      roster,
+      participants: zoomResult.participants,
+    });
+
+    return res.json(mapZoomPreviewResponse({ session, group, mode: zoomResult.mode, preview }));
+  } catch (err) {
+    console.error('Failed to preview Zoom attendance import', {
+      message: err.message,
+      statusCode: err.statusCode,
+      zoomPayload: err.zoomPayload,
+    });
+    return res
+      .status(err.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500)
+      .json({ error: err.message || 'Failed to preview Zoom attendance import' });
+  }
+});
+
+router.post('/live-sessions/:id/attendance/import/zoom', async (req, res) => {
+  try {
+    const parsed = uuidSchema.safeParse(req.params.id);
+    if (!parsed.success) {
+      return res.status(400).json({ error: formatZodError(parsed.error) });
+    }
+
+    const lookup = await ensureAttendanceWriteAccess(req, res, parsed.data);
+    if (!lookup) {
+      return;
+    }
+
+    const { session, group } = lookup;
+    const request = resolveZoomImportRequest(session, req.body || {});
+    const zoomResult = await getZoomParticipants(request);
+    const roster = await loadActiveGroupRoster(group.id);
+    const preview = buildZoomAttendancePreview({
+      roster,
+      participants: zoomResult.participants,
+    });
+    const itemsByUserId = new Map();
+    preview.matched.forEach((item) => {
+      itemsByUserId.set(item.student.userId, {
+        userId: item.student.userId,
+        status: 'present',
+        note: 'Importado desde Zoom',
+      });
+    });
+
+    const rosterByUserId = new Map(roster.map((student) => [student.userId, student]));
+    const manualUserIds = Array.isArray(req.body?.manualUserIds) ? req.body.manualUserIds : [];
+    for (const userId of manualUserIds) {
+      if (!rosterByUserId.has(userId)) {
+        return res.status(400).json({ error: 'One or more manually associated users do not belong to the active group roster' });
+      }
+      itemsByUserId.set(userId, {
+        userId,
+        status: 'present',
+        note: 'Importado desde Zoom (asociacion manual)',
+      });
+    }
+
+    const items = Array.from(itemsByUserId.values());
+    if (!items.length) {
+      return res.status(400).json({
+        error: 'No matched students were found in Zoom participants',
+        ...mapZoomPreviewResponse({ session, group, mode: zoomResult.mode, preview }),
+      });
+    }
+
+    const updated = await savePresentAttendance({
+      session,
+      group,
+      items,
+      actorUserId: req.user.id,
+      source: 'zoom_attendance_import',
+    });
+
+    return res.json({
+      updated,
+      ...mapZoomPreviewResponse({ session, group, mode: zoomResult.mode, preview }),
+    });
+  } catch (err) {
+    console.error('Failed to import Zoom attendance', {
+      message: err.message,
+      statusCode: err.statusCode,
+      zoomPayload: err.zoomPayload,
+    });
+    return res
+      .status(err.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500)
+      .json({ error: err.message || 'Failed to import Zoom attendance' });
   }
 });
 
@@ -1241,6 +1548,12 @@ router.patch('/live-sessions/:id', async (req, res) => {
     if (updates.hostUrl !== undefined) {
       assignField('host_url', updates.hostUrl || null);
     }
+    if (updates.zoomMeetingId !== undefined) {
+      assignField('zoom_meeting_id', updates.zoomMeetingId || null);
+    }
+    if (updates.zoomMeetingUuid !== undefined) {
+      assignField('zoom_meeting_uuid', updates.zoomMeetingUuid || null);
+    }
 
     const currentStart = new Date(session.starts_at);
     const currentEnd = new Date(session.ends_at);
@@ -1281,7 +1594,7 @@ router.patch('/live-sessions/:id', async (req, res) => {
     );
 
     const fresh = await loadSessionById(session.id);
-    return res.json(fresh || {});
+    return res.json(fresh ? mapSessionRow(fresh) : {});
   } catch (err) {
     console.error('Failed to update live session', err);
     return res.status(500).json({ error: 'Failed to update live session' });

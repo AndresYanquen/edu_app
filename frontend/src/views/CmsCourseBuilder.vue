@@ -3002,6 +3002,8 @@ provide(cmsCourseBuilderContextKey, {
   openDeleteGroupDialog,
   liveSessionGroupId,
   liveSessionGroupOptions,
+  enrollmentOnlyMode,
+  instructorOnlyMode,
   liveSessionLoading,
   liveSessionError,
   loadLiveSessionData,

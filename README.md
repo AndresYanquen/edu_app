@@ -28,13 +28,12 @@ Minimal single-academy backend built with Node.js, Express, PostgreSQL, and Knex
 - `DELETE /cms/courses/:courseId/enroll/:studentId` – remove student enrollment (and related group rows).
 
 ## CMS Asset Uploads
-- `POST /cms/assets/upload` – upload staff assets via `multipart/form-data` (field name `file`, max 25 MB). Accepts PNG/JPG/WEBP/GIF images, MP3/WAV/OGG/MP4/M4A audio, and PDF docs. Returns `{ assetId, kind, mimeType, originalName, sizeBytes, url }` where `url` is the public `/uploads/<filename>` path.
+- `POST /cms/courses/:courseId/lessons/:lessonId/assets/upload-image` – upload lesson images through the backend; images are validated, converted to WebP, stored privately in R2, and returned with a short-lived signed URL.
+- `POST /cms/courses/:courseId/lessons/:lessonId/assets/upload-url` – request an R2 presigned URL for allowed PDF/audio uploads.
 - `GET /cms/assets?kind=<image|audio|file>&search=<term>` – list the most recent 50 assets uploaded by the current user, optionally filtered by kind or filename (case-insensitive partial match). Each item contains `assetId`, `kind`, `mimeType`, `originalName`, `sizeBytes`, `storagePath`, `url`, and `createdAt`.
-- `POST /cms/assets/register` – after uploading directly to Supabase storage, send `{ storagePath, publicUrl, kind, mimeType, originalName, sizeBytes, storageProvider }` to persist metadata in the `assets` table (the response mirrors the stored row).
+- `POST /cms/assets/confirm-upload` – after uploading to a backend-issued R2 presigned URL, send `{ courseId, lessonId, storageKey, kind, mimeType, originalName, sizeBytes, storageProvider }` so the backend can verify permissions, confirm the object exists, and persist metadata in the `assets` table.
 
-Lesson uploads now push files directly to an optional `VITE_SUPABASE_BUCKET` (default `lesson-assets`) instead of `/uploads/`, so set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and the bucket name in the frontend `.env` when you want Supabase storage.
-
-Uploaded files are persisted under `uploads/` and served publicly by the API at `/uploads/<filename>` so the stored `url` can be embedded directly in lesson content.
+Lesson uploads use backend-issued R2 presigned URLs. The frontend should not configure or call Supabase Storage directly.
 
 ## Authentication
 `POST /auth/login` returns a short-lived access token (store in memory) and sets an httpOnly `refresh_token` cookie. Use `Authorization: Bearer <accessToken>` for protected calls, `POST /auth/refresh` to rotate tokens, and `POST /auth/logout` to revoke + clear the cookie.

@@ -1,9 +1,10 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const env = require('../config/env');
 
-const ACCESS_TOKEN_TTL_MIN = Number(process.env.ACCESS_TOKEN_TTL_MIN || 10);
-const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 14);
-const isProduction = process.env.NODE_ENV === 'production';
+const ACCESS_TOKEN_TTL_MIN = env.ACCESS_TOKEN_TTL_MIN;
+const REFRESH_TOKEN_TTL_DAYS = env.REFRESH_TOKEN_TTL_DAYS;
+const isProduction = env.NODE_ENV === 'production';
 
 const buildCookieOptions = () => ({
   httpOnly: true,
@@ -14,11 +15,7 @@ const buildCookieOptions = () => ({
 });
 
 const createAccessToken = (payload) => {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET must be defined to issue tokens');
-  }
-
-  return jwt.sign(payload, process.env.JWT_SECRET, {
+  return jwt.sign(payload, env.JWT_SECRET, {
     expiresIn: `${ACCESS_TOKEN_TTL_MIN}m`,
   });
 };

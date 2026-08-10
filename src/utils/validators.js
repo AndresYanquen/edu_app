@@ -499,6 +499,8 @@ const liveSessionUpdateSchema = z
     published: z.boolean().optional(),
     joinUrl: urlString.optional().nullable(),
     hostUrl: urlString.optional().nullable(),
+    zoomMeetingId: z.string().trim().optional().nullable(),
+    zoomMeetingUuid: z.string().trim().optional().nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",

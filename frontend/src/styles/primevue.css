@@ -12,20 +12,21 @@ body {
   border-radius: var(--radius-lg);
   background: var(--app-surface);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.18s ease, transform 0.18s ease;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .p-card:hover,
 .p-panel:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  border-color: var(--app-border-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Buttons */
 .p-button {
   max-width: 100%;
-  border-radius: var(--radius-pill);
-  font-weight: 700;
+  border-radius: var(--radius-sm);
+  font-weight: 650;
+  min-height: var(--control-height);
 }
 
 .p-button .p-button-label {
@@ -65,7 +66,7 @@ body {
 .p-calendar .p-inputtext {
   max-width: 100%;
   border-color: var(--app-border);
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
 }
 
@@ -129,8 +130,8 @@ body {
 
 /* DataTable */
 :root {
-  --table-row-padding-y: 0.78rem;
-  --table-row-padding-x: 0.9rem;
+  --table-row-padding-y: 0.62rem;
+  --table-row-padding-x: 0.75rem;
 }
 
 .p-datatable {

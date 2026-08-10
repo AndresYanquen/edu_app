@@ -142,21 +142,21 @@
 
   /* Forma y profundidad */
   --radius-xs: 8px;
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 20px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
   --radius-pill: 999px;
 
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.07);
-  --shadow-md: 0 14px 32px rgba(15, 23, 42, 0.12);
-  --shadow-lg: 0 24px 46px rgba(15, 23, 42, 0.18);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.055);
+  --shadow-md: 0 10px 24px rgba(15, 23, 42, 0.09);
+  --shadow-lg: 0 18px 36px rgba(15, 23, 42, 0.14);
 
   /* Focus ring amigable */
   --focus-ring: 0 0 0 4px rgba(18, 53, 91, 0.24);
 
   --content-max-width: 1280px;
-  --page-padding: clamp(0.85rem, 2vw, 1.5rem);
-  --control-height: 2.5rem;
+  --page-padding: clamp(0.75rem, 1.5vw, 1.15rem);
+  --control-height: 2.35rem;
 
   /* Shell y sidebar */
   --shell-bg: linear-gradient(180deg, var(--app-bg) 0%, var(--color-slate-50) 100%);

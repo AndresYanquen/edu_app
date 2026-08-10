@@ -150,7 +150,7 @@
           />
           <span v-else class="muted">—</span>
           <Button
-            v-if="!readOnly"
+            v-if="canTakeAttendance"
             icon="pi pi-users"
             class="p-button-text"
             label="Asistencia"
@@ -176,6 +176,8 @@
     :session-id="selectedAttendanceSession?.id || ''"
     :session-title="selectedAttendanceSession?.title || ''"
     :session-starts-at="selectedAttendanceSession?.startsAt || ''"
+    :zoom-meeting-id="selectedAttendanceSession?.zoomMeetingId || ''"
+    :zoom-meeting-uuid="selectedAttendanceSession?.zoomMeetingUuid || ''"
     @loaded="handleAttendanceSummary"
     @saved="handleAttendanceSummary"
   />
@@ -213,6 +215,10 @@ const props = defineProps({
     default: () => ({ from: null, to: null }),
   },
   readOnly: {
+    type: Boolean,
+    default: false,
+  },
+  canTakeAttendance: {
     type: Boolean,
     default: false,
   },

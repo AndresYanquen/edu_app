@@ -4,6 +4,7 @@ const path = require("path");
 const multer = require("multer");
 const { randomUUID } = require("crypto");
 const pool = require("../db");
+const env = require("../config/env");
 const auth = require("../middleware/auth");
 const {
   requireGlobalRoleAny,
@@ -40,7 +41,7 @@ const {
   uuidSchema,
 } = require("../utils/validators");
 const { canEditCourse } = require("../utils/cmsPermissions");
-const { ensureCourseExists } = require("../utils/roleService");
+const { bumpUserTokenVersion, ensureCourseExists } = require("../utils/roleService");
 const { decorateLessonAvailability } = require("../utils/lessonAvailability");
 const { normalizeLessonType, toStoredLessonType } = require("../utils/lessonTypes");
 const { getStorageProvider } = require("../services/storage");
@@ -50,6 +51,7 @@ const {
   removeStudentFromCourseGroups,
   assignStudentToCourseGroup,
 } = require("../utils/groupMembership");
+const { softDeleteOrphanAssets } = require("../utils/assetDeletion");
 
 const CMS_GLOBAL_ROLES = [
   "admin",
@@ -86,20 +88,36 @@ const AUDIO_MIME_TYPES = [
   "audio/x-m4a",
 ];
 const DOCUMENT_MIME_TYPES = ["application/pdf"];
+const PRESIGNED_UPLOAD_MIME_TYPES = new Set([
+  ...AUDIO_MIME_TYPES,
+  ...DOCUMENT_MIME_TYPES,
+]);
 const ALLOWED_MIME_TYPES = new Set([
   ...IMAGE_MIME_TYPES,
   ...AUDIO_MIME_TYPES,
   ...DOCUMENT_MIME_TYPES,
 ]);
+const EXTENSIONS_BY_MIME_TYPE = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/webp": [".webp"],
+  "image/gif": [".gif"],
+  "audio/mpeg": [".mp3"],
+  "audio/wav": [".wav"],
+  "audio/ogg": [".ogg"],
+  "audio/mp4": [".m4a", ".mp4"],
+  "audio/x-m4a": [".m4a", ".mp4"],
+  "application/pdf": [".pdf"],
+};
 const mbToBytes = (value, fallback) => {
   const parsed = Number(value);
   const mb = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   return mb * 1024 * 1024;
 };
 const bytesToMb = (value) => Math.round(value / 1024 / 1024);
-const MAX_IMAGE_UPLOAD_SIZE = mbToBytes(process.env.MAX_IMAGE_UPLOAD_MB, 10);
-const MAX_DOCUMENT_UPLOAD_SIZE = mbToBytes(process.env.MAX_DOCUMENT_UPLOAD_MB, 25);
-const MAX_AUDIO_UPLOAD_SIZE = mbToBytes(process.env.MAX_AUDIO_UPLOAD_MB, 50);
+const MAX_IMAGE_UPLOAD_SIZE = mbToBytes(env.MAX_IMAGE_UPLOAD_MB, 10);
+const MAX_DOCUMENT_UPLOAD_SIZE = mbToBytes(env.MAX_DOCUMENT_UPLOAD_MB, 25);
+const MAX_AUDIO_UPLOAD_SIZE = mbToBytes(env.MAX_AUDIO_UPLOAD_MB, 50);
 const MAX_UPLOAD_SIZE = Math.max(
   MAX_IMAGE_UPLOAD_SIZE,
   MAX_DOCUMENT_UPLOAD_SIZE,
@@ -116,13 +134,13 @@ const getUploadSizeError = (mimeType) => {
   return maxSize ? `File must be ${bytesToMb(maxSize)} MB or smaller` : "Unsupported file type";
 };
 const ASSET_LIST_LIMIT = 50;
-const R2_ASSET_UPLOAD_TTL_SECONDS = Number(process.env.R2_PRESIGNED_TTL_SECONDS || 5 * 60);
+const R2_ASSET_UPLOAD_TTL_SECONDS = env.R2_PRESIGNED_TTL_SECONDS;
 const R2_HOST_SUFFIX = ".r2.cloudflarestorage.com";
 
 const getR2StorageKeyFromReference = (value = "") => {
   const raw = String(value || "").trim();
   if (!raw) return null;
-  if (/^courses\/[^/]+\/lessons\/[^/]+\//.test(raw)) {
+  if (/^(courses\/|admin\/images\/|migrated\/assets\/|demo-assets\/)/.test(raw)) {
     return raw;
   }
 
@@ -133,7 +151,7 @@ const getR2StorageKeyFromReference = (value = "") => {
     }
 
     const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
-    const bucket = process.env.R2_BUCKET;
+    const bucket = env.R2_BUCKET;
     if (bucket && pathname.startsWith(`${bucket}/`)) {
       return pathname.slice(bucket.length + 1);
     }
@@ -255,6 +273,58 @@ const getExtensionForMime = (mimeType, originalName = "") => {
   return "";
 };
 
+const isFileExtensionAllowedForMime = (fileName = "", mimeType = "") => {
+  const extension = path.extname(String(fileName || "")).toLowerCase();
+  const allowedExtensions = EXTENSIONS_BY_MIME_TYPE[mimeType] || [];
+  return Boolean(extension && allowedExtensions.includes(extension));
+};
+
+const normalizeContentType = (value = "") =>
+  String(value || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+
+const isIsoBaseMediaFile = (buffer) => {
+  if (!buffer || buffer.length < 12) return false;
+  return buffer.toString("ascii", 4, 8) === "ftyp";
+};
+
+const hasExpectedMagicBytes = (buffer, mimeType) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) return false;
+
+  if (mimeType === "application/pdf") {
+    return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+  }
+  if (mimeType === "audio/mpeg") {
+    const startsWithId3 = buffer.subarray(0, 3).toString("ascii") === "ID3";
+    const startsWithMp3Frame = buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0;
+    return startsWithId3 || startsWithMp3Frame;
+  }
+  if (mimeType === "audio/wav") {
+    return (
+      buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WAVE"
+    );
+  }
+  if (mimeType === "audio/ogg") {
+    return buffer.subarray(0, 4).toString("ascii") === "OggS";
+  }
+  if (mimeType === "audio/mp4" || mimeType === "audio/x-m4a") {
+    return isIsoBaseMediaFile(buffer);
+  }
+
+  return false;
+};
+
+const deleteRejectedObject = async (storage, key) => {
+  try {
+    await storage.deleteObject({ key });
+  } catch (err) {
+    console.warn("Failed to delete rejected R2 object", { key, error: err?.message });
+  }
+};
+
 const buildLessonAssetStorageKey = ({ courseId, lessonId, kind, mimeType, originalName }) => {
   const folderByKind = {
     image: "images",
@@ -281,7 +351,7 @@ const tableExists = async (client, tableName) => {
   return Boolean(rows[0]?.table_name);
 };
 
-const deleteLessonCascade = async (client, lessonId) => {
+const deleteLessonCascade = async (client, lessonId, actorUserId = null) => {
   if (await tableExists(client, "quiz_attempt_answers")) {
     await client.query(
       `
@@ -344,9 +414,18 @@ const deleteLessonCascade = async (client, lessonId) => {
   }
 
   if (await tableExists(client, "lesson_assets")) {
+    const { rows: linkedAssets } = await client.query(
+      "SELECT asset_id FROM lesson_assets WHERE lesson_id = $1",
+      [lessonId],
+    );
     await client.query("DELETE FROM lesson_assets WHERE lesson_id = $1", [
       lessonId,
     ]);
+    await softDeleteOrphanAssets(
+      client,
+      linkedAssets.map((row) => row.asset_id),
+      actorUserId,
+    );
   }
 
   if (await tableExists(client, "lesson_progress")) {
@@ -1981,10 +2060,26 @@ router.post("/courses/:id/instructors", async (req, res) => {
       }
     }
 
-    await client.query(
+    const { rows: currentInstructorRows } = await client.query(
+      `
+        SELECT DISTINCT user_id
+        FROM course_user_roles
+        WHERE course_id = $1
+          AND role_id = $2
+      `,
+      [courseId, instructorRoleId],
+    );
+
+    const removedResult = await client.query(
       "DELETE FROM course_user_roles WHERE course_id = $1 AND role_id = $2",
       [courseId, instructorRoleId],
     );
+    const affectedUserIds = new Set();
+    if ((removedResult.rowCount || 0) > 0) {
+      for (const row of currentInstructorRows) {
+        affectedUserIds.add(row.user_id);
+      }
+    }
 
     if (instructorIds.length) {
       const values = [];
@@ -1994,7 +2089,7 @@ router.post("/courses/:id/instructors", async (req, res) => {
         placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
         values.push(courseId, instructorId, instructorRoleId);
       });
-      await client.query(
+      const insertResult = await client.query(
         `
           INSERT INTO course_user_roles (course_id, user_id, role_id)
           VALUES ${placeholders.join(", ")}
@@ -2002,6 +2097,15 @@ router.post("/courses/:id/instructors", async (req, res) => {
         `,
         values,
       );
+      if ((insertResult.rowCount || 0) > 0) {
+        for (const instructorId of instructorIds) {
+          affectedUserIds.add(instructorId);
+        }
+      }
+    }
+
+    for (const userId of affectedUserIds) {
+      await bumpUserTokenVersion(client, userId);
     }
 
     await client.query("COMMIT");
@@ -2181,7 +2285,7 @@ router.delete(
         [moduleId],
       );
       for (const lesson of lessonRes.rows) {
-        await deleteLessonCascade(client, lesson.id);
+        await deleteLessonCascade(client, lesson.id, req.user.id);
       }
 
       await client.query("DELETE FROM modules WHERE id = $1", [moduleId]);
@@ -2847,7 +2951,7 @@ router.delete(
     try {
       await client.query("BEGIN");
 
-      const deletedLesson = await deleteLessonCascade(client, lessonId);
+      const deletedLesson = await deleteLessonCascade(client, lessonId, req.user.id);
       if (!deletedLesson) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "Lesson not found" });
@@ -4737,113 +4841,11 @@ router.post(
   },
 );
 
-router.post("/assets/upload", requireCmsContentAccess, async (req, res) => {
-  try {
-    await runUploadFile(req, res);
-  } catch (err) {
-    console.log("[TEMP CMS ASSET UPLOAD] multer error", {
-      code: err?.code,
-      message: err?.message,
-      body: req.body,
-    });
-
-    if (err instanceof multer.MulterError) {
-      const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
-      return res
-        .status(status)
-        .json({ error: err.message || "File upload failed" });
-    }
-    return res.status(400).json({ error: err.message || "File upload failed" });
-  }
-
-  if (!req.file) {
-    console.log("[TEMP CMS ASSET UPLOAD] missing file", {
-      body: req.body,
-    });
-    return res.status(400).json({ error: "File is required" });
-  }
-
-  console.log("[TEMP CMS ASSET UPLOAD] received", {
-    body: req.body,
-    file: {
-      fieldname: req.file.fieldname,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      filename: req.file.filename,
-      path: req.file.path,
-    },
-  });
-
-  const kind = getAssetKind(req.file.mimetype);
-  if (!kind) {
-    console.log("[TEMP CMS ASSET UPLOAD] unsupported mime type", {
-      mimetype: req.file.mimetype,
-      originalname: req.file.originalname,
-    });
-    return res.status(400).json({ error: "Unsupported file type" });
-  }
-  if (req.file.size > getMaxUploadSizeForMime(req.file.mimetype)) {
-    return res.status(413).json({ error: getUploadSizeError(req.file.mimetype) });
-  }
-
-  const filename = req.file.filename;
-  const storagePath = path.posix.join("uploads", filename);
-  const publicUrl = `/uploads/${filename}`;
-
-  console.log("[TEMP CMS ASSET UPLOAD] generated url", {
-    storagePath,
-    publicUrl,
-    kind,
-  });
-
-  try {
-    const insertRes = await pool.query(
-      `
-        INSERT INTO assets (
-          uploaded_by_user_id,
-          storage_provider,
-          storage_path,
-          public_url,
-          kind,
-          mime_type,
-          original_name,
-          size_bytes
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id
-      `,
-      [
-        req.user.id,
-        "local",
-        storagePath,
-        publicUrl,
-        kind,
-        req.file.mimetype,
-        req.file.originalname,
-        req.file.size,
-      ],
-    );
-    const asset = insertRes.rows[0];
-    const responsePayload = {
-      assetId: asset.id,
-      storagePath,
-      kind,
-      mimeType: req.file.mimetype,
-      originalName: req.file.originalname,
-      sizeBytes: req.file.size,
-      url: publicUrl,
-      createdAt: new Date().toISOString(),
-    };
-
-    console.log("[TEMP CMS ASSET UPLOAD] response", responsePayload);
-
-    return res.status(201).json(responsePayload);
-  } catch (err) {
-    console.error("Failed to save asset metadata", err);
-    return res.status(500).json({ error: "Failed to save asset metadata" });
-  }
-});
+router.post("/assets/upload", requireCmsContentAccess, async (req, res) =>
+  res.status(410).json({
+    error: "Local asset uploads are disabled. Use R2 upload-url/confirm-upload or upload-image.",
+  }),
+);
 
 router.post(
   "/courses/:courseId/lessons/:lessonId/assets/upload-image",
@@ -5003,16 +5005,27 @@ router.post(
 
     const { fileName, mimeType, sizeBytes, kind } = req.body || {};
     const numericSize = Number(sizeBytes);
-    const sanitizedKind = sanitizeAssetKind(kind || getAssetKind(mimeType));
+    const normalizedMimeType = normalizeContentType(mimeType);
+    const derivedKind = getAssetKind(normalizedMimeType);
+    const sanitizedKind = sanitizeAssetKind(kind || derivedKind);
 
-    if (!fileName || !mimeType || !Number.isFinite(numericSize) || numericSize <= 0) {
+    if (!fileName || !normalizedMimeType || !Number.isFinite(numericSize) || numericSize <= 0) {
       return res.status(400).json({ error: "fileName, mimeType and sizeBytes are required" });
     }
-    if (!ALLOWED_MIME_TYPES.has(mimeType) || !isValidAssetKind(sanitizedKind)) {
+    if (!PRESIGNED_UPLOAD_MIME_TYPES.has(normalizedMimeType) || !isValidAssetKind(sanitizedKind)) {
       return res.status(400).json({ error: "Unsupported file type" });
     }
-    if (numericSize > getMaxUploadSizeForMime(mimeType)) {
-      return res.status(413).json({ error: getUploadSizeError(mimeType) });
+    if (IMAGE_MIME_TYPES.includes(normalizedMimeType)) {
+      return res.status(400).json({ error: "Images must be uploaded through the image processing endpoint" });
+    }
+    if (sanitizedKind !== derivedKind) {
+      return res.status(400).json({ error: "Asset kind does not match file type" });
+    }
+    if (!isFileExtensionAllowedForMime(fileName, normalizedMimeType)) {
+      return res.status(400).json({ error: "File extension does not match file type" });
+    }
+    if (numericSize > getMaxUploadSizeForMime(normalizedMimeType)) {
+      return res.status(413).json({ error: getUploadSizeError(normalizedMimeType) });
     }
 
     try {
@@ -5035,13 +5048,13 @@ router.post(
         courseId: req.courseContext.courseId,
         lessonId: parsedLessonId.data,
         kind: sanitizedKind,
-        mimeType,
+        mimeType: normalizedMimeType,
         originalName: fileName,
       });
       const storage = getStorageProvider("r2");
       const uploadUrl = await storage.createUploadUrl({
         key: storageKey,
-        mimeType,
+        mimeType: normalizedMimeType,
         sizeBytes: numericSize,
         expiresIn: R2_ASSET_UPLOAD_TTL_SECONDS,
       });
@@ -5075,7 +5088,9 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
   const parsedCourseId = uuidSchema.safeParse(courseId);
   const parsedLessonId = uuidSchema.safeParse(lessonId);
   const numericSize = Number(sizeBytes);
-  const sanitizedKind = sanitizeAssetKind(kind || getAssetKind(mimeType));
+  const normalizedMimeType = normalizeContentType(mimeType);
+  const derivedKind = getAssetKind(normalizedMimeType);
+  const sanitizedKind = sanitizeAssetKind(kind || derivedKind);
 
   if (!parsedCourseId.success || !parsedLessonId.success) {
     return res.status(400).json({ error: "courseId and lessonId must be valid UUIDs" });
@@ -5083,14 +5098,23 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
   if (!storageKey || typeof storageKey !== "string" || storageKey.includes("..")) {
     return res.status(400).json({ error: "storageKey is required" });
   }
-  if (!mimeType || !ALLOWED_MIME_TYPES.has(mimeType) || !isValidAssetKind(sanitizedKind)) {
+  if (!normalizedMimeType || !PRESIGNED_UPLOAD_MIME_TYPES.has(normalizedMimeType) || !isValidAssetKind(sanitizedKind)) {
     return res.status(400).json({ error: "Unsupported file type" });
+  }
+  if (IMAGE_MIME_TYPES.includes(normalizedMimeType)) {
+    return res.status(400).json({ error: "Images must be uploaded through the image processing endpoint" });
+  }
+  if (sanitizedKind !== derivedKind) {
+    return res.status(400).json({ error: "Asset kind does not match file type" });
+  }
+  if (!isFileExtensionAllowedForMime(originalName || storageKey, normalizedMimeType)) {
+    return res.status(400).json({ error: "File extension does not match file type" });
   }
   if (!Number.isFinite(numericSize) || numericSize <= 0) {
     return res.status(400).json({ error: "Invalid file size" });
   }
-  if (numericSize > getMaxUploadSizeForMime(mimeType)) {
-    return res.status(413).json({ error: getUploadSizeError(mimeType) });
+  if (numericSize > getMaxUploadSizeForMime(normalizedMimeType)) {
+    return res.status(413).json({ error: getUploadSizeError(normalizedMimeType) });
   }
   if (storageProvider !== "r2") {
     return res.status(400).json({ error: "Unsupported storage provider" });
@@ -5102,6 +5126,7 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
   }
 
   const client = await pool.connect();
+  let transactionStarted = false;
   try {
     const allowed = await canEditCourse(parsedCourseId.data, req.user);
     if (!allowed) {
@@ -5124,12 +5149,43 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
     }
 
     const storage = getStorageProvider("r2");
-    const exists = await storage.objectExists({ key: storageKey });
-    if (!exists) {
-      return res.status(400).json({ error: "Uploaded object was not found" });
+    let objectHead;
+    try {
+      objectHead = await storage.headObject({ key: storageKey });
+    } catch (err) {
+      if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") {
+        return res.status(400).json({ error: "Uploaded object was not found" });
+      }
+      throw err;
+    }
+
+    const actualContentType = normalizeContentType(objectHead.ContentType);
+    const actualSize = Number(objectHead.ContentLength);
+    if (actualContentType !== normalizedMimeType) {
+      await deleteRejectedObject(storage, storageKey);
+      return res.status(400).json({ error: "Uploaded object content type does not match the requested file type" });
+    }
+    if (!Number.isFinite(actualSize) || actualSize !== numericSize) {
+      await deleteRejectedObject(storage, storageKey);
+      return res.status(400).json({ error: "Uploaded object size does not match the declared file size" });
+    }
+    if (actualSize > getMaxUploadSizeForMime(normalizedMimeType)) {
+      await deleteRejectedObject(storage, storageKey);
+      return res.status(413).json({ error: getUploadSizeError(normalizedMimeType) });
+    }
+
+    const objectBuffer = await storage.getObjectBuffer({ key: storageKey });
+    if (!hasExpectedMagicBytes(objectBuffer, normalizedMimeType)) {
+      await deleteRejectedObject(storage, storageKey);
+      return res.status(400).json({ error: "Uploaded object content does not match the declared file type" });
+    }
+    if (objectBuffer.length !== actualSize) {
+      await deleteRejectedObject(storage, storageKey);
+      return res.status(400).json({ error: "Uploaded object size could not be verified" });
     }
 
     await client.query("BEGIN");
+    transactionStarted = true;
     const { rows } = await client.query(
       `
         INSERT INTO assets (
@@ -5150,7 +5206,7 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
         "r2",
         storageKey,
         sanitizedKind,
-        mimeType,
+        normalizedMimeType,
         originalName || null,
         numericSize,
       ],
@@ -5168,6 +5224,7 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
 
     const downloadUrl = await storage.createDownloadUrl({ key: storageKey });
     await client.query("COMMIT");
+    transactionStarted = false;
 
     return res.status(201).json({
       assetId: asset.id,
@@ -5182,7 +5239,9 @@ router.post("/assets/confirm-upload", requireCmsContentAccess, async (req, res) 
       url: downloadUrl,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (transactionStarted) {
+      await client.query("ROLLBACK");
+    }
     console.error("Failed to confirm R2 asset upload", err);
     return res.status(500).json({ error: "Failed to confirm asset upload" });
   } finally {
@@ -5202,6 +5261,7 @@ router.get("/assets/:assetId/download-url", requireCmsContentAccess, async (req,
         SELECT id, storage_provider, storage_path, public_url
         FROM assets
         WHERE id = $1
+          AND deleted_at IS NULL
         LIMIT 1
       `,
       [parsedAssetId.data],
@@ -5224,66 +5284,12 @@ router.get("/assets/:assetId/download-url", requireCmsContentAccess, async (req,
   }
 });
 
-router.post("/assets/register", requireCmsContentAccess, async (req, res) => {
-  const {
-    storagePath,
-    publicUrl,
-    kind,
-    mimeType,
-    originalName,
-    sizeBytes,
-    storageProvider = "supabase",
-  } = req.body || {};
-
-  if (!storagePath || !publicUrl || !kind || !mimeType || !sizeBytes) {
-    return res.status(400).json({ error: "Missing asset metadata" });
-  }
-
-  const sanitizedKind = sanitizeAssetKind(kind);
-  try {
-    const { rows } = await pool.query(
-      `
-        INSERT INTO assets (
-          uploaded_by_user_id,
-          storage_provider,
-          storage_path,
-          public_url,
-          kind,
-          mime_type,
-          original_name,
-          size_bytes
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        RETURNING id, storage_path, public_url, kind, mime_type, original_name, size_bytes, created_at
-      `,
-      [
-        req.user.id,
-        storageProvider,
-        storagePath,
-        publicUrl,
-        sanitizedKind,
-        mimeType,
-        originalName || null,
-        sizeBytes,
-      ],
-    );
-    const asset = rows[0];
-    return res.status(201).json({
-      assetId: asset.id,
-      storagePath: asset.storage_path,
-      publicUrl: asset.public_url,
-      kind: asset.kind,
-      mimeType: asset.mime_type,
-      originalName: asset.original_name,
-      sizeBytes: asset.size_bytes,
-      createdAt: asset.created_at,
-      url: asset.public_url,
-    });
-  } catch (err) {
-    console.error("Failed to register asset metadata", err);
-    return res.status(500).json({ error: "Failed to register asset metadata" });
-  }
-});
+router.post("/assets/register", requireCmsContentAccess, async (req, res) =>
+  res.status(410).json({
+    error:
+      "Direct asset registration is disabled. Use R2 upload-url and confirm-upload instead.",
+  }),
+);
 
 router.get("/assets", requireCmsContentAccess, async (req, res) => {
   const queryKind = typeof req.query.kind === "string" ? req.query.kind : null;
@@ -5294,7 +5300,7 @@ router.get("/assets", requireCmsContentAccess, async (req, res) => {
     return res.status(400).json({ error: "Invalid asset kind filter" });
   }
 
-  const filters = ["uploaded_by_user_id = $1"];
+  const filters = ["uploaded_by_user_id = $1", "deleted_at IS NULL"];
   const values = [req.user.id];
 
   if (queryKind) {

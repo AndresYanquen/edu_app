@@ -1,4 +1,3 @@
-const dotenv = require('dotenv');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -7,8 +6,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const swaggerUi = require('swagger-ui-express');
 const rateLimit = require('express-rate-limit');
-
-dotenv.config();
+const env = require('./config/env');
 
 const authRoutes = require('./routes/auth');
 const meRoutes = require('./routes/me');
@@ -32,37 +30,39 @@ app.set('trust proxy', 1);
 
 const uploadsDir = path.join(process.cwd(), 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
-app.use('/uploads', express.static(uploadsDir));
+if (env.ENABLE_PUBLIC_LOCAL_UPLOADS === 'true' && env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(uploadsDir));
+}
 
 const corsOptions = {
-  origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  origin: env.FRONTEND_ORIGIN,
   credentials: true,
 };
 
 app.use(cors(corsOptions));
 app.use(cookieParser());
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: process.env.URLENCODED_BODY_LIMIT || '1mb' }));
+app.use(express.json({ limit: env.JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: env.URLENCODED_BODY_LIMIT }));
 
 const authLimiter = rateLimit({
-  windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 30),
+  windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+  max: env.AUTH_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many authentication requests, try again later' },
 });
-const authRateLimitDisabled = process.env.NODE_ENV !== 'production';
+const authRateLimitDisabled = env.NODE_ENV !== 'production';
 
 const adminBulkInviteLimiter = rateLimit({
-  windowMs: Number(process.env.ADMIN_BULK_INVITE_RATE_LIMIT_WINDOW_MS || 60 * 1000),
-  max: Number(process.env.ADMIN_BULK_INVITE_RATE_LIMIT_MAX || 5),
+  windowMs: env.ADMIN_BULK_INVITE_RATE_LIMIT_WINDOW_MS,
+  max: env.ADMIN_BULK_INVITE_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many bulk invite requests, try again later' },
 });
 
 
-if (process.env.NODE_ENV !== 'test') {
+if (env.NODE_ENV !== 'test') {
   app.use(morgan(':method :url :status :response-time ms'));
 }
 
@@ -92,10 +92,10 @@ app.use(quizzesRoutes);
 app.use(liveSessionRoutes);
 app.use(instructorRoutes);
 
-const PORT = process.env.PORT || 3000;
-const REQUEST_TIMEOUT_MS = Number(process.env.SERVER_REQUEST_TIMEOUT_MS || 15_000);
-const HEADERS_TIMEOUT_MS = Number(process.env.SERVER_HEADERS_TIMEOUT_MS || 10_000);
-const KEEP_ALIVE_TIMEOUT_MS = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS || 5_000);
+const PORT = env.PORT;
+const REQUEST_TIMEOUT_MS = env.SERVER_REQUEST_TIMEOUT_MS;
+const HEADERS_TIMEOUT_MS = env.SERVER_HEADERS_TIMEOUT_MS;
+const KEEP_ALIVE_TIMEOUT_MS = env.SERVER_KEEP_ALIVE_TIMEOUT_MS;
 
 const server = app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);

@@ -37,6 +37,21 @@ const getGlobalRolesForUser = async (userId, client = pool) => {
   return rows.map((row) => row.name);
 };
 
+const bumpUserTokenVersion = async (client, userId) => {
+  if (!userId) {
+    return;
+  }
+
+  await client.query(
+    `
+      UPDATE users
+      SET token_version = COALESCE(token_version, 0) + 1
+      WHERE id = $1
+    `,
+    [userId],
+  );
+};
+
 const grantGlobalRoles = async (client, userId, roleNames = []) => {
   if (!userId || !roleNames.length) {
     return;
@@ -56,7 +71,7 @@ const grantGlobalRoles = async (client, userId, roleNames = []) => {
     index += 2;
   }
 
-  await client.query(
+  const result = await client.query(
     `
       INSERT INTO user_roles (user_id, role_id)
       VALUES ${placeholders.join(', ')}
@@ -64,6 +79,10 @@ const grantGlobalRoles = async (client, userId, roleNames = []) => {
     `,
     values,
   );
+
+  if ((result.rowCount || 0) > 0) {
+    await bumpUserTokenVersion(client, userId);
+  }
 };
 
 const hasCourseRole = async (userId, courseId, allowedRoles = [], client = pool) => {
@@ -215,7 +234,7 @@ const setCourseStaffRoles = async (client, courseId, userId, roles = []) => {
     return [];
   }
 
-  await client.query(
+  const result = await client.query(
     `
       INSERT INTO course_user_roles (course_id, user_id, role_id)
       VALUES ${placeholders.join(', ')}
@@ -223,6 +242,10 @@ const setCourseStaffRoles = async (client, courseId, userId, roles = []) => {
     `,
     values,
   );
+
+  if ((result.rowCount || 0) > 0) {
+    await bumpUserTokenVersion(client, userId);
+  }
 
   return roles;
 };
@@ -242,7 +265,11 @@ const removeCourseStaffRole = async (client, courseId, userId, roleName) => {
     `,
     [courseId, userId, roleName],
   );
-  return result.rowCount || 0;
+  const removed = result.rowCount || 0;
+  if (removed > 0) {
+    await bumpUserTokenVersion(client, userId);
+  }
+  return removed;
 };
 
 const isGroupTeacher = async (userId, groupId, client = pool) => {
@@ -282,6 +309,7 @@ const isCourseGroupTeacher = async (userId, courseId, client = pool) => {
 
 module.exports = {
   STAFF_ROLES,
+  bumpUserTokenVersion,
   getGlobalRolesForUser,
   grantGlobalRoles,
   hasCourseRole,

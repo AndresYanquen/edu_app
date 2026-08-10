@@ -1,5 +1,6 @@
 const express = require("express");
 const pool = require("../db");
+const env = require("../config/env");
 const auth = require("../middleware/auth");
 const { requireGlobalRoleAny, hasGlobalRole } = require("../middleware/roles");
 const { uuidSchema, formatZodError } = require("../utils/validators");
@@ -47,7 +48,7 @@ const mapCoursePostRow = (row) => ({
 const getR2StorageKeyFromReference = (value = "") => {
   const raw = String(value || "").trim();
   if (!raw) return null;
-  if (/^courses\/[^/]+\/lessons\/[^/]+\//.test(raw)) {
+  if (/^(courses\/|admin\/images\/|migrated\/assets\/|demo-assets\/)/.test(raw)) {
     return raw;
   }
 
@@ -58,7 +59,7 @@ const getR2StorageKeyFromReference = (value = "") => {
     }
 
     const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
-    const bucket = process.env.R2_BUCKET;
+    const bucket = env.R2_BUCKET;
     if (bucket && pathname.startsWith(`${bucket}/`)) {
       return pathname.slice(bucket.length + 1);
     }
@@ -1337,6 +1338,7 @@ router.get(
           FROM lesson_assets la
           JOIN assets a ON a.id = la.asset_id
           WHERE la.lesson_id = ANY($1::uuid[])
+            AND a.deleted_at IS NULL
           ORDER BY a.created_at ASC
         `,
           [lessonIds],

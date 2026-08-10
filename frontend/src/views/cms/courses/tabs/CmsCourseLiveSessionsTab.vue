@@ -53,7 +53,7 @@
           @regenerate="openRegenerateSeriesDialog"
           @delete-series="handleLiveSeriesDelete"
         />
-        <div v-if="liveSessionsReadOnly" class="readonly-live-sessions">
+        <div v-if="enrollmentOnlyMode" class="readonly-live-sessions">
           <div class="readonly-toolbar">
             <div>
               <h3>Sesiones programadas</h3>
@@ -163,6 +163,7 @@
           :teachers="liveSessionTeachers"
           :range="liveSessionRange"
           :read-only="liveSessionsReadOnly"
+          :can-take-attendance="instructorOnlyMode || !liveSessionsReadOnly"
           :bulk-deleting="liveSessionsBulkDeleting"
           @refresh="handleLiveSessionsRefresh"
           @edit="openLiveSessionEdit"
@@ -184,6 +185,8 @@ const builder = inject(cmsCourseBuilderContextKey);
 
 const {
   liveSessionGroupId,
+  enrollmentOnlyMode,
+  instructorOnlyMode,
   liveSessionsReadOnly,
   liveSessionGroupOptions,
   liveSessionLoading,

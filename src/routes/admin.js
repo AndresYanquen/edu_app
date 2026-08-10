@@ -4,6 +4,7 @@ const path = require('path');
 const multer = require('multer');
 const { randomUUID } = require('crypto');
 const pool = require('../db');
+const env = require('../config/env');
 const auth = require('../middleware/auth');
 const { requireGlobalRoleAny, hasGlobalRole } = require('../middleware/roles');
 const {
@@ -25,10 +26,12 @@ const {
   ensureCourseExists,
   hasCourseRole,
   grantGlobalRoles,
+  bumpUserTokenVersion,
   getGlobalRolesForUser,
 } = require('../utils/roleService');
 const { THEME_SETTING_KEY, normalizeTheme } = require('../utils/themeSettings');
 const { getStorageProvider } = require('../services/storage');
+const { enqueueAssetObjectDelete, softDeleteAsset } = require('../utils/assetDeletion');
 
 const router = express.Router();
 
@@ -43,7 +46,7 @@ const mbToBytes = (value, fallback) => {
   const mb = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   return mb * 1024 * 1024;
 };
-const MAX_IMAGE_UPLOAD_SIZE = mbToBytes(process.env.MAX_IMAGE_UPLOAD_MB, 10);
+const MAX_IMAGE_UPLOAD_SIZE = mbToBytes(env.MAX_IMAGE_UPLOAD_MB, 10);
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const ALLOWED_ROLES = ['student', 'instructor', 'content_editor', 'enrollment_manager'];
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -51,18 +54,8 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const imageUploadStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const extension = path.extname(file.originalname) || '';
-    cb(null, `${randomUUID()}${extension}`);
-  },
-});
-
 const uploadImage = multer({
-  storage: imageUploadStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMAGE_UPLOAD_SIZE },
   fileFilter: (req, file, cb) => {
     if (IMAGE_MIME_TYPES.has(file.mimetype)) {
@@ -233,10 +226,53 @@ const IMAGE_URL_REGEX =
   /https?:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?|\/uploads\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?|courses\/[^\s"'<>]+\/lessons\/[^\s"'<>]+\/images\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)/gi;
 const R2_HOST_SUFFIX = '.r2.cloudflarestorage.com';
 
+const sanitizeObjectFileName = (value = '') =>
+  String(value)
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '-')
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]/g, '')
+    .slice(0, 120) || 'image';
+
+const getImageExtension = (mimeType, originalName = '') => {
+  const existing = path.extname(originalName).toLowerCase();
+  if (existing && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(existing)) return existing;
+  if (mimeType === 'image/jpeg') return '.jpg';
+  if (mimeType === 'image/png') return '.png';
+  if (mimeType === 'image/webp') return '.webp';
+  if (mimeType === 'image/gif') return '.gif';
+  return '';
+};
+
+const buildR2ImageKey = ({ courseId = 'admin', lessonId = null, sourceType = 'images', file } = {}) => {
+  const safeName = sanitizeObjectFileName(file?.originalname || 'image');
+  const extension = getImageExtension(file?.mimetype, safeName);
+  const baseName = extension && safeName.endsWith(extension) ? safeName.slice(0, -extension.length) : safeName;
+  if (lessonId && courseId && courseId !== 'admin') {
+    return `courses/${courseId}/lessons/${lessonId}/images/${randomUUID()}-${baseName}${extension}`;
+  }
+  return `admin/images/${sourceType}/${randomUUID()}-${baseName}${extension}`;
+};
+
+const uploadImageBufferToR2 = async ({ key, file }) => {
+  const storage = getStorageProvider('r2');
+  await storage.putObject({
+    key,
+    body: file.buffer,
+    mimeType: file.mimetype,
+    metadata: {
+      originalName: file.originalname || 'image',
+    },
+  });
+  return storage.createDownloadUrl({ key });
+};
+
 const getR2StorageKeyFromReference = (value = '') => {
   const raw = String(value || '').trim();
   if (!raw) return null;
-  if (/^courses\/[^/]+\/lessons\/[^/]+\//.test(raw)) {
+  if (/^(courses\/|admin\/images\/|migrated\/assets\/|demo-assets\/)/.test(raw)) {
     return raw;
   }
 
@@ -247,7 +283,7 @@ const getR2StorageKeyFromReference = (value = '') => {
     }
 
     const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-    const bucket = process.env.R2_BUCKET;
+    const bucket = env.R2_BUCKET;
     if (bucket && pathname.startsWith(`${bucket}/`)) {
       return pathname.slice(bucket.length + 1);
     }
@@ -475,7 +511,8 @@ router.get('/images', requireAdmin, async (req, res) => {
         LEFT JOIN lessons l ON l.id = la.lesson_id
         LEFT JOIN modules m ON m.id = l.module_id
         LEFT JOIN courses c ON c.id = m.course_id
-        WHERE a.kind = 'image' OR a.mime_type LIKE 'image/%'
+        WHERE a.deleted_at IS NULL
+          AND (a.kind = 'image' OR a.mime_type LIKE 'image/%')
         GROUP BY a.id, uploader.email
       `,
     );
@@ -692,10 +729,30 @@ router.post('/images/lesson-cover/:lessonId/replace', requireAdmin, async (req, 
     return res.status(400).json({ error: 'File is required' });
   }
 
-  const filename = req.file.filename;
-  const publicUrl = `/uploads/${filename}`;
-
   try {
+    const lessonRes = await pool.query(
+      `
+        SELECT l.id, m.course_id
+        FROM lessons l
+        JOIN modules m ON m.id = l.module_id
+        WHERE l.id = $1
+        LIMIT 1
+      `,
+      [lessonId],
+    );
+    const lesson = lessonRes.rows[0];
+    if (!lesson) {
+      return res.status(404).json({ error: 'Lesson not found' });
+    }
+
+    const storagePath = buildR2ImageKey({
+      courseId: lesson.course_id,
+      lessonId,
+      sourceType: 'lesson-cover',
+      file: req.file,
+    });
+    const signedUrl = await uploadImageBufferToR2({ key: storagePath, file: req.file });
+
     const { rows } = await pool.query(
       `
         UPDATE lessons
@@ -704,7 +761,7 @@ router.post('/images/lesson-cover/:lessonId/replace', requireAdmin, async (req, 
         WHERE id = $1
         RETURNING id, title, cover_image_url
       `,
-      [lessonId, publicUrl],
+      [lessonId, storagePath],
     );
 
     if (!rows[0]) {
@@ -719,9 +776,9 @@ router.post('/images/lesson-cover/:lessonId/replace', requireAdmin, async (req, 
       mimeType: req.file.mimetype,
       originalName: req.file.originalname,
       sizeBytes: req.file.size,
-      storageProvider: 'local',
-      storagePath: path.posix.join('uploads', filename),
-      url: publicUrl,
+      storageProvider: 'r2',
+      storagePath,
+      url: signedUrl,
     });
   } catch (err) {
     console.error('Failed to replace lesson cover image', err);
@@ -754,11 +811,34 @@ router.post('/images/reference/replace', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'oldUrl is required' });
   }
 
-  const filename = req.file.filename;
-  const storagePath = path.posix.join('uploads', filename);
-  const publicUrl = `/uploads/${filename}`;
-
   try {
+    let storagePath;
+    if (sourceType === 'lesson_content') {
+      const lessonRes = await pool.query(
+        `
+          SELECT l.id, m.course_id
+          FROM lessons l
+          JOIN modules m ON m.id = l.module_id
+          WHERE l.id = $1
+          LIMIT 1
+        `,
+        [entityId],
+      );
+      const lesson = lessonRes.rows[0];
+      if (!lesson) {
+        return res.status(404).json({ error: 'Image reference not found' });
+      }
+      storagePath = buildR2ImageKey({
+        courseId: lesson.course_id,
+        lessonId: entityId,
+        sourceType,
+        file: req.file,
+      });
+    } else {
+      storagePath = buildR2ImageKey({ sourceType, file: req.file });
+    }
+    const signedUrl = await uploadImageBufferToR2({ key: storagePath, file: req.file });
+
     let result;
     if (sourceType === 'lesson_content') {
       result = await pool.query(
@@ -782,7 +862,7 @@ router.post('/images/reference/replace', requireAdmin, async (req, res) => {
             )
           RETURNING id
         `,
-        [entityId, oldUrl, publicUrl],
+        [entityId, oldUrl, storagePath],
       );
     } else if (sourceType === 'course_post') {
       result = await pool.query(
@@ -794,7 +874,7 @@ router.post('/images/reference/replace', requireAdmin, async (req, res) => {
             AND body LIKE '%' || $2 || '%'
           RETURNING id
         `,
-        [entityId, oldUrl, publicUrl],
+        [entityId, oldUrl, storagePath],
       );
     } else {
       result = await pool.query(
@@ -805,7 +885,7 @@ router.post('/images/reference/replace', requireAdmin, async (req, res) => {
             AND body LIKE '%' || $2 || '%'
           RETURNING id
         `,
-        [entityId, oldUrl, publicUrl],
+        [entityId, oldUrl, storagePath],
       );
     }
 
@@ -814,16 +894,16 @@ router.post('/images/reference/replace', requireAdmin, async (req, res) => {
     }
 
     return res.json({
-      id: `${sourceType}:${entityId}:${publicUrl}`,
+      id: `${sourceType}:${entityId}:${storagePath}`,
       sourceType,
       entityId,
       kind: 'image',
       mimeType: req.file.mimetype,
       originalName: req.file.originalname,
       sizeBytes: req.file.size,
-      storageProvider: 'local',
+      storageProvider: 'r2',
       storagePath,
-      url: publicUrl,
+      url: signedUrl,
     });
   } catch (err) {
     console.error('Failed to replace image reference', err);
@@ -973,9 +1053,6 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'File is required' });
   }
 
-  const filename = req.file.filename;
-  const storagePath = path.posix.join('uploads', filename);
-  const publicUrl = `/uploads/${filename}`;
   const client = await pool.connect();
 
   try {
@@ -983,10 +1060,11 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
 
     const currentRes = await client.query(
       `
-        SELECT id, public_url, storage_path
+        SELECT id, public_url, storage_provider, storage_path
         FROM assets
         WHERE id = $1
           AND (kind = 'image' OR mime_type LIKE 'image/%')
+          AND deleted_at IS NULL
         FOR UPDATE
       `,
       [assetId],
@@ -997,25 +1075,30 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
 
+    const storagePath = buildR2ImageKey({
+      sourceType: `asset-${assetId}`,
+      file: req.file,
+    });
+    const signedUrl = await uploadImageBufferToR2({ key: storagePath, file: req.file });
+
     await client.query(
       `
         UPDATE assets
         SET
           uploaded_by_user_id = $2,
-          storage_provider = 'local',
+          storage_provider = 'r2',
           storage_path = $3,
-          public_url = $4,
+          public_url = NULL,
           kind = 'image',
-          mime_type = $5,
-          original_name = $6,
-          size_bytes = $7
+          mime_type = $4,
+          original_name = $5,
+          size_bytes = $6
         WHERE id = $1
       `,
       [
         assetId,
         req.user.id,
         storagePath,
-        publicUrl,
         req.file.mimetype,
         req.file.originalname,
         req.file.size,
@@ -1023,7 +1106,7 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
     );
 
     const currentReference = current.public_url || current.storage_path;
-    if (currentReference && currentReference !== publicUrl) {
+    if (currentReference && currentReference !== storagePath) {
       await client.query(
         `
           UPDATE lessons
@@ -1043,7 +1126,7 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
             OR content_html LIKE '%' || $1 || '%'
             OR content_json::text LIKE '%' || $1 || '%'
         `,
-        [currentReference, publicUrl],
+        [currentReference, storagePath],
       );
       await client.query(
         `
@@ -1052,7 +1135,7 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
               updated_at = now()
           WHERE body LIKE '%' || $1 || '%'
         `,
-        [currentReference, publicUrl],
+        [currentReference, storagePath],
       );
       await client.query(
         `
@@ -1060,9 +1143,11 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
           SET body = replace(body, $1, $2)
           WHERE body LIKE '%' || $1 || '%'
         `,
-        [currentReference, publicUrl],
+        [currentReference, storagePath],
       );
     }
+
+    await enqueueAssetObjectDelete(client, current, { assetId });
 
     await client.query('COMMIT');
     return res.json({
@@ -1072,9 +1157,9 @@ router.post('/images/:assetId/replace', requireAdmin, async (req, res) => {
       mimeType: req.file.mimetype,
       originalName: req.file.originalname,
       sizeBytes: req.file.size,
-      storageProvider: 'local',
+      storageProvider: 'r2',
       storagePath,
-      url: publicUrl,
+      url: signedUrl,
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1098,10 +1183,11 @@ router.delete('/images/:assetId', requireAdmin, async (req, res) => {
 
     const currentRes = await client.query(
       `
-        SELECT id, public_url, storage_path
+        SELECT id, public_url, storage_provider, storage_path
         FROM assets
         WHERE id = $1
           AND (kind = 'image' OR mime_type LIKE 'image/%')
+          AND deleted_at IS NULL
         FOR UPDATE
       `,
       [assetId],
@@ -1156,7 +1242,7 @@ router.delete('/images/:assetId', requireAdmin, async (req, res) => {
     }
 
     await client.query('DELETE FROM lesson_assets WHERE asset_id = $1', [assetId]);
-    await client.query('DELETE FROM assets WHERE id = $1', [assetId]);
+    await softDeleteAsset(client, assetId, req.user.id);
     await client.query('COMMIT');
 
     return res.json({ deleted: true });
@@ -1209,7 +1295,8 @@ const updateUserActivation = async (client, userId, isActive) => {
     `
       UPDATE users
       SET is_active = $1,
-          status = $2
+          status = $2,
+          token_version = COALESCE(token_version, 0) + 1
       WHERE id = $3
     `,
     [isActive, isActive ? 'active' : 'suspended', userId],
@@ -1251,7 +1338,7 @@ router.post('/users', requireAdmin, async (req, res) => {
 
     await client.query('COMMIT');
 
-    const activationLink = `${process.env.FRONTEND_ORIGIN || 'http://localhost:5173'}/activate?token=${invite.rawToken}`;
+    const activationLink = `${env.FRONTEND_ORIGIN}/activate?token=${invite.rawToken}`;
 
     return res.status(201).json({
       id: user.id,
@@ -1271,6 +1358,7 @@ router.post('/users', requireAdmin, async (req, res) => {
 
 router.get('/users', requireAdmin, async (req, res) => {
   const roleFilter = (req.query.role || '').trim();
+  const statusFilter = (req.query.status || '').trim().toLowerCase();
   const search = (req.query.search || '').trim().toLowerCase();
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 20, 1), 100);
@@ -1291,6 +1379,14 @@ router.get('/users', requireAdmin, async (req, res) => {
             AND r.name = $${params.length}
         )
       `);
+    }
+
+    if (statusFilter === 'active') {
+      whereParts.push('u.is_active = true AND COALESCE(u.must_set_password, false) = false');
+    } else if (statusFilter === 'inactive') {
+      whereParts.push('u.is_active = false');
+    } else if (statusFilter === 'pending') {
+      whereParts.push('u.is_active = true AND COALESCE(u.must_set_password, false) = true');
     }
 
     if (search) {
@@ -1379,14 +1475,31 @@ router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await client.query('UPDATE users SET must_set_password = true WHERE id = $1', [userId]);
+    await client.query(
+      `
+        UPDATE users
+        SET must_set_password = true,
+            token_version = COALESCE(token_version, 0) + 1
+        WHERE id = $1
+      `,
+      [userId],
+    );
+    await client.query(
+      `
+        UPDATE refresh_tokens
+        SET revoked_at = now()
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+      `,
+      [userId],
+    );
     await client.query('UPDATE user_invites SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [userId]);
 
     const invite = await createInvite(client, userId);
 
     await client.query('COMMIT');
 
-    const activationLink = `${process.env.FRONTEND_ORIGIN || 'http://localhost:5173'}/activate?token=${invite.rawToken}`;
+    const activationLink = `${env.FRONTEND_ORIGIN}/activate?token=${invite.rawToken}`;
     return res.json({ id: userId, activationLink });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1436,6 +1549,15 @@ router.post('/users/:id/deactivate', requireAdmin, async (req, res) => {
     }
 
     await updateUserActivation(client, userId, false);
+    await client.query(
+      `
+        UPDATE refresh_tokens
+        SET revoked_at = now()
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+      `,
+      [userId],
+    );
     const updated = await fetchManagedUser(client, userId);
     await client.query('COMMIT');
     return res.json(buildUserResponse(updated));
@@ -1769,9 +1891,7 @@ router.post('/users/bulk-invite', requireBulkInviteAccess, async (req, res) => {
           const invite = await createInvite(client, userId, expiresDays);
           await client.query('COMMIT');
 
-          result.activationLink = `${
-            process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
-          }/activate?token=${invite.rawToken}`;
+          result.activationLink = `${env.FRONTEND_ORIGIN}/activate?token=${invite.rawToken}`;
           pushResult('created');
         } catch (err) {
           await client.query('ROLLBACK');

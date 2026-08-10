@@ -25,6 +25,10 @@ export const getSessionAttendance = (sessionId) =>
   unwrap(api.get(`/live-sessions/${sessionId}/attendance`));
 export const saveSessionAttendance = (sessionId, payload = {}) =>
   unwrap(api.put(`/live-sessions/${sessionId}/attendance`, payload));
+export const previewZoomAttendanceImport = (sessionId, payload = {}) =>
+  unwrap(api.post(`/live-sessions/${sessionId}/attendance/import/zoom/preview`, payload));
+export const importZoomAttendance = (sessionId, payload = {}) =>
+  unwrap(api.post(`/live-sessions/${sessionId}/attendance/import/zoom`, payload));
 export const deleteGroupSessions = (groupId, params = {}) =>
   unwrap(api.delete(`/groups/${groupId}/live-sessions`, { params }));
 export const deleteSeries = (seriesId) =>
@@ -48,6 +52,8 @@ export default {
   updateSession,
   getSessionAttendance,
   saveSessionAttendance,
+  previewZoomAttendanceImport,
+  importZoomAttendance,
   deleteGroupSessions,
   deleteSeries,
   listGroupSessions,

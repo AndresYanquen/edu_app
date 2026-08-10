@@ -64,6 +64,7 @@ const loadSubmission = async (lessonId, userId) => {
       FROM lesson_submission_files lsf
       JOIN assets a ON a.id = lsf.asset_id
       WHERE lsf.submission_id = $1
+        AND a.deleted_at IS NULL
       ORDER BY lsf.created_at ASC
     `,
     [submission.id],
@@ -219,7 +220,7 @@ router.post(
 
       if (assetIds.length) {
         const assetsRes = await client.query(
-          "SELECT id FROM assets WHERE id = ANY($1::uuid[])",
+          "SELECT id FROM assets WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL",
           [assetIds],
         );
         if (assetsRes.rows.length !== assetIds.length) {

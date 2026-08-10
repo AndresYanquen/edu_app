@@ -17,7 +17,7 @@ const ids = {
 };
 
 const imageUrl =
-  'https://eokbwjltwnueblyfkrlc.supabase.co/storage/v1/object/public/Academy_storage/courses/3ebd564c-f71c-49ea-ad32-84fc1684ab9a/lessons/bd1a3329-38fe-4943-a4ab-ba2736a9dc4d/images/1776288190948-test-1.png';
+  'courses/3ebd564c-f71c-49ea-ad32-84fc1684ab9a/lessons/bd1a3329-38fe-4943-a4ab-ba2736a9dc4d/images/1776288190948-test-1.png';
 
 const placementText =
   'Con el fin de garantizar una correcta realización del Test de Nivelación, se solicita leer previamente el documento “Guía de uso Leah – GO4MORE”, en el cual se detallan los pasos y recomendaciones necesarias para el desarrollo de la actividad.\n\n\n\n🔗 Haga clic aquí para acceder al registro del Test de Nivelación.\n\n\n\n⚠️ Nota importante: Si aún no ha presentado el Test de Nivelación, no marque esta actividad como leída, ya que esto puede afectar el seguimiento académico correspondiente.';

@@ -9,7 +9,8 @@
     "seed": "npx knex seed:run",
     "db:reset": "npx knex migrate:rollback --all && npx knex migrate:latest && npx knex seed:run",
     "test": "node --test test/enrollment-manager-authorization.test.js",
-    "quiz:verify": "node scripts/quiz-verification.js"
+    "quiz:verify": "node scripts/quiz-verification.js",
+    "asset:gc": "node scripts/asset-gc.js"
   },
   "keywords": [],
   "author": "",
