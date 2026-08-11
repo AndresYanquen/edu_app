@@ -52,6 +52,10 @@ const {
   assignStudentToCourseGroup,
 } = require("../utils/groupMembership");
 const { softDeleteOrphanAssets } = require("../utils/assetDeletion");
+const {
+  recordStudentAuditEvent,
+  recordStudentGroupChange,
+} = require("../services/studentAudit");
 
 const CMS_GLOBAL_ROLES = [
   "admin",
@@ -653,6 +657,23 @@ const sendGroupMembershipError = (res, err, fallbackMessage) => {
     return res.status(400).json({ error: err.message });
   }
   return res.status(500).json({ error: fallbackMessage });
+};
+
+const fetchCurrentStudentGroupId = async (client, courseId, studentId) => {
+  const { rows } = await client.query(
+    `
+      SELECT gs.group_id
+      FROM group_students gs
+      JOIN groups g ON g.id = gs.group_id
+      WHERE g.course_id = $1
+        AND gs.user_id = $2
+        AND gs.status = 'active'
+      ORDER BY gs.joined_at DESC
+      LIMIT 1
+    `,
+    [courseId, studentId],
+  );
+  return rows[0]?.group_id || null;
 };
 
 const mapGroupRow = (row) => ({
@@ -4248,6 +4269,16 @@ const runBulkGroupStudentOperation = async (req, res, operation) => {
           `,
           [sourceGroupId, processable],
         );
+        for (const studentId of processable) {
+          await recordStudentGroupChange(client, {
+            courseId,
+            studentId,
+            actorUserId: req.user.id,
+            sourceGroupId,
+            targetGroupId: null,
+            metadata: { operation: "bulk_remove" },
+          });
+        }
       } else {
         await client.query(
           `
@@ -4269,6 +4300,16 @@ const runBulkGroupStudentOperation = async (req, res, operation) => {
           `,
           [targetGroupId, processable],
         );
+        for (const studentId of processable) {
+          await recordStudentGroupChange(client, {
+            courseId,
+            studentId,
+            actorUserId: req.user.id,
+            sourceGroupId: memberships.get(studentId) || null,
+            targetGroupId,
+            metadata: { operation: operation === "move" ? "bulk_move" : "bulk_assign" },
+          });
+        }
       }
       summary.processed = processable;
     }
@@ -4502,16 +4543,20 @@ router.get(
               e.user_id AS student_id,
               u.full_name,
               u.email,
+              e.status AS enrollment_status,
+              e.enrolled_at,
               assignment.group_id,
-              assignment.group_name
+              assignment.group_name,
+              assignment.schedule_text
             FROM enrollments e
             JOIN users u ON u.id = e.user_id
             LEFT JOIN LATERAL (
-              SELECT gs.group_id, g.name AS group_name
+              SELECT gs.group_id, g.name AS group_name, g.schedule_text
               FROM group_students gs
               JOIN groups g ON g.id = gs.group_id
               WHERE gs.user_id = e.user_id
                 AND g.course_id = e.course_id
+                AND gs.status = 'active'
               LIMIT 1
             ) assignment ON true
             WHERE ${whereSql}
@@ -4539,8 +4584,11 @@ router.get(
           studentId: row.student_id,
           fullName: row.full_name,
           email: row.email,
+          enrollmentStatus: row.enrollment_status,
+          enrolledAt: toTimestampString(row.enrolled_at),
           groupId: row.group_id || null,
           groupName: row.group_name || null,
+          scheduleText: row.schedule_text || null,
         })),
         page,
         pageSize,
@@ -4549,6 +4597,117 @@ router.get(
     } catch (err) {
       console.error("Failed to list enrollments", err);
       return res.status(500).json({ error: "Failed to list enrollments" });
+    }
+  },
+);
+
+router.get(
+  "/courses/:courseId/audit-events",
+  requireCourseEnrollmentRole(resolveCourseIdFromParam("courseId")),
+  async (req, res) => {
+    const courseId = req.courseContext.courseId;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = Math.min(
+      Math.max(parseInt(req.query.pageSize, 10) || 25, 1),
+      100,
+    );
+    const offset = (page - 1) * pageSize;
+    const studentId = String(req.query.studentId || "").trim();
+    const eventType = String(req.query.eventType || "").trim();
+
+    if (studentId) {
+      const parsedStudentId = uuidSchema.safeParse(studentId);
+      if (!parsedStudentId.success) {
+        return res.status(400).json({ error: "studentId must be a valid UUID" });
+      }
+    }
+
+    const whereClauses = ["sae.course_id = $1"];
+    const whereValues = [courseId];
+    if (studentId) {
+      whereValues.push(studentId);
+      whereClauses.push(`sae.student_id = $${whereValues.length}`);
+    }
+    if (eventType) {
+      whereValues.push(eventType);
+      whereClauses.push(`sae.event_type = $${whereValues.length}`);
+    }
+    const whereSql = whereClauses.join("\n              AND ");
+
+    try {
+      const [dataRes, countRes] = await Promise.all([
+        pool.query(
+          `
+            SELECT
+              sae.id,
+              sae.course_id,
+              sae.student_id,
+              student.full_name AS student_full_name,
+              student.email AS student_email,
+              sae.actor_user_id,
+              actor.full_name AS actor_full_name,
+              actor.email AS actor_email,
+              sae.event_type,
+              sae.source_group_id,
+              source_group.name AS source_group_name,
+              sae.target_group_id,
+              target_group.name AS target_group_name,
+              sae.metadata,
+              sae.created_at
+            FROM student_audit_events sae
+            JOIN users student ON student.id = sae.student_id
+            LEFT JOIN users actor ON actor.id = sae.actor_user_id
+            LEFT JOIN groups source_group ON source_group.id = sae.source_group_id
+            LEFT JOIN groups target_group ON target_group.id = sae.target_group_id
+            WHERE ${whereSql}
+            ORDER BY sae.created_at DESC, sae.id DESC
+            LIMIT $${whereValues.length + 1} OFFSET $${whereValues.length + 2}
+          `,
+          [...whereValues, pageSize, offset],
+        ),
+        pool.query(
+          `
+            SELECT COUNT(*)::int AS total
+            FROM student_audit_events sae
+            WHERE ${whereSql}
+          `,
+          whereValues,
+        ),
+      ]);
+
+      return res.json({
+        data: dataRes.rows.map((row) => ({
+          id: row.id,
+          courseId: row.course_id,
+          student: {
+            id: row.student_id,
+            fullName: row.student_full_name,
+            email: row.student_email,
+          },
+          actor: row.actor_user_id
+            ? {
+                id: row.actor_user_id,
+                fullName: row.actor_full_name,
+                email: row.actor_email,
+              }
+            : null,
+          eventType: row.event_type,
+          sourceGroup: row.source_group_id
+            ? { id: row.source_group_id, name: row.source_group_name }
+            : null,
+          targetGroup: row.target_group_id
+            ? { id: row.target_group_id, name: row.target_group_name }
+            : null,
+          metadata: row.metadata || {},
+          createdAt: toTimestampString(row.created_at),
+        })),
+        page,
+        pageSize,
+        total: countRes.rows[0]?.total || 0,
+      });
+    } catch (err) {
+      console.error("Failed to list student audit events", err);
+      return res.status(500).json({ error: "Failed to list audit events" });
     }
   },
 );
@@ -4616,6 +4775,13 @@ router.post(
       `,
         [courseId, parsed.data.studentId],
       );
+      await recordStudentAuditEvent(client, {
+        courseId,
+        studentId: parsed.data.studentId,
+        actorUserId: req.user.id,
+        eventType: "student_enrolled",
+        metadata: { operation: "single_enroll" },
+      });
 
       if (parsed.data.groupId) {
         const group = await fetchGroupById(parsed.data.groupId);
@@ -4630,6 +4796,14 @@ router.post(
           courseId,
           studentId: parsed.data.studentId,
           groupId: parsed.data.groupId,
+        });
+        await recordStudentGroupChange(client, {
+          courseId,
+          studentId: parsed.data.studentId,
+          actorUserId: req.user.id,
+          sourceGroupId: null,
+          targetGroupId: parsed.data.groupId,
+          metadata: { operation: "single_enroll" },
         });
       }
 
@@ -4656,6 +4830,7 @@ router.delete(
     try {
       await client.query("BEGIN");
       await lockStudentCourseMembership(client, courseId, studentId);
+      const sourceGroupId = await fetchCurrentStudentGroupId(client, courseId, studentId);
 
       const deleted = await client.query(
         `
@@ -4671,6 +4846,22 @@ router.delete(
       }
 
       await removeStudentFromCourseGroups(client, courseId, studentId);
+      await recordStudentGroupChange(client, {
+        courseId,
+        studentId,
+        actorUserId: req.user.id,
+        sourceGroupId,
+        targetGroupId: null,
+        metadata: { operation: "enrollment_delete" },
+      });
+      await recordStudentAuditEvent(client, {
+        courseId,
+        studentId,
+        actorUserId: req.user.id,
+        eventType: "student_unenrolled",
+        sourceGroupId,
+        metadata: { operation: "enrollment_delete" },
+      });
 
       await client.query("COMMIT");
       return res.json({ success: true });
@@ -4700,6 +4891,7 @@ router.post(
     try {
       await client.query("BEGIN");
       await lockStudentCourseMembership(client, courseId, studentId);
+      const sourceGroupId = await fetchCurrentStudentGroupId(client, courseId, studentId);
 
       const enrolled = await client.query(
         `
@@ -4731,6 +4923,14 @@ router.post(
         courseId,
         studentId,
         groupId: parsed.data.groupId || null,
+      });
+      await recordStudentGroupChange(client, {
+        courseId,
+        studentId,
+        actorUserId: req.user.id,
+        sourceGroupId,
+        targetGroupId: parsed.data.groupId || null,
+        metadata: { operation: "single_group_update" },
       });
 
       await client.query("COMMIT");
@@ -4822,6 +5022,23 @@ router.post(
             courseId,
             studentId,
             groupId: parsed.data.groupId,
+          });
+        }
+        await recordStudentAuditEvent(client, {
+          courseId,
+          studentId,
+          actorUserId: req.user.id,
+          eventType: "student_enrolled",
+          metadata: { operation: "bulk_enroll" },
+        });
+        if (parsed.data.groupId) {
+          await recordStudentGroupChange(client, {
+            courseId,
+            studentId,
+            actorUserId: req.user.id,
+            sourceGroupId: null,
+            targetGroupId: parsed.data.groupId,
+            metadata: { operation: "bulk_enroll" },
           });
         }
 

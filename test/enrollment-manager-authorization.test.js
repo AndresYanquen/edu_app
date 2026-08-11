@@ -68,6 +68,7 @@ const state = {
   candidateSearchSupportsPlatformId: false,
   liveSessionRangeParams: null,
   regenerateWindowParams: null,
+  auditEvents: [],
 };
 
 const normalizeSql = (sql) => String(sql).replace(/\s+/g, ' ').trim().toLowerCase();
@@ -328,6 +329,14 @@ const mockQuery = async (sql, values = []) => {
   }
 
   if (
+    text.includes('select gs.group_id') &&
+    text.includes('from group_students gs') &&
+    text.includes("gs.status = 'active'")
+  ) {
+    return queryResult([{ group_id: IDS.group }]);
+  }
+
+  if (
     text.includes('select gs.user_id, gs.group_id') &&
     text.includes('gs.status = \'active\'')
   ) {
@@ -344,6 +353,43 @@ const mockQuery = async (sql, values = []) => {
   if (text.startsWith('insert into enrollments')) {
     state.enrolled = true;
     return queryResult([{ user_id: IDS.student }], 1);
+  }
+
+  if (text.startsWith('insert into student_audit_events')) {
+    state.auditEvents.push({
+      courseId: values[0],
+      studentId: values[1],
+      actorUserId: values[2],
+      eventType: values[3],
+      sourceGroupId: values[4],
+      targetGroupId: values[5],
+      metadata: JSON.parse(values[6] || '{}'),
+    });
+    return queryResult([], 1);
+  }
+
+  if (text.includes('from student_audit_events sae') && text.includes('join users student')) {
+    return queryResult(state.auditEvents.map((event, index) => ({
+      id: `audit-${index}`,
+      course_id: event.courseId,
+      student_id: event.studentId,
+      student_full_name: 'Student One',
+      student_email: 'student@example.com',
+      actor_user_id: event.actorUserId,
+      actor_full_name: 'Manager One',
+      actor_email: 'manager@example.com',
+      event_type: event.eventType,
+      source_group_id: event.sourceGroupId,
+      source_group_name: event.sourceGroupId === IDS.group ? 'Group A' : null,
+      target_group_id: event.targetGroupId,
+      target_group_name: event.targetGroupId === IDS.targetGroup ? 'Group B' : 'Group A',
+      metadata: event.metadata,
+      created_at: new Date('2026-08-10T12:00:00Z'),
+    })));
+  }
+
+  if (text.includes('from student_audit_events sae') && text.includes('count(*)::int as total')) {
+    return queryResult([{ total: state.auditEvents.length }]);
   }
 
   if (text.startsWith('delete from enrollments')) {
@@ -808,6 +854,7 @@ test('assigned course live sessions remain manageable', async () => {
 });
 
 test('enroll, change group and withdraw remain allowed on an assigned course', async () => {
+  state.auditEvents = [];
   let response = await request(`/cms/courses/${IDS.course}/enroll`, {
     method: 'POST',
     body: JSON.stringify({ studentId: IDS.student, groupId: IDS.group }),
@@ -828,6 +875,16 @@ test('enroll, change group and withdraw remain allowed on an assigned course', a
   assert.equal(state.enrolled, false);
   assert.ok(state.advisoryLocks.length >= 5);
   assert.ok(state.advisoryLocks.every((key) => key === `${IDS.course}:${IDS.student}`));
+  assert.ok(state.auditEvents.some((event) => event.eventType === 'student_enrolled'));
+  assert.ok(state.auditEvents.some((event) => event.eventType === 'student_unenrolled'));
+  assert.ok(state.auditEvents.some((event) => event.eventType === 'student_group_removed'));
+
+  response = await request(`/cms/courses/${IDS.course}/audit-events?studentId=${IDS.student}`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.total, state.auditEvents.length);
+  assert.equal(body.data[0].student.id, IDS.student);
+  assert.equal(body.data[0].actor.id, IDS.manager);
 });
 
 test('operations on an unassigned course are forbidden', async () => {

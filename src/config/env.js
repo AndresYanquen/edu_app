@@ -84,6 +84,36 @@ const envSchema = z
     ZOOM_ACCOUNT_ID: z.string().optional(),
     ZOOM_CLIENT_ID: z.string().optional(),
     ZOOM_CLIENT_SECRET: z.string().optional(),
+    API_PUBLIC_ORIGIN: z.string().url('API_PUBLIC_ORIGIN must be a valid URL').optional(),
+    LEAH_SAML_ENV: z.enum(['staging', 'production']).default('staging'),
+    LEAH_SAML_ENTITY_ID: z.string().optional(),
+    LEAH_SAML_SSO_URL: z.string().url('LEAH_SAML_SSO_URL must be a valid URL').optional(),
+    LEAH_SAML_CERT_PATH: z.string().optional(),
+    LEAH_SAML_PRIVATE_KEY_PATH: z.string().optional(),
+    LEAH_SAML_STAGING_ACS: z
+      .string()
+      .url('LEAH_SAML_STAGING_ACS must be a valid URL')
+      .default('https://staging-account.leahapp.com/saml2/idpresponse'),
+    LEAH_SAML_STAGING_AUDIENCE: z
+      .string()
+      .default('urn:amazon:cognito:sp:us-east-1_T2SfG3e7x'),
+    LEAH_SAML_PRODUCTION_ACS: z
+      .string()
+      .url('LEAH_SAML_PRODUCTION_ACS must be a valid URL')
+      .default('https://account.leahapp.com/saml2/idpresponse'),
+    LEAH_SAML_PRODUCTION_AUDIENCE: z
+      .string()
+      .default('urn:amazon:cognito:sp:us-east-1_b1zQqXzwm'),
+    LEAH_SAML_TOKEN_TTL_SECONDS: integerEnv('LEAH_SAML_TOKEN_TTL_SECONDS', {
+      min: 30,
+      max: 300,
+      defaultValue: 120,
+    }),
+    LEAH_SAML_ASSERTION_TTL_SECONDS: integerEnv('LEAH_SAML_ASSERTION_TTL_SECONDS', {
+      min: 60,
+      max: 600,
+      defaultValue: 300,
+    }),
   })
   .superRefine((env, ctx) => {
     if (env.STORAGE_PROVIDER === 'r2') {

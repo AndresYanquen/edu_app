@@ -23,6 +23,7 @@ const presenceRoutes = require('./routes/presence');
 const forumsRoutes = require('./routes/forums');
 const gamificationRoutes = require('./routes/gamification');
 const submissionsRoutes = require('./routes/submissions');
+const leahRoutes = require('./integrations/leah/leah.routes');
 const swaggerDocument = require('./docs/openapi');
 
 const app = express();
@@ -91,6 +92,7 @@ app.use(progressRoutes);
 app.use(quizzesRoutes);
 app.use(liveSessionRoutes);
 app.use(instructorRoutes);
+app.use('/integrations/leah', leahRoutes);
 
 const PORT = env.PORT;
 const REQUEST_TIMEOUT_MS = env.SERVER_REQUEST_TIMEOUT_MS;

@@ -115,6 +115,8 @@ export const getAvailableStudents = (courseId) =>
   unwrap(api.get(`/cms/courses/${courseId}/students/available`));
 export const getCourseEnrollments = (courseId, params = {}) =>
   unwrap(api.get(`/cms/courses/${courseId}/enrollments`, { params }));
+export const getStudentAuditEvents = (courseId, params = {}) =>
+  unwrap(api.get(`/cms/courses/${courseId}/audit-events`, { params }));
 export const enrollStudent = (courseId, payload) =>
   unwrap(api.post(`/cms/courses/${courseId}/enroll`, payload));
 export const removeEnrollment = (courseId, studentId) =>
@@ -123,6 +125,8 @@ export const updateEnrollmentGroup = (courseId, studentId, payload) =>
   unwrap(api.post(`/cms/courses/${courseId}/enroll/${studentId}/group`, payload));
 export const bulkEnrollStudents = (courseId, payload) =>
   unwrap(api.post(`/cms/courses/${courseId}/enroll/bulk`, payload));
+export const createLeahSamlSession = () =>
+  unwrap(api.post('/integrations/leah/saml/session'));
 
 export const getGroupTeachers = groupsApi.getGroupTeachers;
 export const addGroupTeacher = groupsApi.addGroupTeacher;
@@ -173,10 +177,12 @@ export default {
   bulkRemoveGroupStudents,
   getAvailableStudents,
   getCourseEnrollments,
+  getStudentAuditEvents,
   enrollStudent,
   removeEnrollment,
   updateEnrollmentGroup,
   bulkEnrollStudents,
+  createLeahSamlSession,
   getGroupTeachers,
   addGroupTeacher,
   removeGroupTeacher,

@@ -8,7 +8,7 @@
     "migrate": "npx knex migrate:latest",
     "seed": "npx knex seed:run",
     "db:reset": "npx knex migrate:rollback --all && npx knex migrate:latest && npx knex seed:run",
-    "test": "node --test test/enrollment-manager-authorization.test.js",
+    "test": "node --test test/*.test.js",
     "quiz:verify": "node scripts/quiz-verification.js",
     "asset:gc": "node scripts/asset-gc.js"
   },
@@ -31,6 +31,7 @@
     "multer": "^1.4.5-lts.1",
     "pg": "^8.16.3",
     "rrule": "^2.8.0",
+    "samlify": "^2.13.1",
     "sharp": "^0.35.3",
     "swagger-ui-express": "^4.6.3",
     "zod": "^3.23.8"

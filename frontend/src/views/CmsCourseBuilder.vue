@@ -327,6 +327,48 @@
         />
       </template>
     </Dialog>
+    <Dialog
+      v-model:visible="showStudentAuditDialog"
+      :header="studentAuditDialogTitle"
+      modal
+      :style="{ width: '90vw', maxWidth: '900px' }"
+    >
+      <div v-if="loadingStudentAuditEvents">
+        <Skeleton height="2.5rem" class="mb-2" />
+        <Skeleton height="2.5rem" class="mb-2" />
+        <Skeleton height="2.5rem" />
+      </div>
+      <div v-else-if="!studentAuditEvents.length" class="empty-state">
+        No hay historial registrado para este estudiante.
+      </div>
+      <DataTable
+        v-else
+        :value="studentAuditEvents"
+        responsiveLayout="scroll"
+        :paginator="studentAuditTotal > studentAuditRows"
+        :rows="studentAuditRows"
+        :totalRecords="studentAuditTotal"
+        :first="studentAuditPage * studentAuditRows"
+        lazy
+        @page="onStudentAuditPage"
+      >
+        <Column header="Fecha">
+          <template #body="{ data }">{{ formatDateTime(data.createdAt) }}</template>
+        </Column>
+        <Column header="Acción">
+          <template #body="{ data }">{{ studentAuditEventLabel(data.eventType) }}</template>
+        </Column>
+        <Column header="Usuario">
+          <template #body="{ data }">{{ data.actor?.fullName || 'Sistema' }}</template>
+        </Column>
+        <Column header="Origen">
+          <template #body="{ data }">{{ data.sourceGroup?.name || '-' }}</template>
+        </Column>
+        <Column header="Destino">
+          <template #body="{ data }">{{ data.targetGroup?.name || '-' }}</template>
+        </Column>
+      </DataTable>
+    </Dialog>
     <SeriesFormDialog
       v-model:visible="liveSeriesDialogVisible"
       :loading="savingLiveSeries"
@@ -375,6 +417,7 @@ import {
   deleteLesson,
   getAvailableStudents,
   getCourseEnrollments,
+  getStudentAuditEvents,
   removeEnrollment,
   updateEnrollmentGroup,
   bulkEnrollStudents,
@@ -894,6 +937,18 @@ const groupForm = ref({
   scheduleText: '',
 });
 const loadingEnrollments = ref(true);
+const showStudentAuditDialog = ref(false);
+const studentAuditTarget = ref(null);
+const studentAuditEvents = ref([]);
+const studentAuditPage = ref(0);
+const studentAuditRows = ref(10);
+const studentAuditTotal = ref(0);
+const loadingStudentAuditEvents = ref(false);
+const studentAuditDialogTitle = computed(() =>
+  studentAuditTarget.value?.fullName
+    ? `Historial de ${studentAuditTarget.value.fullName}`
+    : 'Historial del estudiante',
+);
 const loadingGroups = ref(false);
 const showEnrollDialog = ref(false);
 const availableStudents = ref([]);
@@ -2611,6 +2666,64 @@ const updateStudentGroup = async (studentId, groupId) => {
   }
 };
 
+const studentAuditEventLabels = {
+  student_enrolled: 'Matriculado',
+  student_unenrolled: 'Retirado',
+  student_group_assigned: 'Asignado a grupo',
+  student_group_moved: 'Movido de grupo',
+  student_group_removed: 'Removido de grupo',
+  student_enrolled_imported: 'Matrícula importada',
+};
+
+const studentAuditEventLabel = (eventType) =>
+  studentAuditEventLabels[eventType] || eventType;
+
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+};
+
+const loadStudentAuditEvents = async () => {
+  if (!studentAuditTarget.value?.studentId) return;
+  loadingStudentAuditEvents.value = true;
+  try {
+    const response = await getStudentAuditEvents(courseId, {
+      studentId: studentAuditTarget.value.studentId,
+      page: studentAuditPage.value + 1,
+      pageSize: studentAuditRows.value,
+    });
+    studentAuditEvents.value = Array.isArray(response?.data) ? response.data : [];
+    studentAuditTotal.value = Number(response?.total || 0);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err.response?.data?.error || 'Failed to load student history',
+      life: 3500,
+    });
+  } finally {
+    loadingStudentAuditEvents.value = false;
+  }
+};
+
+const openStudentAuditDialog = async (row) => {
+  studentAuditTarget.value = row;
+  studentAuditPage.value = 0;
+  studentAuditEvents.value = [];
+  studentAuditTotal.value = 0;
+  showStudentAuditDialog.value = true;
+  await loadStudentAuditEvents();
+};
+
+const onStudentAuditPage = async (event) => {
+  studentAuditPage.value = event.page;
+  studentAuditRows.value = event.rows;
+  await loadStudentAuditEvents();
+};
+
 const selectAllAvailableStudents = () => {
   const combinedTarget = [...picklistTarget.value, ...picklistSource.value];
   setPicklistState([], combinedTarget);
@@ -3049,6 +3162,7 @@ provide(cmsCourseBuilderContextKey, {
   groupDropdownOptions,
   updatingGroupId,
   updateStudentGroup,
+  openStudentAuditDialog,
   removingEnrollmentId,
   removeEnrollmentRow,
   staffForm,
@@ -3403,25 +3517,6 @@ init();
   padding: 1rem;
 }
 
-.enrollments-card {
-  margin-top: 1rem;
-}
-
-.enrollment-filters {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-  align-items: flex-end;
-}
-
-.enrollment-filters .filter-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 200px;
-}
-
 .group-teachers-card {
   margin-top: 1rem;
 }
@@ -3489,20 +3584,6 @@ init();
   display: flex;
   align-items: center;
   gap: 0.25rem;
-}
-
-.group-dropdown {
-  width: 100%;
-}
-
-.group-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.group-tag {
-  align-self: flex-start;
 }
 
 .dropdown-option {
